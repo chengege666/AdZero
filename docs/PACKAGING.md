@@ -1,4 +1,4 @@
-# v0.5.0 构建、安装与发行
+# v0.5.1 构建、安装与发行
 
 公开安装只使用真实 SDK 输出，不使用 build_ipk.py 的离线预览。
 
@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | OpenWrt 24.10.8 / GCC 13.3 | x86/64 | IPK | 实际构建通过 |
 | OpenWrt 25.12.5 / GCC 14.3 | x86/64 | APK | 实际构建通过 |
+| OpenWrt 25.12.5 / GCC 14.3 | rockchip/armv8 | APK | 实际构建通过 |
 
 SDK 的 SHA-256 固定在 scripts/fetch_sdk.py，来源为对应 [官方版本目录](https://downloads.openwrt.org/releases/)。构建保留 SDK 自带 feeds.conf.default；不能用另一固件的 feeds 代替。
 
@@ -30,7 +31,7 @@ python3 scripts/fetch_sdk.py --release 24.10.8 --directory "$HOME/adzero-sdks" -
 python3 scripts/build_sdk.py --sdk /absolute/path/to/sdk \
   --firmware openwrt --release 24.10.8 --target x86/64 \
   --format ipk --sdk-sha256 ac4a0405d2eea821b06f93c14ba13ffa90ad0457648903df7dde02570027ab21 \
-  --output dist/v0.5.0/openwrt-24.10.8
+  --output dist/v0.5.1/openwrt-24.10.8
 ~~~
 
 25.12.5 使用对应 SDK、--format apk 和 SHA-256：
@@ -43,11 +44,19 @@ python3 scripts/build_sdk.py --sdk /absolute/path/to/sdk \
 
 构建器只同步自己曾复制且未被手动改动的包目录；其他已有源码不覆盖。源文件被删除时要求新 SDK，以避免旧文件残留。构建前后校验源码哈希，检测实际 target、架构及包格式；没有真实输出就失败。
 
+Rockchip 使用 --target rockchip/armv8 下载独立 SDK，SHA-256 为：
+
+~~~text
+59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba
+~~~
+
+构建时指定 --target rockchip/armv8 --format apk。官方 SDK 的 CONFIG_TARGET_ARCH_PACKAGES=aarch64_generic、CONFIG_ARCH=aarch64，与 APK --print-arch 的 CPU 名分别记录，不混为同一个字段。源码/格式检查和发布清单仍以实际 SDK target/ABI 为准。
+
 ## 检查真实包
 
 ~~~sh
-python3 scripts/check_sdk_packages.py dist/v0.5.0/openwrt-24.10.8/luci-app-adzero_0.5.0-r1_all.ipk
-python3 scripts/check_sdk_packages.py dist/v0.5.0/openwrt-25.12.5/luci-app-adzero-0.5.0-r1.apk --apk-tool /absolute/sdk/staging_dir/host/bin/apk
+python3 scripts/check_sdk_packages.py dist/v0.5.1/openwrt-24.10.8-x86/luci-app-adzero_0.5.1-r1_all.ipk
+python3 scripts/check_sdk_packages.py dist/v0.5.1/openwrt-25.12.5-x86/luci-app-adzero-0.5.1-r1.apk --apk-tool /absolute/sdk/staging_dir/host/bin/apk
 ~~~
 
 检查 12 个源文件的存在、运行代码内容和权限，并解析 SDK 实际压缩后的 LuCI JS。仅解包，不执行安装钩子。官方 IPK 使用 gzip tar 外层；APK 使用真正的 apk-tools 读取，不能改扩展名转换。
@@ -58,11 +67,12 @@ python3 scripts/check_sdk_packages.py dist/v0.5.0/openwrt-25.12.5/luci-app-adzer
 
 ~~~sh
 python3 scripts/build_release.py \
-  --manifest dist/v0.5.0/openwrt-24.10.8/build-manifest.json \
-  --manifest dist/v0.5.0/openwrt-25.12.5/build-manifest.json
+  --manifest dist/v0.5.1/openwrt-24.10.8-x86/build-manifest.json \
+  --manifest dist/v0.5.1/openwrt-25.12.5-x86/build-manifest.json \
+  --manifest dist/v0.5.1/openwrt-25.12.5-rockchip/build-manifest.json
 ~~~
 
-发行目录包含 install.sh、两个实际 SDK 包、releases.tsv 和 build-provenance.json。它拒绝不属于当前源码哈希的构建。GitHub Release v0.5.0 标记为 prerelease；一键命令固定到同一个版本，避免安装脚本与包混用。
+发行目录包含 install.sh、三个实际 SDK 包、releases.tsv 和 build-provenance.json。它拒绝不属于当前源码哈希的构建。GitHub Release v0.5.1 标记为 prerelease；一键命令固定到同一个版本，避免安装脚本与包混用。
 
 安装器先检查平台和 SHA-256，保存 /etc/config 备份，再使用固件的软件源补齐依赖。APK 自有包尚未签名，仅该本地文件通过 --allow-untrusted 安装；没有关闭 HTTPS 验证，也不使用强制覆盖或强制架构。安装失败时不自动删除已有包或整个配置目录。
 

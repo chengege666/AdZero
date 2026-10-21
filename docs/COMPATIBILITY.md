@@ -1,16 +1,19 @@
 # 兼容性与证据矩阵
 
-v0.5.0 已实现 NaiLink、PassWall、OpenClash、Nikki 的原生入口适配。当前公开安装清单只包含以下真实 SDK 构建组合：
+v0.5.1 保留 NaiLink、PassWall、OpenClash、Nikki 的原生入口适配，并扩展 Rockchip ARM64。公开安装清单按以下 SDK 组合生成：
 
 | 固件完整版本 | target / 包架构 | 包格式 | SDK | 设备安装 | LAN 过滤 |
 | --- | --- | --- | --- | --- | --- |
 | OpenWrt 24.10.8 | x86/64 / x86_64 | IPK | 通过 | 待测 | 待测 |
 | OpenWrt 25.12.5 | x86/64 / x86_64 | APK | 通过 | 待测 | 待测 |
+| OpenWrt 25.12.5 | rockchip/armv8 / aarch64_generic | APK | 通过 | 待测 | 待测 |
 | OpenWrt 其他 24.10.x / 25.12.x | 按实际 target | 实际 OPKG/APK | 逐项推进 | 待测 | 待测 |
 | ImmortalWrt 24.10.x / 25.12.x | 按厂商 SDK | 实际 OPKG/APK | 待验证 | 待测 | 待测 |
 | iStoreOS 对应维护版本 | 按厂商 SDK / 构建号 | 按设备检测 | 待匹配 | 待测 | 待测 |
 
-机器可读计划见 [compatibility-matrix.json](compatibility-matrix.json)。首批 x86/64 完成后，按 mediatek/filogic、ipq40xx/generic、ramips/mt7621 逐项扩展 ARM64、ARMv7、MIPSel；i386、MIPS/MIPS64、RISC-V 仍为候选。
+机器可读计划见 [compatibility-matrix.json](compatibility-matrix.json)。x86/64、rockchip/armv8 之后，按 mediatek/filogic、ipq40xx/generic、ramips/mt7621 逐项扩展；i386、MIPS/MIPS64、RISC-V 仍为候选。
+
+rockchip/armv8 的官方 profiles 元数据与用户回报均为 OpenWrt 25.12.5 r33051-f5dae5ece4，SDK 的 CONFIG_TARGET_ARCH_PACKAGES 为 aarch64_generic，CONFIG_ARCH 为 aarch64。安装器区分固件包 ABI 与 APK 的 CPU 名，接受该目标上 --print-arch 返回 aarch64 或 aarch64_generic；其他 ABI/CPU 组合仍拒绝。不能把这一别名扩展为任意 ARM64 固件兼容。
 
 本体使用 shell、ucode、LuCI JS，未捆绑特定 CPU 的 ELF。依赖、字节序、浮点 ABI、固件 feeds 和包管理器仍按目标分别处理。实际包架构优先于 CPU 位数或产品宣传名；all/noarch 不是跨固件认证。
 

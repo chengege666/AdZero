@@ -1,4 +1,22 @@
-# v0.5.0 验证记录（2026-10-21）
+# v0.5.1 验证记录（2026-10-21）
+
+本轮针对真实回报的 OpenWrt 25.12.5 r33051-f5dae5ece4 / rockchip/armv8，补充 ARM64 官方 SDK 构建入口和安装清单。
+
+- 官方 profiles 的 arch_packages 为 aarch64_generic；SDK 的 CONFIG_ARCH 为 aarch64，用户的 APK --print-arch 返回 aarch64。安装器为这一具体 target 增加明确别名，同时检查固件声明 ABI，保留固件版本/target/包格式边界。
+- 完整回归 **109 项通过**，使用官方 OpenWrt BusyBox/ash、ucode/UCI，以及实际 Ruby/yq；其中安装器 13 项包含用户回报字段、缺失 target、错误 CPU/ABI 和跨目标清单拒绝。
+- 本轮路由器包源码哈希为 `9cf5ed3294071b34655ce16d1390bf67a75d2afc7161705dd150c2558e90d9b4`。适配器运行代码未变，只更新包版本；v0.5.0 的真实 Mihomo/dae 证据保留在下方，不能当成 ARM 核心或 LAN 实测。
+- x86/64 的 24.10.8 IPK、25.12.5 APK 已重新构建；rockchip/armv8 的 25.12.5 APK 也通过了独立的官方 SDK 构建。三包的 12 个运行文件内容/权限及实际 LuCI JS 检查通过。最终 manifest 和运行检查记录存入 evidence/v0.5.1。
+- 尚未执行用户设备安装、NaiLink API/eBPF 或 LAN DNS 查询。用户提供设备元数据不等于设备安装通过。
+
+ARM SDK：[官方发布目录](https://downloads.openwrt.org/releases/25.12.5/targets/rockchip/armv8/)，归档 SHA-256：
+
+~~~text
+59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba
+~~~
+
+以下保留 v0.5.0 的历史基线。
+
+## v0.5.0 验证记录（2026-10-21）
 
 本轮验证对象为路由器包目录源码 SHA-256：
 
