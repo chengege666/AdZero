@@ -1,0 +1,160 @@
+'use strict';
+// Shared policy compiler. No network calls, shell commands or persistent writes.
+
+export const domestic = ['223.5.5.5', '119.29.29.29'];
+export const foreign = '1.1.1.1';
+export const sources = [
+	{name:'domains',url:'https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/c79474a5445e7ebbde7275648b1078a0582510ab/accelerated-domains.china.conf',sha256:'d5ff2f2fe2a0ed4c4380455351259e32d8635a3d60e513268ab0fec41110339d'},
+	{name:'cidrs',url:'https://raw.githubusercontent.com/Loyalsoldier/geoip/bf01519a9e21f366266bd48c6afae430ec8febfe/text/cn.txt',sha256:'95e593f9422de0c5ab719dad70a5f209517a74b74df7372f53335eb903085d20'}
+];
+export function domain_list(raw) {
+	if (type(raw) != 'string' || length(raw) > 5000000) die('国内域名库为空或超过大小限制。');
+	let result = {};
+	for (let line in split(raw, '\n')) {
+		line = trim(line);
+		if (!length(line) || substr(line,0,1) == '#') continue;
+		let record = match(line, /^server=\/([a-z0-9.-]+)\/[0-9.]+$/);
+		if (!record) die('国内域名库格式异常。');
+		let name = record[1];
+		if (length(name) > 253 || !match(name,/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/) || index(name,'..') >= 0 || match(name,/^[0-9.]+$/)) die('国内域名库含无效域名。');
+		for (let label in split(name,'.')) if (length(label)>63 || substr(label,0,1)=='-' || substr(label,-1)=='-') die('国内域名库标签无效。');
+		result[name] = true;
+	}
+	let names = sort(keys(result));
+	if (!length(names) || length(names)>200000) die('国内域名库为空或超限。');
+	return names;
+};
+function ip_bytes(value) {
+	if (index(value,':')<0) {
+		let parts = split(value,'.');
+		if (length(parts)!=4) die('Invalid IPv4 CIDR');
+		let result='';
+		for (let p in parts) {
+			if (!match(p,/^(0|[1-9][0-9]{0,2})$/) || int(p)>255) die('Invalid IPv4 octet');
+			result += chr(int(p));
+		}
+		return result;
+	}
+	if (!match(value,/^[a-f0-9:]+$/)) die('Invalid IPv6 CIDR');
+	let halves=split(value,'::'), parts=[];
+	if (length(halves)>2) die('Invalid IPv6 contraction');
+	let left=length(halves[0])?split(halves[0],':'):[], right=length(halves)==2 && length(halves[1])?split(halves[1],':'):[];
+	if (length(halves)==1) parts=left;
+	else {
+		let missing=8-length(left)-length(right);
+		if (missing<1) die('Invalid IPv6 length');
+		parts=[...left];for(let i=0;i<missing;i++)push(parts,'0');parts=[...parts,...right];
+	}
+	if (length(parts)!=8) die('Invalid IPv6 length');
+	let result='';
+	for (let p in parts) {
+		if (!match(p,/^[a-f0-9]{1,4}$/)) die('Invalid IPv6 word');
+		let n=int(p,16);result+=chr(int(n/256))+chr(n%256);
+	}
+	return result;
+}
+export function cidr_list(raw) {
+	if (type(raw)!='string' || length(raw)>1000000) die('国内 IP 库为空或超过大小限制。');
+	let result={};
+	for (let line in split(raw,'\n')) {
+		line=trim(line);if(!length(line)||substr(line,0,1)=='#')continue;
+		let parts=split(line,'/');
+		if(length(parts)!=2 || !match(parts[1],/^(0|[1-9][0-9]{0,2})$/))die('Invalid CIDR prefix');
+		let bytes=ip_bytes(parts[0]),prefix=int(parts[1]);
+		if(prefix>length(bytes)*8 || prefix==0)die('Unsafe CIDR prefix');
+		// Network addresses only, rather than silently broadening a host entry.
+		for(let bit=prefix;bit<length(bytes)*8;bit++)if(ord(bytes,int(bit/8)) & (1<<(7-bit%8)))die('CIDR contains host bits');
+		result[line]=true;
+	}
+	let names=sort(keys(result));if(!length(names)||length(names)>30000)die('国内 IP 库为空或超限。');return names;
+};
+function varint(n) {let s='';while(true){let v=n%128;n=int(n/128);s+=chr(v+(n?128:0));if(!n)break;}return s;}
+function field(n,s) {return chr(n*8+2)+varint(length(s))+s;}
+export function geoip(cidrs) {
+	let parts=[field(1,'ADZERO')];
+	for(let cidr in cidrs){let p=split(cidr,'/');push(parts,field(2,field(1,ip_bytes(p[0]))+chr(16)+varint(int(p[1]))));}
+	return field(1,join('',parts));
+};
+export function expand_blockers(blocked,candidates) {
+	let result={};for(let name in blocked)result[name]=true;
+	for(let name in candidates){
+		let parent=name;
+		while(length(parent)){
+			if(result[parent]){result[name]=true;break;}
+			let dot=index(parent,'.');if(dot<0)break;parent=substr(parent,dot+1);
+		}
+	}
+	return sort(keys(result));
+};
+
+// Dae block locations, ignoring quoted strings, escapes and comments.
+function sections(text) {
+	let found=[],stack=[],word='',last='',quote='',comment=false;
+	for(let i=0;i<length(text);i++){
+		let c=substr(text,i,1);
+		if(comment){if(c=='\n')comment=false;continue;}
+		if(quote){if(c=='\\'){i++;continue;}if(c==quote)quote='';continue;}
+		if(c=='#'){comment=true;continue;}
+		if(c=='"'||c=="'"){quote=c;word=last='';continue;}
+		if(match(c,/[A-Za-z0-9_]/)){word+=c;continue;}
+		if(length(word)){last=word;word='';}
+		if(c=='{'){let node={name:last,open:i,path:join('.',map(stack,s=>s.name))+(length(stack)?'.':'')+last};push(stack,node);last='';}
+		else if(c=='}'){let node=pop(stack);if(!node)die('Unbalanced dae config');node.close=i;push(found,node);last='';}
+		else if(!match(c,/[[:space:]]/))last='';
+	}
+	if(length(stack)||quote)die('Incomplete dae config');return found;
+}
+function owned(name,text) {return '# ADZERO SPLIT '+name+' BEGIN v1\n'+text+'\n# ADZERO SPLIT '+name+' END v1\n';}
+export function dae_dns(raw) {
+	if(index(raw,'# ADZERO SPLIT ')>=0)return raw; // journal equality is checked by caller
+	let blocks=sections(raw),edits=[],paths=['upstream','routing.request','routing.response'];
+	for(let path in paths){let hit=filter(blocks,b=>b.path==path);if(length(hit)!=1)die('Expected one dae DNS '+path);}
+	for(let block in blocks){
+		if(block.path=='upstream')push(edits,{at:block.close,text:'\n'+owned('UPSTREAM','adzero_cn: "udp://'+domestic[0]+':53"\nadzero_global: "tcp://'+foreign+':53"')});
+		if(block.path=='routing.request')push(edits,{at:block.close,text:'\n'+owned('REQUEST','qname(ext:"adzero-cn-geosite.dat:adzero") -> adzero_cn\nqname(regex: ".*") -> adzero_global')});
+		if(block.path=='routing.response')push(edits,{at:block.open+1,text:'\n'+owned('RESPONSE','upstream(adzero_cn, adzero_global) -> accept')});
+	}
+	for(let e in sort(edits,(a,b)=>b.at-a.at))raw=substr(raw,0,e.at)+e.text+substr(raw,e.at);
+	return raw;
+};
+export function dae_routing(raw,target) {
+	if(type(target)!='string'||!length(target)||length(target)>100||match(target,/[[:space:]{}()"'#:,<>;&|=\/\\]/)||index(['direct','must_direct','block','reject'],target)>=0)die('没有可识别的默认代理策略。');
+	if(index(raw,'# ADZERO SPLIT ')>=0)return raw;
+	// Insert before fallback, after the user's explicit rules. DNS upstream
+	// transport overrides are first, so foreign DNS cannot accidentally go direct.
+	let fallback=match(raw,/(^|\n)([ \t]*fallback[ \t]*:)/);
+	if(!fallback)die('Expected a standalone dae fallback line');
+	let at=index(raw,fallback[0]);
+	let direct='dip('+join(', ',map([...domestic,'127.0.0.0/8','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','::1/128','fc00::/7','fe80::/10'],v=>index(v,':')>=0?sprintf('%J',v):v))+') -> direct';
+	let prefix=owned('TRANSPORT','dip('+foreign+') && dport(53) -> '+target+'\ndip('+join(', ',domestic)+') && dport(53) -> direct');
+	let defaults=owned('ROUTING',direct+'\ndomain(ext:"adzero-cn-geosite.dat:adzero") -> direct\ndip(ext:"adzero-cn-geoip.dat:adzero") -> direct');
+	return prefix+substr(raw,0,at)+'\n'+defaults+substr(raw,at);
+};
+export function mihomo(config,domain_path,ip_path) {
+	if(config.dns?.enable!=true)die('代理 DNS 未开启。');
+	let rules=config.rules??[],matches=filter(rules,r=>match(r,/^MATCH,[^,]+$/));
+	if(length(matches)!=1 || substr(rules[length(rules)-1],0,6)!='MATCH,')die('需要唯一的末尾 MATCH 代理策略。');
+	let target=substr(matches[0],6),names=map(config['proxy-groups']??[],g=>g.name);
+	if(index(names,target)<0 || index(['DIRECT','REJECT','PASS','GLOBAL'],target)>=0 || match(target,/[#\r\n]/))die('无法自动确认当前默认代理策略。');
+	let providers=config['rule-providers']??={};
+	for(let entry in [['adzero-cn-domain',domain_path,'domain'],['adzero-cn-ip',ip_path,'ipcidr']]){
+		let name=entry[0],path=entry[1],behavior=entry[2];
+		if(providers[name] && providers[name].path!=path)die('Reserved split provider exists');
+		providers[name]={type:'file',behavior,format:'text',path};
+	}
+	let own=['RULE-SET,adzero-cn-domain,DIRECT','RULE-SET,adzero-cn-ip,DIRECT,no-resolve',
+		'IP-CIDR,127.0.0.0/8,DIRECT,no-resolve','IP-CIDR,10.0.0.0/8,DIRECT,no-resolve','IP-CIDR,172.16.0.0/12,DIRECT,no-resolve','IP-CIDR,192.168.0.0/16,DIRECT,no-resolve',
+		'IP-CIDR6,::1/128,DIRECT,no-resolve','IP-CIDR6,fc00::/7,DIRECT,no-resolve','IP-CIDR6,fe80::/10,DIRECT,no-resolve'];
+	rules=filter(rules,r=>index(own,r)<0);pop(rules);config.rules=[...rules,...own,matches[0]];config.mode='rule';
+	let dns=config.dns;
+	dns['default-nameserver']=[...domestic];dns['proxy-server-nameserver']=[...domestic];dns['direct-nameserver']=[...domestic];
+	dns.nameserver=['tcp://'+foreign+':53#'+target];delete dns.fallback;delete dns['fallback-filter'];
+	let policies={};
+	// Keep the existing ad reject provider before the China domain provider.
+	if(dns['nameserver-policy']?.['rule-set:adzero-dns'])policies['rule-set:adzero-dns']=dns['nameserver-policy']['rule-set:adzero-dns'];
+	for(let key in keys(dns['nameserver-policy']??{}))if(key!='rule-set:adzero-dns'&&key!='rule-set:adzero-cn-domain')policies[key]=dns['nameserver-policy'][key];
+	policies['rule-set:adzero-cn-domain']=map(domestic,d=>'udp://'+d+':53#DIRECT');dns['nameserver-policy']=policies;
+	let fake=dns['fake-ip-filter-mode']=='rule'?'RULE-SET,adzero-cn-domain,real-ip':'rule-set:adzero-cn-domain';
+	dns['fake-ip-filter']=[fake,...filter(dns['fake-ip-filter']??[],f=>f!=fake)];
+	return {config,target};
+};

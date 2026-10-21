@@ -54,6 +54,8 @@ return {adzero:{
 	enable:{call:r=>job(r,'enable',[])},
 	disable:{call:r=>job(r,'disable',[])},
 	refresh:{call:r=>job(r,'refresh',[])},
+	routing_on:{call:r=>job(r,'routing-on',[])},
+	routing_off:{call:r=>job(r,'routing-off',[])},
 	source_list:{call:r=>invoke(r,'sources-list',[],true)},
 	source_add:{args:{catalog:'',name:'',url:'',format:'domains'},call:r=>source_change(r,'source-add')},
 	source_toggle:{args:{id:'',expected_url:'',enabled:true},call:r=>source_change(r,'source-toggle')},

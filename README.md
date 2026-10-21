@@ -1,16 +1,16 @@
-# AdZero · 一键广告域名过滤
+# AdZero
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
-**v0.8.2 是公开测试版。** 本版修复 LuCI 长操作可能被 RPC 超时中断的问题：开启、关闭、更新、放行、暂停及恢复统一使用后台任务，返回菜单只核对回执，不重复提交。 新增可选规则库、自定义 HTTPS 订阅及逐项开关/删除；返回菜单时先保留最近概览，再后台核对真实状态。保留域名查询、误杀放行、临时暂停及 NaiLink、PassWall、OpenClash、Nikki 的原生接入。安装矩阵为 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）、25.12.5 rockchip/armv8（APK）**，使用对应官方 SDK；真机和 LAN 验收仍需分别完成。
+**v0.9.0 是公开测试版。** 新增「自动分流」开关：有运行中的受支持代理时协调国内 DNS/直连与国外 DNS/当前代理；无代理时只使用国内 DNS 与本地直连。默认关闭，需先开启保护；临时暂停会同时暂停过滤和分流，保留选择。 本版修复 LuCI 长操作可能被 RPC 超时中断的问题：开启、关闭、更新、放行、暂停及恢复统一使用后台任务，返回菜单只核对回执，不重复提交。 新增可选规则库、自定义 HTTPS 订阅及逐项开关/删除；返回菜单时先保留最近概览，再后台核对真实状态。保留域名查询、误杀放行、临时暂停及 NaiLink、PassWall、OpenClash、Nikki 的原生接入。安装矩阵为 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）、25.12.5 rockchip/armv8（APK）**，使用对应官方 SDK；真机和 LAN 验收仍需分别完成。
 
 菜单名称为 **AdZero**。首屏异步读取当前状态，提供保护开关、临时暂停、域名查询和个人放行名单；不显示固件/CPU/未启用代理等诊断面板，也不虚构拦截次数。支持手机、深色外观、键盘操作和失败重试。
 
 v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动重编号误判为外部修改；有其他页面尚未保存的后端配置时拒绝提交或覆盖。
 
-![AdZero 规则库本地预览，使用隔离状态，未连接路由器](docs/images/adzero-v0.8.0-rules-desktop.jpg)
+![AdZero 自动分流本地预览，使用隔离状态，未连接路由器](docs/images/adzero-v0.9.0-routing-desktop.jpg)
 
-智能 DNS 双模式已进入开发设计，范围为代理原生适配与无代理独立分流，详见 [设计与验收约束](docs/SMART_DNS.md)。**v0.8.2 安装包尚不提供智能 DNS 分流。**
+智能分流的目标是由 AdZero 统一管理广告过滤、DNS 选择和连接去向：有可用代理时，国内默认直连、国外默认走当前代理；无可用代理时，所有未被拦截的请求使用国内 DNS 与本地网络直连。SmartDNS、AdGuard Home 只作为功能与交互参考，不作为新增运行依赖。详见 [修订后的设计与验收约束](docs/SMART_DNS.md)。v0.9.0 已加入四种适配器和无代理路径，实际能力、限制及验证范围见该文档。
 
 ## 规则库与自定义订阅
 
@@ -36,10 +36,10 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.8.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.8.2)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.9.0)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -48,14 +48,14 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本可使用 --upgrade：先校验安装包、备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.8.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
 
 旧版短暂占锁时，升级器最多等待 30 秒重试；只重试旧版明确的“另一项操作正在进行”提示，其他恢复失败立即停止。锁持续占用则停止安装并保留配置、锁和恢复记录。请先提供 `ls -la /tmp/adzero.lock` 与 `ps w | grep -E '[a]dzero/(ctl|watch|adapter|backend)'` 的只读结果，不要直接删除锁。升级备份中的 state.tar.gz 可能含原有 DNS 配置，请仅保留在路由器本地。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.8.2 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.9.0 地址。
 
 v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修正旧默认规则源；v0.6.0 已解决 LuCI 将 disabled=false 写为实际禁用属性的问题。缺少 gawk、GNU grep/sed、coreutils-sort 仍为后端推荐提示，本版未因此新增依赖。
 
@@ -76,6 +76,7 @@ Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 40 组本机查询
 
 ## 工作方式和恢复
 
+- 自动分流开启后，在现有原生入口增加国内分类与连接路由，不引入 SmartDNS/AdGuard Home。国内分类首次从固定提交下载并校验 SHA-256，之后使用本地缓存；升级不会自动开启分流。分类库与广告订阅各自管理。
 - 无可用拦截源时准备 HaGeZi Light；已有规则优先使用。适配器只读取 adblock-fast 已处理、非空的域名规则，不另行下载另一套规则。
 - 使用原生扩展入口，不添加 DNS 服务器，不改 DHCP、DNS 监听端口或自行添加防火墙劫持。代理原有的 DNS/防火墙行为保持由代理管理。
 - 开启会保存并临时设置 force_dns=0 和严格 HTTPS 证书验证，关闭时恢复未被外部改变的选项。

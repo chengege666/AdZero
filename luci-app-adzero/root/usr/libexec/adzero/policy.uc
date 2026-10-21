@@ -9,6 +9,7 @@ const root = getenv('ADZERO_POLICY_ROOT') ?? '';
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
 const uci = cursor(root + '/etc/config');
 const mirror_path = dir + '/allow-state.json', pending_path = dir + '/allow-pending.json', pause_path = dir + '/pause.json';
+const routing_path=dir+'/routing-pending.json';
 function same(a,b) { return sprintf('%J', a) == sprintf('%J', b); }
 function read(path) { let data = fs.readfile(path); return data == null ? null : json(data); }
 function atomic(path, data) {
@@ -35,6 +36,9 @@ function merged(original, allowed) {
 	return result;
 }
 function validate() {
+	let flag=uci.get('adzero','main','routing_enabled'),adapter=read(dir+'/adapter.json');
+	if(flag!=null && flag!='0' && flag!='1')die('自动分流设置无效。');
+	if(uci.get('adzero','main','enabled')=='1' && uci.get('adblock-fast','config','enabled')=='1' && ((flag=='1') != !!adapter?.split))die('自动分流配置与实际接入不一致，请关闭并恢复。');
 	let state = read(mirror_path), current = uci.get('adblock-fast','config','allowed_domain');
 	if (state && (!same(current,state.after) || !same(state.after,merged(state.before,own())))) die('后端放行配置已被外部修改。');
 	if (!state && length(own()) && uci.get('adblock-fast','config','enabled') == '1') die('个人放行名单尚未同步。');
@@ -59,7 +63,7 @@ function rollback() {
 	backend(pending.backend_before);
 	if (pending.mirror_before == null) fs.unlink(mirror_path); else atomic(mirror_path,pending.mirror_before);
 }
-function restore() {
+function restore_allow() {
 	rollback();
 	let state = read(mirror_path);
 	if (state) {
@@ -70,6 +74,29 @@ function restore() {
 	}
 	fs.unlink(pending_path);
 }
+function routing_clean(){if(length(uci.changes('adzero')??{}))die('AdZero 有未提交的外部修改，请先保存或撤销。');}
+function routing_begin(value){
+	if(index(['0','1'],value)<0)die('自动分流开关无效。');
+	routing_clean();if(read(routing_path))die('上次分流切换尚未恢复。');
+	atomic(routing_path,{schema:1,before:uci.get('adzero','main','routing_enabled'),after:value,stage:'prepared'});
+}
+function routing_save(){
+	routing_clean();let p=read(routing_path);if(!p||p.schema!=1||p.stage!='prepared')die('分流切换记录无效。');
+	let current=uci.get('adzero','main','routing_enabled');if(!same(current,p.before)&&current!=p.after)die('分流开关被其他操作修改。');
+	set('adzero','routing_enabled',p.after);p.stage='applied';atomic(routing_path,p);
+}
+function routing_rollback(){
+	routing_clean();let p=read(routing_path);if(!p)return;
+	let current=uci.get('adzero','main','routing_enabled');if(!same(current,p.before)&&current!=p.after)die('分流恢复遇到并发修改。');
+	set('adzero','routing_enabled',p.before);p.stage='rolled_back';atomic(routing_path,p);
+}
+function routing_finish(){
+	let p=read(routing_path);if(!p)return;
+	let expected=p.stage=='applied'?p.after:p.stage=='rolled_back'?p.before:'invalid';
+	if(!same(uci.get('adzero','main','routing_enabled'),expected))die('分流切换结果未确认。');
+	if(!fs.unlink(routing_path))die('分流已应用，但完成记录未能清理。');
+}
+function restore(){if(read(routing_path)){routing_rollback();fs.unlink(routing_path);}restore_allow();}
 function query(value) {
 	let name = lib.hostname(value), mode = uci.get('adblock-fast','config','dns');
 	let output = mode == 'unbound.adb_list' ? '/var/lib/unbound/adb_list.adblock-fast' : '/var/run/adblock-fast/' + mode;
@@ -92,7 +119,7 @@ function pause_info() {
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 try {
-	if (action == 'status') print(sprintf('%J\n',{allowed:own(),pending:!!read(pending_path),pause:pause_info()}));
+	if (action == 'status') print(sprintf('%J\n',{allowed:own(),pending:!!read(pending_path),pause:pause_info(),routing_enabled:uci.get('adzero','main','routing_enabled')=='1',routing_pending:!!read(routing_path)}));
 	else if (action == 'lookup') print(sprintf('%J\n',query(shift(ARGV))));
 	else if (action == 'apply') { if (read(pending_path)) die('放行事务尚未恢复。'); apply(); }
 	else if (action == 'validate') validate();
@@ -134,6 +161,10 @@ try {
 	else if (action == 'is-paused') { let p = pause_info(); exit(p?.stage == 'paused' ? 0 : 1); }
 	else if (action == 'pause-due') { let p = pause_info(); exit(p?.stage == 'paused' && p.expired && !p.retry_remaining ? 0 : 1); }
 	else if (action == 'has-allowed') exit(length(own()) ? 0 : 1);
-	else if (action == 'pending') exit(read(pending_path) ? 0 : 1);
+	else if (action == 'pending') exit(read(pending_path)||read(routing_path) ? 0 : 1);
+	else if (action == 'routing-begin') routing_begin(shift(ARGV));
+	else if (action == 'routing-save') routing_save();
+	else if (action == 'routing-rollback') routing_rollback();
+	else if (action == 'routing-finish') routing_finish();
 	else die('未知的策略操作。');
 } catch(e) { fs.stderr.write('AdZero: ' + e.message + '\n'); exit(action == 'pending' ? 2 : 1); }

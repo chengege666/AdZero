@@ -45,7 +45,7 @@ ubus -s /tmp/ubus.sock call session create '{"timeout":2}' >/tmp/nested.json || 
 case "$1" in
  lookup) printf '{"available":true,"domain":"%s","match":"none"}\\n' "$2";;
  pause) exit 1;;
- enable|disable|refresh)
+ enable|disable|refresh|routing-on|routing-off)
    mkdir /tmp/long-operation.lock || exit 1
    trap 'rmdir /tmp/long-operation.lock' EXIT
    echo $$ > /tmp/long-operation.pid
@@ -110,7 +110,7 @@ esac
             assert (base/'tmp/long-operation.lock').is_dir(),'expected orphan after SIGKILL'
             time.sleep(1.2)  # let the fixture child sleep end before cleanup
             (base/'tmp/long-operation.lock').rmdir()
-            for action in ('enable','disable','refresh'):
+            for action in ('enable','disable','refresh','routing_on','routing_off'):
                 start=time.monotonic()
                 receipt=call(action,{})
                 assert time.monotonic()-start < .9,'launcher crossed one-second rpcd limit'
@@ -119,9 +119,9 @@ esac
                 private=(base/'tmp/adzero-jobs'/receipt['job']/'log').read_text()
                 assert 'private-backend-token' in private and 'private-backend' not in json.dumps(receipt)
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
-                    'checks':26,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced',
+                    'checks':34,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
-                    'enable_disable_refresh_survive_timeout':'passed','router':'not_touched'}
+                    'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')
             print(json.dumps(report,indent=2))
         finally:

@@ -28,6 +28,8 @@
           "enable",
           "disable",
           "refresh",
+          "routing_on",
+          "routing_off",
           "allow",
           "revoke",
           "pause",

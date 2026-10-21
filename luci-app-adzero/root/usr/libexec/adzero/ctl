@@ -479,6 +479,21 @@ refresh_blocklists() {
 	reject_insecure_custom_fetch_flags
 	change_sources refresh
 }
+change_routing() {
+	case "$1" in 0|1) ;; *) error '自动分流开关无效。' ;; esac
+	require_active
+	[ "$(get_uci adzero.main.routing_enabled)" != "$1" ] || { printf 'routing preference already applied\n'; return 0; }
+	"$POLICY" routing-begin "$1" || error '未能准备自动分流切换。'
+	if "$ADAPTER" remove && "$POLICY" routing-save && "$ADAPTER" apply; then
+		"$POLICY" routing-finish || error '分流已应用，但完成记录未能清理。'
+		printf 'routing preference synchronized\n'; return 0
+	fi
+	if "$ADAPTER" remove && "$POLICY" routing-rollback && "$ADAPTER" apply; then
+		"$POLICY" routing-finish || error '原配置已恢复，但切换记录未清理。'
+		error '自动分流切换未完成，已恢复原配置。'
+	fi
+	error '自动分流切换与恢复未确认，请关闭并恢复；记录已保留。'
+}
 
 require_active() {
 	verify_supported
@@ -551,6 +566,7 @@ case "$1" in
 	allow|revoke) acquire_lock "$1"; change_allow "$1" "$2" "$3" ;;
 	pause) acquire_lock pause; pause_protection "$2" ;;
 	resume) acquire_lock resume; resume_protection ;;
+	routing-on|routing-off) acquire_lock "$1"; if [ "$1" = routing-on ]; then change_routing 1; else change_routing 0; fi ;;
 	reconcile)
 		if acquire_lock reconcile && [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ]; then
 			if [ -e "$STATE_DIR/pause.json" ]; then

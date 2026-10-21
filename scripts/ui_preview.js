@@ -55,6 +55,7 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   }
   if (spec.method==='allow') state.policy.allowed.push(args[1]);
   if (spec.method==='revoke') state.policy.allowed=state.policy.allowed.filter(x=>x!==args[1]);
+  if (spec.method==='routing_on'||spec.method==='routing_off') { state.policy.routing_enabled=spec.method==='routing_on';state.adapter.routing={mode:state.policy.routing_enabled?'proxy':'inactive'}; }
   state.state=spec.method==='pause'?'paused':'configured_unverified';
   state.policy.pause=spec.method==='pause'?{remaining:args[0],stage:'paused'}:null;
   return {ok:true,job:'11111111-1111-1111-1111-111111111111'};

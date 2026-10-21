@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "source_sha256": "615ea099323a06d18136e22f4d13fd66638c5ba2383a9b178dfe56bec2dacde7",
+  "sources": [
+    {
+      "name": "domains",
+      "url": "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/c79474a5445e7ebbde7275648b1078a0582510ab/accelerated-domains.china.conf",
+      "sha256": "d5ff2f2fe2a0ed4c4380455351259e32d8635a3d60e513268ab0fec41110339d"
+    },
+    {
+      "name": "cidrs",
+      "url": "https://raw.githubusercontent.com/Loyalsoldier/geoip/bf01519a9e21f366266bd48c6afae430ec8febfe/text/cn.txt",
+      "sha256": "95e593f9422de0c5ab719dad70a5f209517a74b74df7372f53335eb903085d20"
+    }
+  ],
+  "domains": 109795,
+  "cidrs": 10015,
+  "ipv6_cidrs": 3488,
+  "elapsed_seconds": 16.176,
+  "scope": "real HTTPS download and production ucode validation in temporary cache; no router configuration"
+}

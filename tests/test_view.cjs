@@ -56,6 +56,7 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   }
   if (spec.method === 'lookup') return {ok:true,data:lookup};
   if (!rpcStale) {
+    if (['routing_on','routing_off'].includes(spec.method)) { state.policy.routing_enabled=spec.method==='routing_on';state.adapter.routing={mode:spec.method==='routing_on'?'proxy':'inactive'}; }
     if (spec.method === 'allow') state.policy.allowed.push(args[1]);
     if (spec.method === 'revoke') state.policy.allowed = state.policy.allowed.filter(x => x !== args[1]);
     state.state = spec.method === 'pause' ? 'paused' : 'configured_unverified';
@@ -67,7 +68,7 @@ const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'pol
   { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}},session);
 function reset(overrides = {}) {
   state = { state: 'disabled', managed: false, dns_mode_safe: true, resolver: 'dnsmasq.servers', client_dns_verified: false,
-    policy:{allowed:[],pause:null}, force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
+    policy:{allowed:[],pause:null,routing_enabled:false}, force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
     compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
   failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = rpcListFailure = storageBlocked = false; sessionID='b'.repeat(32); commands.length = 0;
@@ -160,6 +161,13 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(app.currentStatus.state==='configured_unverified' && app.notice===null,'automatic resume clears obsolete paused notice');
   state.state='paused'; app.currentStatus=state;
   await app.runPolicy('resume',[]); check(state.state === 'configured_unverified','resume supported');
+  await app.runPolicy('routing_on',[]);check(state.policy.routing_enabled && app.notice.kind==='success' && find('az-routing').attrs['aria-checked']==='true','routing preference confirmed through typed background job');
+  check(text(root).includes('国内直连 / 国外代理'),'actual applied proxy mode displayed');
+  rpcStale=true;await app.runPolicy('routing_off',[]);check(app.notice.kind==='error' && state.policy.routing_enabled,'routing switch does not claim success without canonical preference');
+  rpcStale=false;await app.runPolicy('routing_off',[]);check(!state.policy.routing_enabled && state.state==='configured_unverified','disabling routing retains ad protection');
+  reset({state:'configured_unverified',policy:{allowed:[],routing_enabled:true},adapter:{plugin:'none',routing:{mode:'direct'}}});check(text(root).includes('国内 DNS / 全部直连'),'no-proxy mode explains domestic resolution and direct traffic');
+  reset();check(find('az-routing').disabled,'routing requires master protection');
+  reset({state:'configured_unverified'});
   rpcStale=true; await app.runPolicy('allow',['ads.example','ads.example']); check(app.notice.kind==='error','stale RPC success rejected');
   rpcStale=false; rpcFailure=true; await app.runPolicy('pause',[300]); check(app.notice.kind==='error' && state.state!=='paused','RPC failure is not optimistic pause');
   reset({state:'configured_unverified'}); app.domainInput=''; await app.lookupDomain(); check(!commands.length && text(root).includes('请输入'),'empty query validation');
@@ -194,7 +202,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset();storage.set('adzero.v0.8.'+sessionID+'.job',JSON.stringify('11111111-1111-1111-1111-111111111111'));
   root=app.render({state:'loading'});await app.initialRequest;
   check(app.rulesOpen && commands.includes('job_status') && !storage.has('adzero.v0.8.'+sessionID+'.job'),'navigation resumes stored job receipt and reconciles result');
-  for (const [kind,action] of [['action','enable'],['policy','allow'],['policy','resume']]) {
+  for (const [kind,action] of [['action','enable'],['policy','allow'],['policy','resume'],['policy','routing_off']]) {
     reset({state:'configured_unverified'});
     storage.set('adzero.v0.8.'+sessionID+'.job',JSON.stringify({job:'11111111-1111-1111-1111-111111111111',kind,action}));
     root=app.render({state:'loading'});await app.initialRequest;

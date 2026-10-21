@@ -6,7 +6,7 @@
 'require poll';
 
 var policyCalls = {};
-[ ['enable', []], ['disable', []], ['refresh', []], ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
+[ ['enable', []], ['disable', []], ['refresh', []], ['routing_on', []], ['routing_off', []], ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
 	policyCalls[method[0]] = rpc.declare({ object: 'adzero', method: method[0], params: method[1] });
 });
 var sourceCalls = {};
@@ -29,7 +29,7 @@ function saveSnapshot(s) {
 	var snapshot = {};
 	['state','managed','configured','backend_enabled','dns_mode_safe','adguardhome_running','backend','adapter','client_dns_verified'].forEach(function(k) { snapshot[k]=s[k]; });
 	snapshot.compatibility = {dns:{active_proxy_count:((s.compatibility || {}).dns || {}).active_proxy_count}};
-	snapshot.policy = {pause:(s.policy || {}).pause || null};
+	snapshot.policy = {pause:(s.policy || {}).pause || null,routing_enabled:(s.policy || {}).routing_enabled===true};
 	sessionValue('snapshot',{at:Date.now(),status:snapshot});
 }
 function readSnapshot() {
@@ -120,6 +120,7 @@ return view.extend({
 		var ready = f.enabled && backend.state === 'ready', verified = s.client_dns_verified === true;
 		var checked = self.lastChecked ? new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(self.lastChecked) : '—';
 		var pause = (s.policy || {}).pause || {}, allowed = (s.policy || {}).allowed || [];
+		var routing = adapter.routing || {}, routingWanted = (s.policy || {}).routing_enabled === true;
 		var titles = { configured_unverified: _('广告过滤已开启'), disabled: _('广告过滤未开启'), paused: _('保护已临时暂停'),
 			inconsistent: _('配置需要检查'), external_owner: _('当前由其他服务管理'),
 			unavailable: _('过滤组件尚未就绪'), error: _('暂时无法读取状态'), loading: _('正在读取运行状态…') };
@@ -159,7 +160,7 @@ return view.extend({
 				el('p', { 'class': 'az-hero-copy' }, descriptions[s.state] || _('请重新检测当前状态。')), blocker ? el('p', { 'class': 'az-inline-warning' }, [ icon('info'), blocker ]) : null ]),
 			el('div', { 'class': 'az-switch-control' }, [ el('span', {}, loading ? _('等待状态确认') : _('保护开关')), toggle ]) ]));
 		if (f.enabled || f.paused) nodes.push(el('div', { 'class': 'az-pause-bar' }, f.paused ? [
-			el('span', {}, _('暂时关闭过滤，保留个人放行名单。')),
+			el('span', {}, _('暂时关闭保护，保留个人放行与分流选择。')),
 			el('div', { 'class': 'az-action-row' }, [ el('button', { id: 'az-resume', type: 'button', 'class': 'az-button az-button-primary', disabled: locked ? true : null, click: function() { return self.runPolicy('resume', []); } }, _('立即恢复')),
 				el('button', { type: 'button', 'class': 'az-button az-button-quiet', disabled: locked ? true : null, click: function() { return self.runAction('disable'); } }, _('保持关闭')) ])
 		] : [ el('span', {}, _('网页或 App 异常？先暂停对比，或在下方查询域名。')),
@@ -173,6 +174,12 @@ return view.extend({
 				el('strong', { 'class': 'az-stat-value', translate: 'no' }, loading ? '—' : f.enabled ? active : _('自动匹配')), el('p', {}, synced ? _('代理规则已同步') : f.enabled && adapter.plugin === 'none' ? _('使用路由器 DNS') : f.enabled ? _('接入状态待确认') : _('开启时自动识别当前代理')) ]),
 			el('section', { 'class': 'az-card az-stat' }, [ el('div', { 'class': 'az-stat-heading' }, [ el('span', {}, _('终端验证')), icon('info') ]),
 				el('strong', { 'class': 'az-stat-value az-verification' }, loading ? '—' : verified ? _('已验证') : _('待验证')), el('p', {}, verified ? _('已有实际查询验证记录') : _('需在手机或电脑上确认效果')) ]) ]));
+		nodes.push(el('section', {'class':'az-card az-domain-card'},[
+			el('div',{'class':'az-section-heading'},[el('h3',{},_('自动分流')),
+				el('button',{id:'az-routing',type:'button','class':'az-toggle'+(routingWanted?' is-on':''),role:'switch','aria-checked':routingWanted?'true':'false','aria-label':_('自动分流'),disabled:locked||!f.enabled?true:null,
+					click:function(){return self.runPolicy(routingWanted?'routing_off':'routing_on',[]);}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))) ]),
+			el('p',{'class':'az-card-copy'},routingWanted && f.enabled ? routing.mode==='proxy'?_('国内直连 / 国外代理 · 配置已应用') : routing.mode==='direct'?_('国内 DNS / 全部直连 · 配置已应用'):_('分流接入待确认') : f.paused?_('恢复保护后继续应用已保存的选择。'):!f.enabled?_('开启保护后，可一键启用自动分流。'):_('自动识别当前代理，同时配置 DNS 和连接去向。')),
+			el('p',{'class':'az-operation-note'},_('有代理时国内直连、国外走当前代理；无代理时使用国内 DNS 与本地直连。切换可能短暂重载网络，实际出口需在设备上验证。')) ]));
 		nodes.push(el('section', { 'class': 'az-card az-domain-card' }, [
 			el('div', { 'class': 'az-section-heading' }, [el('h3', {}, _('域名查询与放行')), pill(s.stale ? _('待核对') : allowed.length + _(' 项放行'))]),
 			el('p', { 'class': 'az-card-copy', id: 'az-domain-help' }, _('检查域名是否命中 AdZero 当前规则，误拦截时可放行。支持粘贴网址。')),
@@ -317,7 +324,7 @@ return view.extend({
 	},
 	runPolicy: function(action, args, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (['allow','revoke','pause','resume'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
+		if (['allow','revoke','pause','resume','routing_on','routing_off'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause','routing_on','routing_off'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
 		self.busy = action; self.notice = null; self.paint();
 		var failure;
 		return (receipt ? Promise.resolve(receipt) : policyCalls[action].apply(null,args)).then(function(result) {
@@ -327,12 +334,13 @@ return view.extend({
 			var allowed = (s.policy || {}).allowed || [], expected = action === 'pause' ? s.state === 'paused' : s.state === 'configured_unverified';
 			if (action === 'allow' && !receipt) expected = expected && allowed.indexOf(args[1]) >= 0;
 			if (action === 'revoke' && !receipt) expected = expected && allowed.indexOf(args[1]) < 0;
+			if (action === 'routing_on' || action === 'routing_off') expected = expected && (s.policy || {}).routing_enabled === (action === 'routing_on') && (action === 'routing_off' || ['proxy','direct'].indexOf(((s.adapter || {}).routing || {}).mode)>=0);
 			self.notice = failure || !expected ? {kind:'error',text:_('操作未确认完成，已重新读取当前状态。'),detail:failure || _('请检查当前状态后重试。')} :
-				{kind:'success',text: action === 'pause' ? _('保护已暂停，到期后自动尝试恢复。') : action === 'resume' ? _('保护已恢复。') : action === 'allow' ? _('放行名单已应用，并同步到当前接入。') : _('已撤销放行，并同步到当前接入。')};
+				{kind:'success',text: action === 'routing_on' ? _('分流配置已应用，请在设备上验证实际出口。') : action === 'routing_off' ? _('自动分流已关闭，广告过滤继续运行。') : action === 'pause' ? _('保护已暂停，到期后自动尝试恢复。') : action === 'resume' ? _('保护已恢复。') : action === 'allow' ? _('放行名单已应用，并同步到当前接入。') : _('已撤销放行，并同步到当前接入。')};
 		}).catch(function(err) {
 			self.currentStatus = {state:'error',error:String(err)};
 			self.notice = {kind:'error',text:_('操作结果暂时无法确认，请重新检测。'),detail:failure || String(err)};
-		}).then(function() { sessionValue('job',null); self.busy = null; self.paint(action === 'allow' || action === 'revoke' ? 'az-domain' : 'az-toggle'); });
+		}).then(function() { sessionValue('job',null); self.busy = null; self.paint(action === 'routing_on' || action === 'routing_off' ? 'az-routing' : action === 'allow' || action === 'revoke' ? 'az-domain' : 'az-toggle'); });
 	},
 	paint: function(focusId) {
 		var panel = this.panelNode || document.getElementById('adzero-panel');
@@ -378,7 +386,7 @@ return view.extend({
 		var self = this;
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.8.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.9.0' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {

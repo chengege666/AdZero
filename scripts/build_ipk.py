@@ -67,7 +67,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
             name = (Path(prefix) / relative).as_posix()
             if name in output:
                 raise ValueError(f"Duplicate package path: {name}")
-            mode = 0o755 if name in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "etc/init.d/adzero"} else 0o644
+            mode = 0o755 if name in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/routing-data", "etc/init.d/adzero"} else 0o644
             output[name] = (src.read_bytes(), mode)
 
     expected = {
@@ -78,6 +78,9 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/libexec/adzero/sources.uc",
         "usr/libexec/adzero/source-lib.uc",
         "usr/libexec/adzero/job",
+        "usr/libexec/adzero/routing-data",
+        "usr/libexec/adzero/routing-data.uc",
+        "usr/libexec/adzero/routing-lib.uc",
         "usr/share/rpcd/ucode/adzero",
         "etc/config/adzero",
         "usr/libexec/adzero/ctl",

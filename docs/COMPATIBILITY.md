@@ -50,3 +50,7 @@ Mihomo 的本机真实 DNS 检查覆盖普通/Fake-IP、UDP/TCP、A/AAAA；不�
 每个组合记录固件完整版本、SDK/包 SHA-256、target、包架构、后端/代理/内核版本和网络拓扑。必须验收启停、规则更新、订阅更新、重启、升级、卸载和失败恢复，以及 IPv4/IPv6、UDP/TCP、LAN DNS、代理内核 DNS、终端 DoH/DoT 和绕过路径。
 
 证据分层为：源码审阅 → 隔离运行/替身 → SDK → 设备安装 → LAN 终端。前一项不能替代后一项。参见 [DNS_ADAPTERS.md](DNS_ADAPTERS.md)、[LOCAL_VALIDATION.md](LOCAL_VALIDATION.md) 和 [DEVICE_ACCEPTANCE.md](DEVICE_ACCEPTANCE.md)。
+
+## v0.9.0 分流能力边界
+
+现有三项目标 SDK 安装矩阵不扩大。四代理均有生产适配器；Mihomo 真实核心隔离路径与 dae 解析验证分别记录，PassWall 当前只有原生参数/事务验证，真机及原生生成器输出待验收。无代理路径要求单个启用 dnsmasq 与支持的 adblock-fast dnsmasq 模式。不会从 CPU 架构推断 LAN、eBPF/TUN 或任意插件版本的支持。详见 SMART_DNS.md。
