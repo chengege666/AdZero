@@ -1,0 +1,18 @@
+{
+  "reported_on": "2026-10-21",
+  "evidence": "user-provided installation and ctl output; no independent router commands executed for this record",
+  "adzero_version": "0.5.3",
+  "firmware": "OpenWrt 25.12.5",
+  "target": "rockchip/armv8",
+  "declared_arch": "aarch64_generic",
+  "apk_arch": "aarch64",
+  "backend": "adblock-fast 1.2.4-r4",
+  "enabled": true,
+  "backend_state": "ready",
+  "domains": 66425,
+  "adapter": "nailink",
+  "configuration_sync": "confirmed by user-provided output",
+  "client_dns_verified": false,
+  "ebpf_filtering": "not_verified",
+  "v0.6.0_device_install": "not_run"
+}

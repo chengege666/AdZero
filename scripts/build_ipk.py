@@ -85,6 +85,8 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/share/luci/menu.d/luci-app-adzero.json",
         "usr/share/rpcd/acl.d/luci-app-adzero.json",
         "www/luci-static/resources/view/adzero/overview.js",
+        "www/luci-static/resources/view/adzero/overview.css",
+        "usr/share/licenses/luci-app-adzero/Phosphor-Icons-LICENSE",
     }
     if set(output) != expected:
         raise ValueError(f"Unexpected package payload: missing={expected - set(output)}, extra={set(output) - expected}")

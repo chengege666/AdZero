@@ -47,6 +47,17 @@ jobs:
           sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
           sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import sdk_pin;print(sdk_pin('$RELEASE','$TARGET')[1])")
           python3 scripts/build_sdk.py --sdk "$sdk" --firmware openwrt --release "$RELEASE" --target "$TARGET" --format "$FORMAT" --sdk-sha256 "$sha" --output dist/sdk
+      - name: Inspect delivered files and run LuCI UI regressions
+        env:
+          FORMAT: '${{ matrix.format }}'
+        run: |
+          sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
+          package=$(python3 -c "import json;print(json.load(open('dist/sdk/build-manifest.json'))['package'])")
+          if [ "$FORMAT" = apk ]; then
+            python3 scripts/check_sdk_packages.py "dist/sdk/$package" --apk-tool "$sdk/staging_dir/host/bin/apk"
+          else
+            python3 scripts/check_sdk_packages.py "dist/sdk/$package"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: 'adzero-openwrt-${{ matrix.release }}-${{ matrix.label }}'

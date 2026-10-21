@@ -1,154 +1,93 @@
 #!/usr/bin/env node
-/* LuCI view smoke tests with a fake DOM and rpcd. No router or network access. */
+/* Native LuCI attribute semantics, command/result and accessibility regressions. */
 'use strict';
-
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-
-const source = fs.readFileSync(
-	path.join(__dirname, '../luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.js'),
-	'utf8'
-);
-
-function element(tag, attrs, children) {
-	if (!Array.isArray(children) && children !== undefined)
-		children = [children];
-	return { tag, attrs: attrs || {}, children: children || [] };
+const source = fs.readFileSync(process.argv[2] || path.join(__dirname, '../luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.js'), 'utf8');
+let root, active, assertions = 0;
+function nodes(n, pred) {
+  if (n == null || typeof n !== 'object') return [];
+  if (Array.isArray(n)) return n.flatMap(x => nodes(x, pred));
+  return (pred(n) ? [n] : []).concat(nodes(n.children, pred));
 }
-
-function treeNodes(node, predicate, results = []) {
-	if (node == null) return results;
-	if (Array.isArray(node)) {
-		for (const child of node) treeNodes(child, predicate, results);
-		return results;
-	}
-	if (typeof node === 'object') {
-		if (predicate(node)) results.push(node);
-		treeNodes(node.children, predicate, results);
-	}
-	return results;
+function text(n) { return n == null ? '' : Array.isArray(n) ? n.map(text).join(' ') : typeof n === 'object' ? text(n.children) : String(n); }
+function E(tag, attrs = {}, children = []) {
+  const el = { tag, attrs: {}, events: {}, children, focus() { active = this; }, contains(x) { return nodes(this, n => n === x).length > 0; } };
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null) continue;
+    if (typeof v === 'function') el.events[k] = v;
+    else el.attrs[k] = String(v); // LuCI setAttribute: even false is PRESENT.
+  }
+  el.disabled = Object.hasOwn(el.attrs, 'disabled'); el.open = Object.hasOwn(el.attrs, 'open'); return el;
 }
-
-function toText(node) {
-	if (node == null) return '';
-	if (Array.isArray(node)) return node.map(toText).join(' ');
-	if (typeof node !== 'object') return String(node);
-	return toText(node.children);
-}
-
-const notifications = [];
+const body = E('body'); active = body;
+const doc = { body, get activeElement() { return active; }, getElementById(id) { return nodes(root, n => n.attrs.id === id)[0] || null; } };
 const commands = [];
-const panel = { content: null, querySelectorAll: () => [] };
-const document = {
-	getElementById: () => panel
-};
-const dom = { content: (target, content) => { target.content = content; } };
-const view = { extend: x => x };
-const ui = { addNotification: (_title, message, kind) => notifications.push({kind, message}) };
-const state = {
-	current: {
-		state: 'disabled', managed: false, resolver: 'dnsmasq.servers',
-		dns_mode_safe: true, dns_review_needed: false, force_dns: 'default_on',
-		tls_download: 'default_insecure',
-		dnsmasq_port_hint: 'default', client_dns_verified: false,
-		nailink_detected: false, adguardhome_running: false
-	},
-	failAction: false
-};
-const fakeFs = {
-	exec: (program, args) => {
-		assert.equal(program, '/usr/libexec/adzero/ctl');
-		commands.push(args.join(' '));
-		if (args[0] === 'status')
-			return Promise.resolve({code: 0, stdout: JSON.stringify(state.current)});
-		if (state.failAction)
-			return Promise.resolve({code: 1, stderr: 'simulated failure'});
-		if (args[0] === 'enable') state.current.state = 'configured_unverified';
-		if (args[0] === 'disable') state.current.state = 'disabled';
-		return Promise.resolve({code: 0, stdout: 'ok'});
-	}
-};
-const script = Function('view', 'fs', 'ui', 'dom', '_', 'E', 'document', source);
-const app = script(view, fakeFs, ui, dom, text => text, element, document);
-
-function buttons() {
-	return treeNodes(app.renderPanel(state.current), n => n.tag === 'button');
+let state, failAction, failStatus, pending, resolveAction, staleResult;
+const api = { exec: async (program, args) => {
+  assert.equal(program, '/usr/libexec/adzero/ctl'); commands.push(args[0]);
+  if (args[0] === 'status') { if (failStatus) throw new Error('status unreachable'); return { code: 0, stdout: JSON.stringify(state) }; }
+  if (pending) await new Promise(r => { resolveAction = r; });
+  if (failAction) return { code: 1, stderr: '<script>untrusted error</script>' };
+  if (!staleResult) state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified';
+  return { code: 0, stdout: 'ok' };
+} };
+const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', source)(
+  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x });
+function reset(overrides = {}) {
+  state = { state: 'disabled', managed: false, dns_mode_safe: true, resolver: 'dnsmasq.servers', client_dns_verified: false,
+    force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
+    compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
+      dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
+  failAction = failStatus = pending = staleResult = false; commands.length = 0;
+  app.busy = app.notice = null; app.pluginsOpen = app.diagnosticsOpen = false; root = app.render(state); active = body;
 }
-
+const find = id => doc.getElementById(id);
+function check(value, label) { assert.ok(value, label); assertions++; }
 (async () => {
-	assert.equal(buttons().length, 3);
-	assert.equal(buttons()[0].attrs.disabled, false);
-	assert.match(toText(buttons()[0]), /开启广告拦截/);
-	await buttons()[0].attrs.click();
-	assert.equal(commands.slice(-2).join(','), 'enable,status');
-	assert.equal(state.current.state, 'configured_unverified');
-	assert.ok(notifications.some(x => x.kind === 'info'));
-	assert.match(toText(app.renderPanel(state.current)), /终端真实 DNS 请求路径：未验证/);
-	assert.match(toText(app.renderPanel(state.current)), /过滤规则下载的 HTTPS 证书验证/);
-
-	await buttons()[1].attrs.click();
-	assert.ok(commands.includes('refresh'));
-	await buttons()[0].attrs.click();
-	assert.equal(state.current.state, 'disabled');
-
-	state.current.resolver = 'dnsmasq.nftset';
-	state.current.dns_mode_safe = false;
-	assert.equal(buttons()[0].attrs.disabled, true);
-	state.current.resolver = 'dnsmasq.servers';
-	state.current.dns_mode_safe = true;
-
-	state.current.adguardhome_running = true;
-	assert.equal(buttons()[0].attrs.disabled, true);
-	state.current.adguardhome_running = false;
-
-	state.current.state = 'external_owner';
-	assert.equal(buttons()[0].attrs.disabled, true);
-	state.current.state = 'inconsistent';
-	state.current.managed = true;
-	assert.match(toText(buttons()[0]), /关闭拦截/);
-	assert.equal(buttons()[0].attrs.disabled, false);
-	state.current.state = 'disabled';
-	state.current.managed = false;
-
-	state.current.nailink_detected = true;
-	state.current.nailink_running = true;
-	state.current.nailink_enabled = true;
-	state.current.dns_review_needed = true;
-	assert.match(toText(app.renderPanel(state.current)), /进程正在运行/);
-	assert.match(toText(app.renderPanel(state.current)), /可能由代理内核处理 DNS/);
-	state.current.compatibility = {
-		platform: { distribution: 'ImmortalWrt', version: '25.12.5', cpu: 'aarch64', package_arch: 'aarch64_cortex-a53', package_manager: 'apk', resource_hint: 'normal' },
-		plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map(id => ({ id, installed: true, enabled: true, runtime: 'unknown' })),
-		dns: { active_proxy_count: 5 }
-	};
-	const inventoryText = toText(app.renderPanel(state.current));
-	for (const name of ['NaiLink', 'PassWall', 'PassWall 2', 'OpenClash', 'Nikki', 'ImmortalWrt', '25.12.5', 'aarch64_cortex-a53', 'apk'])
-		assert.ok(inventoryText.includes(name), name);
-	assert.match(inventoryText, /多个代理插件/);
-	assert.match(inventoryText, /DNS 接入未验证/);
-	state.current.compatibility.platform.package_manager = 'ambiguous';
-	state.current.compatibility.platform.resource_hint = 'low_memory';
-	assert.match(toText(app.renderPanel(state.current)), /同时发现 OPKG 和 APK/);
-	assert.match(toText(app.renderPanel(state.current)), /内存较少/);
-	delete state.current.compatibility;
-
-	state.failAction = true;
-	await buttons()[0].attrs.click();
-	assert.equal(state.current.state, 'disabled');
-	assert.ok(notifications.some(x => x.kind === 'error' &&
-		toText(x.message).includes('simulated failure')));
-	state.failAction = false;
-
-	const statusBefore = commands.filter(x => x === 'status').length;
-	await buttons()[2].attrs.click();
-	assert.equal(commands.filter(x => x === 'status').length, statusBefore + 1);
-	assert.ok(panel.content);
-	assert.equal(typeof app.load, 'function');
-	assert.equal(typeof app.render, 'function');
-
-	console.log('AdZero LuCI mock: status, enable, disable, refresh, diagnosis, unsafe-mode guard, NaiLink hints, error path — OK');
-})().catch(err => {
-	console.error(err);
-	process.exitCode = 1;
-});
+  reset();
+  check(!find('az-toggle').disabled, 'enable omits disabled attribute');
+  check(find('az-update').disabled, 'cannot update while off');
+  check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v='), 'local versioned CSS');
+  await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'status']);
+  check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
+  check(!find('az-update').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
+  check(text(root).includes('66,425'), 'real domain count');
+  check(text(root).includes('终端待验证') && !text(root).includes('今日拦截'), 'no invented effectiveness/stats');
+  check(active === find('az-toggle'), 'focus restored to initiating control');
+  for (const label of ['NaiLink / daed', 'PassWall', 'PassWall 2', 'OpenClash', 'Nikki']) check(text(root).includes(label), label);
+  const diag = find('az-diagnostics'); diag.open = true; diag.events.toggle({ currentTarget: diag });
+  const plugins = find('az-plugins'); plugins.open = true; plugins.events.toggle({ currentTarget: plugins });
+  await app.refreshStatus(); check(find('az-diagnostics').open && find('az-plugins').open, 'disclosures persist');
+  await app.runAction('refresh'); check(app.notice.kind === 'success', 'update success inline');
+  await app.runAction('disable'); check(state.state === 'disabled', 'disable works');
+  for (const overrides of [{ dns_mode_safe: false }, { adguardhome_running: true }, { state: 'external_owner' }, { state: 'unavailable' }, { state: 'error' }]) {
+    reset(overrides); check(find('az-toggle').disabled, 'blocked switch'); await app.runAction('enable'); check(commands.length === 0, 'blocked action');
+  }
+  reset(); state.compatibility.dns.active_proxy_count = 2; root = app.render(state);
+  check(find('az-toggle').disabled && text(root).includes('多个代理'), 'multi proxy guard');
+  reset({ state: 'inconsistent', managed: true });
+  check(!find('az-toggle').disabled && text(find('az-toggle')).includes('关闭并恢复'), 'recovery available');
+  await app.runAction('disable'); check(state.state === 'disabled', 'recover via disable');
+  reset(); pending = true; const first = app.runAction('enable');
+  check(find('az-toggle').disabled && find('az-status').disabled && find('az-update').disabled, 'controls lock during operation');
+  check(find('az-toggle').attrs['aria-checked'] === 'false', 'no optimistic switch');
+  await app.runAction('enable'); await app.refreshStatus(); await app.runAction('reboot');
+  check(commands.length === 1, 'duplicates and arbitrary commands ignored');
+  resolveAction(); await first; check(app.busy === null && !find('az-toggle').disabled, 'unlocks');
+  reset(); failAction = true; await app.runAction('enable');
+  check(commands.join(',') === 'enable,status' && state.state === 'disabled', 'failure reads truth');
+  check(app.notice.kind === 'error' && text(root).includes('<script>untrusted error</script>'), 'error as text');
+  check(!nodes(root, n => n.tag === 'script').length, 'no HTML injection');
+  reset(); staleResult = true; await app.runAction('enable'); check(app.notice.kind === 'error', 'wrong status is not success');
+  reset(); failStatus = true; await app.runAction('enable');
+  check(app.currentStatus.state === 'error' && app.notice.kind === 'error', 'unknown result');
+  check(active === find('az-status') && !find('az-status').disabled, 'retry focused');
+  failStatus = false; await app.refreshStatus(); check(app.currentStatus.state === 'configured_unverified', 'retry recovers');
+  reset(); active = E('input'); await app.runAction('enable'); check(active.tag === 'input', 'no focus steal outside panel');
+  reset({ backend: { state: 'failed', domains: 99999 }, state: 'configured_unverified' }); check(!text(root).includes('99,999'), 'unhealthy count hidden');
+  reset(); failStatus = true; check((await app.load()).state === 'error', 'load failure handled');
+  console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
+})().catch(err => { console.error(err); process.exitCode = 1; });

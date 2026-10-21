@@ -2,27 +2,37 @@
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
-**v0.5.3 是公开测试版。** 安装矩阵覆盖 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）和 25.12.5 rockchip/armv8（APK）**。各目标使用对应官方 SDK。四种代理适配已经实现；真实路由器、eBPF 和 LAN 终端验收仍待完成，不能把配置成功当作所有设备都已拦截。
+**v0.6.0 是公开测试版。** 本版重做原生 LuCI 界面和操作反馈，保留既有过滤后端与四种代理适配。安装矩阵覆盖 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）和 25.12.5 rockchip/armv8（APK）**，各目标使用对应官方 SDK。用户已反馈 v0.5.3 在 Rockchip 真机启用成功并完成 NaiLink 配置同步；实际 LAN 过滤效果及其他设备组合仍待验收。
+
+首屏提供过滤开关、有效域名数量、当前代理和配置进度；代理明细及连接诊断按需展开。支持手机、深色外观、键盘操作、等待反馈和失败重试。未采集的拦截次数不会显示为统计。设计与预览说明见 [UI_DESIGN.md](docs/UI_DESIGN.md)。
+
+![AdZero v0.6 本地界面预览，使用隔离的状态快照](docs/images/adzero-v0.6-desktop.jpg)
 
 ## 一键安装
 
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.5.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.6.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.5.3)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.6.0)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
 ~~~
 
-加 --no-enable 可只安装，之后在「服务 → AdZero」开启。更新已有适配版本前，先在原版关闭保护，保留恢复记录。
+加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本升级前，先执行以下命令关闭并恢复；成功后再运行安装命令。不要删除恢复记录。**
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.5.3 地址。
+~~~sh
+/usr/libexec/adzero/ctl disable
+~~~
 
-v0.5.3 修正「规则已加载成功却被判失败回滚」：开启、关闭、更新均核对实际 procd 状态、规则文件和 DNS 服务；只有返回 0/1 且状态检查通过才继续。下载提示只在后端明确报告下载错误时显示。v0.5.1 的旧默认源问题已在 v0.5.2 修正；这些版本启用失败且回滚完成的设备可运行上面的命令升级。缺少 gawk、GNU grep/sed、coreutils-sort 是推荐提示，本版未因此新增依赖。
+升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
+
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.6.0 地址。
+
+v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修正旧默认规则源。v0.6.0 沿用这些修复，并解决 LuCI 将 disabled=false 写为实际禁用属性的问题。缺少 gawk、GNU grep/sed、coreutils-sort 仍为后端推荐提示，本版未因此新增依赖。
 
 安装依赖使用固件自己的软件源，不升级整套固件。依赖下载需要联网；离线发行包没有捆绑所有依赖。当前 APK 为开发者未签名包，安装器只对通过 SHA-256 检查的本地 APK 使用 --allow-untrusted。SHA-256 防止文件损坏，下载可信度依赖 GitHub HTTPS。
 
@@ -30,7 +40,7 @@ v0.5.3 修正「规则已加载成功却被判失败回滚」：开启、关闭�
 
 | 代理 | 原生接入点 | 当前验证 |
 | --- | --- | --- |
-| NaiLink / daed | 通过 LuCI CGI/GraphQL 给当前 DNS 的 request 路由增加自有 reject 规则；在 /etc/daed 保存 GeoSite DAT | 真实 dae 解析、DAT 加载通过；daed API/eBPF/真机待测 |
+| NaiLink / daed | 通过 LuCI CGI/GraphQL 给当前 DNS 的 request 路由增加自有 reject 规则；在 /etc/daed 保存 GeoSite DAT | dae 解析/DAT 通过；用户反馈 v0.5.3 Rockchip 真机启用及 API 配置同步成功，LAN/eBPF 过滤效果待测 |
 | PassWall | /etc/passwall/rules/block_host 的自有标记区块，以及 use_block_list | 实际 ucode/UCI 的应用、恢复和失败回滚检查；真机待测 |
 | OpenClash | 官方 custom_overwrite 钩子；仅修改生成的运行配置，调用 Meta 内核检查 | 实际 Ruby YAML/锚点处理通过，Mihomo DNS 实测通过；真机待测 |
 | Nikki | 原生 mixin.yaml、mixin 开关及必要的 Fake-IP 列表合并 | 实际 yq/UCI 混入与恢复通过，Mihomo DNS 实测通过；真机待测 |

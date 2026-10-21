@@ -1,4 +1,4 @@
-# v0.5.3 构建、安装与发行
+# v0.6.0 构建、安装与发行
 
 公开安装只使用真实 SDK 输出，不使用 build_ipk.py 的离线预览。
 
@@ -31,7 +31,7 @@ python3 scripts/fetch_sdk.py --release 24.10.8 --directory "$HOME/adzero-sdks" -
 python3 scripts/build_sdk.py --sdk /absolute/path/to/sdk \
   --firmware openwrt --release 24.10.8 --target x86/64 \
   --format ipk --sdk-sha256 ac4a0405d2eea821b06f93c14ba13ffa90ad0457648903df7dde02570027ab21 \
-  --output dist/v0.5.3/openwrt-24.10.8
+  --output dist/v0.6.0/openwrt-24.10.8
 ~~~
 
 25.12.5 使用对应 SDK、--format apk 和 SHA-256：
@@ -55,11 +55,11 @@ Rockchip 使用 --target rockchip/armv8 下载独立 SDK，SHA-256 为：
 ## 检查真实包
 
 ~~~sh
-python3 scripts/check_sdk_packages.py dist/v0.5.3/openwrt-24.10.8-x86/luci-app-adzero_0.5.3-r1_all.ipk
-python3 scripts/check_sdk_packages.py dist/v0.5.3/openwrt-25.12.5-x86/luci-app-adzero-0.5.3-r1.apk --apk-tool /absolute/sdk/staging_dir/host/bin/apk
+python3 scripts/check_sdk_packages.py dist/v0.6.0/openwrt-24.10.8-x86/luci-app-adzero_0.6.0-r1_all.ipk
+python3 scripts/check_sdk_packages.py dist/v0.6.0/openwrt-25.12.5-x86/luci-app-adzero-0.6.0-r1.apk --apk-tool /absolute/sdk/staging_dir/host/bin/apk
 ~~~
 
-检查 14 个源文件的存在、运行代码内容和权限（含 backend/backend.uc），并解析 SDK 实际压缩后的 LuCI JS。仅解包，不执行安装钩子。官方 IPK 使用 gzip tar 外层；APK 使用真正的 apk-tools 读取，不能改扩展名转换。
+检查 16 个源文件（含界面 CSS 和图标许可）的存在、运行代码内容和权限（含 backend/backend.uc），并对 SDK 实际压缩后的 LuCI JS 执行语法及 44 项交互断言。CSS 保留原文，避免旧 SDK 压缩工具破坏自定义属性。仅解包，不执行安装钩子。官方 IPK 使用 gzip tar 外层；APK 使用真正的 apk-tools 读取，不能改扩展名转换。
 
 脚本 ctl、probe、adapter、backend、watch 和 init.d/adzero 为 0755；ucode 源码、规则库、配置和前端资源为 0644。SDK 另外生成自身的包管理元数据与生命周期脚本。
 
@@ -67,12 +67,12 @@ python3 scripts/check_sdk_packages.py dist/v0.5.3/openwrt-25.12.5-x86/luci-app-a
 
 ~~~sh
 python3 scripts/build_release.py \
-  --manifest dist/v0.5.3/openwrt-24.10.8-x86/build-manifest.json \
-  --manifest dist/v0.5.3/openwrt-25.12.5-x86/build-manifest.json \
-  --manifest dist/v0.5.3/openwrt-25.12.5-rockchip/build-manifest.json
+  --manifest dist/v0.6.0/openwrt-24.10.8-x86/build-manifest.json \
+  --manifest dist/v0.6.0/openwrt-25.12.5-x86/build-manifest.json \
+  --manifest dist/v0.6.0/openwrt-25.12.5-rockchip/build-manifest.json
 ~~~
 
-发行目录包含 install.sh、三个实际 SDK 包、releases.tsv 和 build-provenance.json。它拒绝不属于当前源码哈希的构建。GitHub Release v0.5.3 标记为 prerelease；一键命令固定到同一个版本，避免安装脚本与包混用。
+发行目录包含 install.sh、三个实际 SDK 包、releases.tsv 和 build-provenance.json。它拒绝不属于当前源码哈希的构建。GitHub Release v0.6.0 标记为 prerelease；一键命令固定到同一个版本，避免安装脚本与包混用。
 
 安装器先检查平台和 SHA-256，保存 /etc/config 备份，再使用固件的软件源补齐依赖。APK 自有包尚未签名，仅该本地文件通过 --allow-untrusted 安装；没有关闭 HTTPS 验证，也不使用强制覆盖或强制架构。安装失败时不自动删除已有包或整个配置目录。
 

@@ -42,10 +42,12 @@ def inspect(package, apk_tool=None):
                 js = Path(directory) / 'view-check.js'
                 js.write_bytes(actual)
                 subprocess.run(['node', '--check', str(js)], check=True)
+                subprocess.run(['node', str(Path(__file__).resolve().parents[1] / 'tests/test_view.cjs'), str(js)], check=True)
             elif actual != content:
                 raise ValueError(f"Stale or transformed SDK runtime source: {name}")
         return {"package": package.name, "payload_files_checked": len(expected),
                 "runtime_source_and_modes": "passed", "luci_delivered_js_syntax": "passed",
+                "luci_delivered_ui_regressions": "passed",
                 "scope": "extraction only, no package installation or lifecycle execution"}
 
 

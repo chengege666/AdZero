@@ -1,0 +1,25 @@
+{
+  "checked_on": "2026-10-21",
+  "source_sha256": "f9933fa1f5139b8c79e2b240f0db4b18626578da572ee69518d70dd3edaba46d",
+  "browser": "Chrome on Windows",
+  "view": "production overview.js and CSS with isolated ctl fixture",
+  "host_theme": "user-installed Argon 2.4.3 static CSS copy, not redistributed",
+  "checks": {
+    "desktop_layout": "passed",
+    "css_width_390_light_dark_no_horizontal_overflow": "passed",
+    "css_width_320_counter_no_horizontal_overflow": "passed",
+    "sidebar_reduces_container_to_583px_cards_stack": "passed",
+    "native_boolean_attributes_actions_enabled": "passed",
+    "busy_controls_locked_and_switch_keeps_previous_state": "passed",
+    "keyboard_space_enables_after_result": "passed",
+    "success_notice_and_focus_restored": "passed",
+    "failure_notice_keeps_observed_state": "passed",
+    "diagnostics_stays_open_after_refresh": "passed",
+    "multiple_proxy_conflict_switch_disabled": "passed",
+    "owned_inconsistent_state_recovery_button_available": "passed"
+  },
+  "scope": "local browser fixture only; no router services or settings changed",
+  "screen_reader": "not_run",
+  "all_luci_themes": "not_run",
+  "v0.6.0_device_install": "not_run"
+}
