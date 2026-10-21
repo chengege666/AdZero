@@ -191,9 +191,37 @@ print_status() {
 		"$(json_bool "$agh")" "$(json_bool "$safe_mode")" "$(json_bool "$dns_review")" \
 		"$port_hint" "$force_status" "$tls_status" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status"
 }
+release_lock() {
+	# Never remove a lock whose owner record was replaced by another operation.
+	lock_record=
+	[ -f "$LOCK_DIR/owner" ] && read -r lock_record < "$LOCK_DIR/owner"
+	[ "$lock_record" = "$lock_identity" ] || return 0
+	rm -f "$LOCK_DIR/owner" && rmdir "$LOCK_DIR" 2>/dev/null || :
+}
 acquire_lock() {
-	mkdir "$LOCK_DIR" 2>/dev/null || error '另一项操作正在进行；若异常断电可检查临时锁。'
-	trap 'rmdir "$LOCK_DIR" 2>/dev/null || :' 0
+	lock_action=$1
+	lock_wait=${ADZERO_LOCK_WAIT_SECONDS:-30}
+	case "$lock_wait" in ''|*[!0-9]*) error '操作锁等待时间无效。' ;; esac
+	[ "$lock_wait" -le 60 ] 2>/dev/null || error '操作锁等待时间应为 0 至 60 秒。'
+	lock_elapsed=0
+	while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+		[ -d "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] || error '无法创建操作锁，请检查临时目录。'
+		# A scheduled sync is optional; don't compete with a user's operation.
+		[ "$lock_action" != reconcile ] || return 1
+		if [ "$lock_elapsed" -ge "$lock_wait" ]; then
+			error '等待操作锁超时；可能仍有操作或遗留锁。请检查进程后重试，勿直接删除锁。'
+		fi
+		[ "$lock_elapsed" != 0 ] || printf 'AdZero: 正在等待当前操作完成（最多 %s 秒）…\n' "$lock_wait" >&2
+		sleep 1
+		lock_elapsed=$((lock_elapsed + 1))
+	done
+	lock_identity="$$ $lock_action"
+	if ! printf '%s\n' "$lock_identity" > "$LOCK_DIR/owner"; then
+		# This directory was just created by us. No recursive removal.
+		rm -f "$LOCK_DIR/owner"; rmdir "$LOCK_DIR" 2>/dev/null || :
+		error '无法记录操作锁所有者。'
+	fi
+	trap 'release_lock' 0
 	trap 'exit 130' 1 2 3 15
 }
 # Store prior force_dns before changing anything. An unset value inherits the
@@ -387,9 +415,12 @@ refresh_blocklists() {
 
 case "$1" in
 	status) print_status ;;
-	enable) acquire_lock; enable_protection ;;
-	disable) acquire_lock; disable_protection ;;
-	refresh) acquire_lock; refresh_blocklists ;;
-	reconcile) acquire_lock; [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ] && backend_confirm ready && "$ADAPTER" apply ;;
+	enable) acquire_lock enable; enable_protection ;;
+	disable) acquire_lock disable; disable_protection ;;
+	refresh) acquire_lock refresh; refresh_blocklists ;;
+	reconcile)
+		if acquire_lock reconcile && [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ]; then
+			backend_confirm ready && "$ADAPTER" apply
+		fi ;;
 	*) error '用法: ctl {status|enable|disable|refresh}' ;;
 esac

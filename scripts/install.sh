@@ -2,9 +2,10 @@
 # AdZero release installer. Only exact SDK-verified matrix rows are installable.
 set -eu
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.6.0}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.6.1}
 LOCAL_DIR=
 ENABLE=1
+UPGRADE=0
 ROOT=${ADZERO_INSTALL_ROOT:-}
 fail() { printf 'AdZero: %s\n' "$*" >&2; exit 1; }
 while [ "$#" -gt 0 ]; do
@@ -12,7 +13,8 @@ while [ "$#" -gt 0 ]; do
 		--base-url) [ "$#" -ge 2 ] || fail '缺少 URL'; BASE_URL=$2; shift 2 ;;
 		--local-dir) [ "$#" -ge 2 ] || fail '缺少发行目录'; LOCAL_DIR=$2; shift 2 ;;
 		--no-enable) ENABLE=0; shift ;;
-		*) fail '用法: install.sh {--local-dir DIR | --base-url https://...} [--no-enable]' ;;
+		--upgrade) UPGRADE=1; shift ;;
+		*) fail '用法: install.sh {--local-dir DIR | --base-url https://...} [--upgrade] [--no-enable]' ;;
 	esac
 done
 [ "$(id -u)" = 0 ] || fail '请通过路由器 root SSH 执行。'
@@ -50,9 +52,9 @@ else
 	EXT=apk
 fi
 command -v sha256sum >/dev/null 2>&1 || fail '缺少 sha256sum。'
-[ ! -e "$ROOT/etc/adzero/adapter.json" ] || fail '请先在现有版本中关闭保护，再升级；保留原有恢复记录。'
+[ "$UPGRADE" = 1 ] || [ ! -e "$ROOT/etc/adzero/adapter.json" ] || fail '请使用 --upgrade 自动准备升级，或先在现有版本中关闭保护；保留原有恢复记录。'
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/adzero-install.XXXXXX") || fail '无法创建临时目录。'
-trap 'rm -f "$TMP/releases.tsv" "$TMP/package.$EXT"; rmdir "$TMP" 2>/dev/null || :' 0
+trap 'rm -f "$TMP/releases.tsv" "$TMP/package.$EXT" "$TMP/disable.log"; rmdir "$TMP" 2>/dev/null || :' 0
 trap 'exit 130' 1 2 3 15
 fetch() {
 	if [ -n "$LOCAL_DIR" ]; then
@@ -77,6 +79,31 @@ BACKUP="$ROOT/etc/adzero-backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP"
 chmod 700 "$ROOT/etc/adzero-backups" "$BACKUP"
 tar -czf "$BACKUP/config.tar.gz" -C "$ROOT/etc" config || fail '配置备份失败。'
+CTL="$ROOT/usr/libexec/adzero/ctl"
+if [ "$UPGRADE" = 1 ]; then
+	# Keep config and recovery state together before asking the OLD controller
+	# to restore its changes. Never replace a controller that still owns them.
+	if [ -d "$ROOT/etc/adzero" ]; then
+		tar -czf "$BACKUP/state.tar.gz" -C "$ROOT/etc" adzero || fail '恢复记录备份失败。'
+	fi
+	if [ -x "$CTL" ]; then
+		upgrade_waits=0
+		while ! "$CTL" disable > "$TMP/disable.log" 2>&1; do
+			# Only this exact old, pre-mutation error is safe to retry. Any
+			# restore/backend failure stops immediately with its record intact.
+			if [ "$(cat "$TMP/disable.log")" != 'AdZero: 另一项操作正在进行；若异常断电可检查临时锁。' ]; then
+				cat "$TMP/disable.log" >&2
+				fail '旧版未能完成关闭与恢复，已停止升级；恢复记录保留。'
+			fi
+			[ "$upgrade_waits" -lt 6 ] || fail '旧版操作锁持续占用，已停止升级；请提供锁目录和 AdZero 进程信息。没有删除锁或安装新包。'
+			[ "$upgrade_waits" != 0 ] || printf 'AdZero: 旧版正忙，最多等待 30 秒后重试关闭；不会删除操作锁。\n'
+			sleep 5
+			upgrade_waits=$((upgrade_waits + 1))
+		done
+		cat "$TMP/disable.log"
+	fi
+	[ ! -e "$ROOT/etc/adzero/adapter.json" ] && [ ! -e "$ROOT/etc/adzero/managed" ] || fail '旧版仍有未恢复的所有权记录，已停止升级。'
+fi
 printf 'AdZero: 安装 %s；配置备份：%s\n' "$FILE" "$BACKUP/config.tar.gz"
 if [ "$PM" = opkg ]; then
 	opkg update || fail '固件软件源更新失败。'
@@ -86,7 +113,6 @@ else
 	# Refresh repository metadata with normal verification before allowing our unsigned package.
 	apk add --allow-untrusted "$TMP/package.apk" || fail '安装失败，请检查当前固件软件源依赖。'
 fi
-CTL="$ROOT/usr/libexec/adzero/ctl"
 [ -x "$CTL" ] || fail '安装后缺少 AdZero 控制程序。'
 if [ "$ENABLE" = 1 ]; then
 	"$CTL" enable || fail '安装完成，但启用未成功；请检查 AdZero 诊断与恢复记录。'

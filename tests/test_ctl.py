@@ -5,6 +5,7 @@ import os
 import subprocess
 import shlex
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -124,6 +125,7 @@ class AdZeroTest(unittest.TestCase):
             "ADZERO_BACKEND_CHECK": str(self.backend_check),
             "ADZERO_STATE_DIR": str(self.state),
             "ADZERO_LOCK_DIR": str(self.lock),
+            "ADZERO_LOCK_WAIT_SECONDS": "0",
             "ADZERO_NAILINK_CONFIG": str(self.nailink),
             "ADZERO_DAED_CONFIG": str(self.daed_config),
             "ADZERO_DAED_VERSION": str(self.daed_version),
@@ -670,6 +672,107 @@ class AdZeroTest(unittest.TestCase):
         del self.env["MOCK_UCI_FAIL_SHOW"]
         self.run_ctl("disable")
         self.assertNotIn("adblock-fast.adzero_default", self.config())
+
+    def test_busy_lock_timeout_does_not_modify_or_remove_legacy_lock(self):
+        before = self.config()
+        self.lock.mkdir()
+        result = self.run_ctl("disable", success=False)
+        self.assertIn("等待操作锁超时", result.stderr)
+        self.assertEqual(self.config(), before)
+        self.assertTrue(self.lock.is_dir())
+        self.assertEqual(list(self.lock.iterdir()), [])
+        self.assertFalse(self.log.exists())
+
+    def test_background_reconcile_skips_contended_lock_without_error(self):
+        self.lock.mkdir()
+        owner = self.lock / "owner"
+        owner.write_text("999999999 refresh\n")
+        before = self.config()
+        result = self.run_ctl("reconcile")
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(self.config(), before)
+        self.assertEqual(owner.read_text(), "999999999 refresh\n")
+        self.assertFalse(self.log.exists())
+
+    def test_status_can_be_read_while_mutation_lock_exists(self):
+        self.lock.mkdir()
+        self.assertEqual(self.status()["state"], "disabled")
+        self.assertTrue(self.lock.is_dir())
+
+    def test_background_reconcile_after_disable_is_a_quiet_noop(self):
+        before = self.config()
+        result = self.run_ctl("reconcile")
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(self.config(), before)
+        self.assertFalse(self.lock.exists())
+        self.assertFalse(self.log.exists())
+
+    def test_missing_lock_parent_is_not_misreported_as_busy(self):
+        self.env["ADZERO_LOCK_DIR"] = str(self.lock / "missing_parent" / "lock")
+        result = self.run_ctl("enable", success=False)
+        self.assertIn("无法创建操作锁", result.stderr)
+        self.assertFalse(self.state.exists())
+
+    def test_invalid_lock_wait_is_rejected_without_changes(self):
+        for value in ("-1", "61", "infinite", "99999999999999999999999999999999"):
+            with self.subTest(value=value):
+                self.env["ADZERO_LOCK_WAIT_SECONDS"] = value
+                self.run_ctl("enable", success=False)
+                self.assertFalse(self.lock.exists())
+                self.assertFalse(self.state.exists())
+
+    def test_release_preserves_replaced_owner_record(self):
+        self.adapter.write_text('#!/bin/sh\nif [ "$1" = apply ]; then printf "999999999 refresh\\n" > "$ADZERO_LOCK_DIR/owner"; fi\nexit 0\n')
+        self.run_ctl("enable")
+        self.assertEqual((self.lock / "owner").read_text(), "999999999 refresh\n")
+
+    def test_failed_operation_releases_its_own_lock(self):
+        self.env["MOCK_UCI_FAIL_KEY"] = "adblock-fast.config.enabled"
+        self.run_ctl("enable", success=False)
+        self.assertFalse(self.lock.exists())
+
+    def test_foreground_waits_for_real_owner_then_disables_without_overlap(self):
+        held = Path(self.tmp.name) / "hold"
+        ready = Path(self.tmp.name) / "ready"
+        held.touch()
+        self.env.update(MOCK_LOCK_HOLD=str(held), MOCK_LOCK_READY=str(ready), ADZERO_LOCK_WAIT_SECONDS="5")
+        self.adapter.write_text('''#!/usr/bin/env python3
+import os, sys, time
+from pathlib import Path
+if sys.argv[1] == 'apply':
+    Path(os.environ['MOCK_LOCK_READY']).touch()
+    while Path(os.environ['MOCK_LOCK_HOLD']).exists(): time.sleep(0.02)
+if sys.argv[1] == 'status': print('{"plugin":"none","stage":"inactive","domains":0}')
+''')
+        command = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "/bin/sh")) + [str(CTL)]
+        first = subprocess.Popen(command + ["enable"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env)
+        second = None
+        try:
+            deadline = time.monotonic() + 10
+            while not ready.exists() and first.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(ready.exists(), "first controller never reached adapter apply")
+            self.assertEqual((self.lock / "owner").read_text(), f"{first.pid} enable\n")
+            second = subprocess.Popen(command + ["disable"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env)
+            time.sleep(0.15)
+            self.assertIsNone(second.poll(), "disable should wait, not fail or enter concurrently")
+            self.assertEqual(self.config()["adzero.main.enabled"], "1")
+            self.assertEqual((self.lock / "owner").read_text(), f"{first.pid} enable\n")
+            held.unlink()
+            first_out, first_err = first.communicate(timeout=15)
+            second_out, second_err = second.communicate(timeout=15)
+            self.assertEqual(first.returncode, 0, first_err + first_out)
+            self.assertEqual(second.returncode, 0, second_err + second_out)
+            self.assertIn("正在等待当前操作", second_err)
+            self.assertEqual(self.config()["adzero.main.enabled"], "0")
+            self.assertEqual(self.config()["adblock-fast.config.enabled"], "0")
+            self.assertFalse(self.lock.exists())
+        finally:
+            held.unlink(missing_ok=True)
+            for proc in (first, second):
+                if proc is not None and proc.poll() is None:
+                    proc.kill()
+                    proc.communicate(timeout=5)
 
 if __name__ == "__main__":
     unittest.main()

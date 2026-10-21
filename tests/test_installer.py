@@ -139,3 +139,74 @@ class InstallerTest(unittest.TestCase):
         (self.release / "releases.tsv").write_text(f"{self.sum}\tadzero-test.ipk\topenwrt\t25.12.5\tx86/64\tx86_64\tapk\n")
         self.run_installer(success=False)
         self.assertFalse(self.log.exists())
+
+    def upgrade_fixture(self, mode="success"):
+        journal = self.write("etc/adzero/adapter.json", "private-recovery-data")
+        self.env.update(MOCK_UPGRADE_MODE=mode, MOCK_UPGRADE_JOURNAL=str(journal), MOCK_UPGRADE_BUSY=str(self.base / "busy"))
+        self.executable(self.bin / "sleep", '#!/bin/sh\necho "wait $1" >> "$MOCK_INSTALL_LOG"\nrm -f "$MOCK_UPGRADE_BUSY"\n')
+        self.executable(self.root / "usr/libexec/adzero/ctl", '''#!/bin/sh
+echo "ctl $1" >> "$MOCK_INSTALL_LOG"
+if [ "$1" = disable ]; then
+    if [ "$MOCK_UPGRADE_MODE" = busy_forever ] || [ -e "$MOCK_UPGRADE_BUSY" ]; then
+        echo 'AdZero: 另一项操作正在进行；若异常断电可检查临时锁。' >&2
+        exit 1
+    fi
+    if [ "$MOCK_UPGRADE_MODE" = restore_failure ]; then echo '恢复失败，保留记录' >&2; exit 1; fi
+    if [ "$MOCK_UPGRADE_MODE" != false_success ]; then rm -f "$MOCK_UPGRADE_JOURNAL"; fi
+fi
+''')
+        return journal
+
+    def test_upgrade_verifies_package_and_backs_up_state_before_restore(self):
+        import tarfile
+        self.upgrade_fixture()
+        self.run_installer("--upgrade")
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "opkg update", "opkg install", "ctl enable"])
+        backups = list((self.root / "etc/adzero-backups").glob("*/state.tar.gz"))
+        self.assertEqual(len(backups), 1)
+        with tarfile.open(backups[0]) as archive:
+            self.assertEqual(archive.extractfile("adzero/adapter.json").read(), b"private-recovery-data")
+        self.assertEqual(backups[0].stat().st_mode & 0o077, 0)
+
+    def test_upgrade_bad_checksum_does_not_disable_current_protection(self):
+        journal = self.upgrade_fixture()
+        self.row(sha="0" * 64)
+        self.run_installer("--upgrade", success=False)
+        self.assertTrue(journal.exists())
+        self.assertFalse(self.log.exists())
+
+    def test_upgrade_retries_only_legacy_busy_then_installs(self):
+        self.upgrade_fixture()
+        Path(self.env["MOCK_UPGRADE_BUSY"]).touch()
+        result = self.run_installer("--upgrade")
+        self.assertIn("最多等待 30 秒", result.stdout)
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "wait 5", "ctl disable", "opkg update", "opkg install", "ctl enable"])
+
+    def test_upgrade_persistent_busy_preserves_lock_and_recovery(self):
+        journal = self.upgrade_fixture("busy_forever")
+        lock = self.root / "tmp/adzero.lock"
+        lock.mkdir(parents=True)
+        result = self.run_installer("--upgrade", success=False)
+        self.assertIn("没有删除锁或安装新包", result.stderr)
+        self.assertTrue(journal.exists())
+        self.assertTrue(lock.is_dir())
+        operations = self.log.read_text().splitlines()
+        self.assertEqual(operations.count("ctl disable"), 7)
+        self.assertFalse(any(x.startswith("opkg") for x in operations))
+
+    def test_upgrade_restore_failure_is_not_retried_or_installed(self):
+        journal = self.upgrade_fixture("restore_failure")
+        self.run_installer("--upgrade", success=False)
+        self.assertTrue(journal.exists())
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable"])
+
+    def test_upgrade_exit_zero_with_remaining_journal_is_rejected(self):
+        journal = self.upgrade_fixture("false_success")
+        self.run_installer("--upgrade", success=False)
+        self.assertTrue(journal.exists())
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable"])
+
+    def test_upgrade_no_enable_leaves_protection_off(self):
+        self.upgrade_fixture()
+        self.run_installer("--upgrade", "--no-enable")
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "opkg update", "opkg install"])

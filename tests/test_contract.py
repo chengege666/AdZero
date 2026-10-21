@@ -39,7 +39,7 @@ class PackageContractTest(unittest.TestCase):
         config = (PACKAGE / "root/etc/config/adzero").read_text()
         makefile = (PACKAGE / "Makefile").read_text()
         self.assertIn("option enabled '0'", config)
-        self.assertIn("PKG_VERSION:=0.6.0", makefile)
+        self.assertIn("PKG_VERSION:=0.6.1", makefile)
         self.assertIn("+adblock-fast", makefile)
         self.assertIn("+rpcd-mod-file", makefile)
         self.assertIn("+ca-bundle", makefile)

@@ -1,0 +1,14 @@
+{
+  "reported_on": "2026-10-21",
+  "evidence": "user-provided SSH output",
+  "initial_disable": "refused by legacy busy lock check before any installer download",
+  "lock_path": "/tmp/adzero.lock",
+  "lock_contents": "empty directory",
+  "matching_processes_before_stop": ["watch"],
+  "guarded_recovery_after_stop": "aborted because related process was still detected",
+  "lock_deleted_by_recovery_script": false,
+  "matching_processes_in_subsequent_snapshot": [],
+  "procd_adzero_in_subsequent_snapshot": {},
+  "cause_of_legacy_lock": "not_confirmed",
+  "v0.6.1_device_install": "not_run"
+}

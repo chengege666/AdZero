@@ -45,7 +45,7 @@ def bundle(manifests, output):
     (output / "releases.tsv").write_text("# sha256\tfile\tfirmware\trelease\ttarget\tarch\tformat\n" + "\n".join(rows) + "\n")
     (output / "build-provenance.json").write_text(json.dumps(reports, indent=2) + "\n")
     shutil.copyfile(ROOT / "scripts/install.sh", output / "install.sh")
-    (output / "INSTALL.txt").write_text(f"AdZero {release_version} development candidate\nSSH as root, extract this archive, then run:\nsh install.sh --local-dir \"$(pwd)\"\n\nOnly exact SDK-verified rows are accepted. Router/LAN acceptance is pending.\n")
+    (output / "INSTALL.txt").write_text(f"AdZero {release_version} development candidate\nSSH as root, extract this archive, then run:\nsh install.sh --local-dir \"$(pwd)\"\nFor an existing installation, add --upgrade. This verifies the package and backs up config/recovery state before asking the old controller to restore it. Persistent locks stop the upgrade; never delete an active lock.\n\nOnly exact SDK-verified rows are accepted. Router/LAN acceptance is pending.\n")
     archive = output.parent / f"adzero-{release_version}-install.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         for path in sorted(output.iterdir()):
