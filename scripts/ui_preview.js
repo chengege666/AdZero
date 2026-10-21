@@ -48,6 +48,10 @@ document.getElementById('scenario').addEventListener('change', ev => {
 });
 document.getElementById('appearance').addEventListener('change', ev => { document.documentElement.dataset.theme = ev.target.value; });
 document.getElementById('sidebar').addEventListener('change', ev => { document.body.classList.toggle('with-sidebar', ev.target.checked); });
+document.getElementById('host-frame').addEventListener('change', ev => {
+  const host = document.getElementById('preview-host');
+  host.classList.toggle('main-right', ev.target.checked); host.querySelector('header').hidden = !ev.target.checked;
+});
 fetch('/luci-static/resources/view/adzero/overview.js').then(r => r.text()).then(source => {
   app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', source)({ extend: x => x }, api,
     window.previewDom || { content: (el, content) => el.replaceChildren(content) }, x => x, window.E || fallbackE, document, { resource: x => '/luci-static/resources/' + x }); initialMount(700);

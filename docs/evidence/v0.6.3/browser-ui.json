@@ -1,0 +1,28 @@
+{
+  "scope": "Read-only live Argon DOM measurement; isolated Chrome production-view preview with actual SDK LuCI DOM, Argon styles and full host shell. No router mutations.",
+  "cause": "Argon host header::after extends 2rem (32 CSS px) into maincontent",
+  "before_overlap_px": 12,
+  "after_clearance_desktop_px": {
+    "brand": 20,
+    "recheck_button": 22
+  },
+  "after_clearance_mobile_px": {
+    "brand": 14,
+    "recheck_button": 14.75
+  },
+  "desktop_css_width": 2048,
+  "mobile_css_widths": [
+    320,
+    390
+  ],
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "mobile_horizontal_overflow": false,
+  "technical_inventory_panels_rendered": 0,
+  "ordinary_shell_extra_padding_px": 0,
+  "ui_regression_assertions": 54,
+  "screenshot": "docs/images/adzero-v0.6.3-desktop.jpg",
+  "device_installation_after_update": "not_run"
+}

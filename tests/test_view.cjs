@@ -45,7 +45,7 @@ function reset(overrides = {}) {
     compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
   failAction = failStatus = pending = staleResult = statusPending = false; commands.length = 0;
-  app.busy = app.notice = null; app.pluginsOpen = app.diagnosticsOpen = false; root = app.render(state); active = body;
+  app.busy = app.notice = null; root = app.render(state); active = body;
 }
 const find = id => doc.getElementById(id);
 function check(value, label) { assert.ok(value, label); assertions++; }
@@ -63,10 +63,9 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(root).includes('66,425'), 'real domain count');
   check(text(root).includes('终端待验证') && !text(root).includes('今日拦截'), 'no invented effectiveness/stats');
   check(active === find('az-toggle'), 'focus restored to initiating control');
-  for (const label of ['NaiLink / daed', 'PassWall', 'PassWall 2', 'OpenClash', 'Nikki']) check(text(root).includes(label), label);
-  const diag = find('az-diagnostics'); diag.open = true; diag.events.toggle({ currentTarget: diag });
-  const plugins = find('az-plugins'); plugins.open = true; plugins.events.toggle({ currentTarget: plugins });
-  await app.refreshStatus(); check(find('az-diagnostics').open && find('az-plugins').open, 'disclosures persist');
+  check(!find('az-plugins') && !find('az-diagnostics'), 'technical inventory panels are not rendered');
+  check(!text(root).includes('aarch64_generic') && !text(root).includes('PassWall 2'), 'unused platform and plugin inventory is absent');
+  await app.refreshStatus(); check(text(root).includes('NaiLink / daed'), 'current integration remains visible after refresh');
   await app.runAction('refresh'); check(app.notice.kind === 'success', 'update success inline');
   await app.runAction('disable'); check(state.state === 'disabled', 'disable works');
   for (const overrides of [{ dns_mode_safe: false }, { adguardhome_running: true }, { state: 'external_owner' }, { state: 'unavailable' }, { state: 'error' }]) {
@@ -106,6 +105,12 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(active === body, 'initial response does not steal focus');
   reset(); failStatus = true; root = app.render(await app.load()); await app.initialRequest;
   check(app.currentStatus.state === 'error' && !find('az-status').disabled, 'initial RPC failure keeps a working retry');
+  for (const [id, label] of [['passwall', 'PassWall'], ['openclash', 'OpenClash'], ['nikki', 'Nikki']]) {
+    reset({ state: 'configured_unverified', adapter: { plugin: id, stage: 'configured_unverified' } });
+    check(text(root).includes(label), 'active adapter name ' + id);
+  }
+  reset({ state: 'inconsistent', managed: true, backend: { state: 'failed', errors: 1 } });
+  check(text(root).includes('过滤后端报告错误') && !find('az-toggle').disabled, 'essential backend warning and recovery survive simplification');
   reset({ state: 'error', error: '<img src=x onerror=alert(1)>' });
   check(!nodes(root, n => n.scalarHtml).length, 'untrusted data cannot reach innerHTML');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
