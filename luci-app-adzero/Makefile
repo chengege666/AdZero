@@ -1,0 +1,28 @@
+include $(TOPDIR)/rules.mk
+
+PKG_VERSION:=0.5.0
+PKG_RELEASE:=1
+PKG_LICENSE:=MIT
+
+LUCI_TITLE:=AdZero - zero-configuration ad blocking
+LUCI_DESCRIPTION:=One-click adblock-fast control with cautious proxy/DNS compatibility diagnostics
+LUCI_DEPENDS:=+luci-base +adblock-fast +rpcd-mod-file +ca-bundle +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-ubus
+LUCI_PKGARCH:=all
+
+# Ensure uninstall cannot silently orphan an AdBlock-Fast instance we own.
+# During upgrades, retain the existing owner marker for the new package.
+define Package/luci-app-adzero/prerm
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+case "$$1" in upgrade|failed-upgrade) exit 0 ;; esac
+if [ -f /etc/adzero/managed ]; then
+	/usr/libexec/adzero/ctl disable || {
+		echo "AdZero: cannot safely restore the managed backend; aborting removal." >&2
+		exit 1
+	}
+fi
+exit 0
+endef
+include $(TOPDIR)/feeds/luci/luci.mk
+
+# call BuildPackage - OpenWrt

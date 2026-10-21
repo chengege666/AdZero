@@ -1,0 +1,7 @@
+#!/bin/sh
+# Reconcile rule updates and switching proxy plugins, including after reboot.
+# ctl serializes mutations. Unchanged content does not restart a proxy.
+while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
+	/usr/libexec/adzero/ctl reconcile >/dev/null || logger -t adzero 'DNS adapter synchronization failed; check AdZero diagnostics and recovery journal'
+	sleep 60
+done

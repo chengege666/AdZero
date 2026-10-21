@@ -1,0 +1,32 @@
+name: Offline checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        shell: [sh, openwrt-ash]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check with sh
+        if: matrix.shell == 'sh'
+        run: sh scripts/check.sh
+      - name: Check with official OpenWrt BusyBox ash
+        if: matrix.shell == 'openwrt-ash'
+        run: |
+          sudo apt-get update && sudo apt-get install -y ruby
+          curl -fL https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_amd64 -o /tmp/yq
+          echo '8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f  /tmp/yq' | sha256sum -c -
+          sudo install -m 755 /tmp/yq /usr/local/bin/yq
+          python3 scripts/check_openwrt_runtime.py
+          export ADZERO_UCODE="$PWD/.sdk/runtime-24.10.8/libc.so --library-path $PWD/.sdk/runtime-24.10.8 $PWD/.sdk/runtime-24.10.8/ucode -L $PWD/.sdk/runtime-24.10.8"
+          python3 scripts/check_dns_core.py
+          python3 scripts/check_dae.py

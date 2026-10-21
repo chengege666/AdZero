@@ -1,0 +1,25 @@
+{
+  "luci-app-adzero": {
+    "description": "AdZero status and limited service actions",
+    "read": {
+      "file": {
+        "/usr/libexec/adzero/ctl status": [ "exec" ]
+      },
+      "ubus": {
+        "file": [ "exec" ]
+      },
+      "uci": [ "adzero" ]
+    },
+    "write": {
+      "file": {
+        "/usr/libexec/adzero/ctl enable": [ "exec" ],
+        "/usr/libexec/adzero/ctl disable": [ "exec" ],
+        "/usr/libexec/adzero/ctl refresh": [ "exec" ]
+      },
+      "ubus": {
+        "file": [ "exec" ]
+      },
+      "uci": [ "adzero" ]
+    }
+  }
+}

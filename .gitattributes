@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.ipk binary
+*.apk binary
+*.gz binary

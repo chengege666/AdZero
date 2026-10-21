@@ -1,0 +1,13 @@
+{
+  "admin/services/adzero": {
+    "title": "AdZero 广告拦截",
+    "order": 65,
+    "action": {
+      "type": "view",
+      "path": "adzero/overview"
+    },
+    "depends": {
+      "acl": [ "luci-app-adzero" ]
+    }
+  }
+}

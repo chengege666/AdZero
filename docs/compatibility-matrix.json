@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "status": "candidates_not_device_certified",
+  "checked_on": "2026-10-21",
+  "sdk_verified": [
+    {"firmware":"openwrt", "release":"24.10.8", "target":"x86/64", "arch":"x86_64", "format":"ipk", "sdk_build":"passed", "device_acceptance":"not_run"},
+    {"firmware":"openwrt", "release":"25.12.5", "target":"x86/64", "arch":"x86_64", "format":"apk", "sdk_build":"passed", "device_acceptance":"not_run"}
+  ],
+  "adapters_implemented": ["nailink", "passwall", "openclash", "nikki"],
+  "firmware": [
+    {"id": "openwrt", "releases": ["24.10.x", "25.12.5", "25.12.6"], "package_formats": ["ipk", "apk"], "sdk_build": "pending", "device_acceptance": "pending"},
+    {"id": "immortalwrt", "releases": ["24.10.x", "25.12.x"], "package_formats": ["ipk", "apk"], "sdk_build": "pending", "device_acceptance": "pending"},
+    {"id": "istoreos", "releases": ["24.10 based builds"], "package_formats": ["detect_on_device"], "sdk_build": "requires_matching_vendor_sdk", "device_acceptance": "pending"}
+  ],
+  "architectures": ["x86_64", "i386", "aarch64", "armv7", "mips", "mipsel", "mips64", "riscv64"],
+  "sdk_targets": ["x86/64", "mediatek/filogic", "ipq40xx/generic", "ramips/mt7621"],
+  "plugins": ["nailink", "passwall", "passwall2", "openclash", "nikki", "none", "unknown_core", "multiple_plugins"],
+  "dns_cases": ["dnsmasq", "multiple_dnsmasq", "smartdns", "unbound", "adguardhome_conflict", "proxy_dns", "fake_ip", "tun", "ebpf", "ipv4", "ipv6", "doh", "dot", "external_dns"],
+  "evidence_levels": ["source_review", "offline_fixture", "sdk_build", "device_install", "client_filtering"],
+  "policy": "Identify the actual package manager, package architecture, dependencies and DNS path. Never infer filtering from a plugin name, firmware release or CPU bitness."
+}

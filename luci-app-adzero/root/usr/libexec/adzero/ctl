@@ -1,0 +1,360 @@
+#!/bin/sh
+# Manage adblock-fast plus owned native proxy DNS extension points.
+
+# Default-deny behavior: never silently intercept DNS or change proxy routing.
+umask 077
+set -f
+UCI_BIN=$ADZERO_UCI
+BACKEND_INIT=$ADZERO_BACKEND_INIT
+STATE_DIR=$ADZERO_STATE_DIR
+LOCK_DIR=$ADZERO_LOCK_DIR
+NAILINK_CONFIG=$ADZERO_NAILINK_CONFIG
+PIDOF_BIN=$ADZERO_PIDOF
+DAED_CONFIG=$ADZERO_DAED_CONFIG
+DAED_VERSION=$ADZERO_DAED_VERSION
+DAED_CHECK=$ADZERO_DAED_CHECK
+[ -n "$DAED_CONFIG" ] || DAED_CONFIG=/etc/config/daed
+[ -n "$DAED_VERSION" ] || DAED_VERSION=/usr/share/daed-router/version
+[ -n "$DAED_CHECK" ] || DAED_CHECK=/usr/libexec/daed/check
+
+[ -n "$UCI_BIN" ] || UCI_BIN=uci
+[ -n "$BACKEND_INIT" ] || BACKEND_INIT=/etc/init.d/adblock-fast
+[ -n "$STATE_DIR" ] || STATE_DIR=/etc/adzero
+[ -n "$LOCK_DIR" ] || LOCK_DIR=/tmp/adzero.lock
+[ -n "$NAILINK_CONFIG" ] || NAILINK_CONFIG=/etc/config/nailink
+[ -n "$PIDOF_BIN" ] || PIDOF_BIN=pidof
+MANAGED_MARKER=$STATE_DIR/managed
+FORCE_BACKUP=$STATE_DIR/force_dns.previous
+TLS_BACKUP=$STATE_DIR/download_allow_insecure.previous
+PROBE=${ADZERO_PROBE:-$(dirname "$0")/probe}
+RULES_LIBRARY=${ADZERO_RULES_LIBRARY:-$(dirname "$0")/rules.sh}
+ADAPTER=${ADZERO_ADAPTER:-$(dirname "$0")/adapter}
+[ -r "$RULES_LIBRARY" ] || { echo 'AdZero: missing rules library' >&2; exit 1; }
+. "$RULES_LIBRARY"
+
+error() {
+	printf 'AdZero: %s\n' "$*" >&2
+	exit 1
+}
+get_uci() {
+	"$UCI_BIN" -q get "$1" 2>/dev/null || :
+}
+write_uci() {
+	"$UCI_BIN" set "$1=$2" && "$UCI_BIN" commit "$3"
+}
+delete_uci() {
+	"$UCI_BIN" -q delete "$1" && "$UCI_BIN" commit "$2"
+}
+force_dns_state() {
+	setting=$(get_uci adblock-fast.config.force_dns)
+	case "$setting" in
+		0) printf 'off\n' ;;
+		1) printf 'on\n' ;;
+		'') printf 'default_on\n' ;;
+		*) printf 'unknown\n' ;;
+	esac
+}
+tls_download_state() {
+	setting=$(get_uci adblock-fast.config.download_allow_insecure)
+	case "$setting" in
+		0) printf 'strict\n' ;;
+		1) printf 'insecure\n' ;;
+		'') printf 'default_insecure\n' ;;
+		*) printf 'unknown\n' ;;
+	esac
+}
+# Firewall-influencing nftset/ipset resolver modes are intentionally excluded.
+resolver_is_safe() {
+	case "$(resolver_mode)" in
+		dnsmasq.servers|dnsmasq.addnhosts|smartdns.domainset|unbound.adb_list) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+dnsmasq_port_hint() {
+	port=$(get_uci 'dhcp.@dnsmasq[0].port')
+	case "$port" in
+		''|53) printf 'default\n' ;;
+		0) printf 'disabled\n' ;;
+		*) printf 'nonstandard\n' ;;
+	esac
+}
+backend_available() {
+	[ -x "$BACKEND_INIT" ] && command -v "$UCI_BIN" >/dev/null 2>&1
+}
+adguardhome_running() {
+	command -v "$PIDOF_BIN" >/dev/null 2>&1 && "$PIDOF_BIN" AdGuardHome >/dev/null 2>&1
+}
+nailink_installed() {
+	[ -e "$NAILINK_CONFIG" ] || [ -r "$DAED_VERSION" ] || \
+		{ [ -e "$DAED_CONFIG" ] && [ -x "$DAED_CHECK" ]; }
+}
+nailink_running() {
+	nailink_installed && command -v "$PIDOF_BIN" >/dev/null 2>&1 && \
+		"$PIDOF_BIN" daed >/dev/null 2>&1
+}
+resolver_mode() {
+	mode=$(get_uci adblock-fast.config.dns)
+	case "$mode" in
+		dnsmasq.servers|dnsmasq.conf|dnsmasq.addnhosts|dnsmasq.ipset|dnsmasq.nftset|smartdns.domainset|smartdns.ipset|smartdns.nftset|unbound.adb_list)
+			printf '%s\n' "$mode" ;;
+		*)
+			printf '%s\n' unknown ;;
+	esac
+}
+json_bool() {
+	if [ "$1" = 1 ]; then printf true; else printf false; fi
+}
+print_status() {
+	configured=$(get_uci adzero.main.enabled)
+	actual=$(get_uci adblock-fast.config.enabled)
+	owner=0; nailink=0; nailink_active=0; nailink_enabled=0; agh=0; safe_mode=0
+	[ -f "$MANAGED_MARKER" ] && owner=1
+	nailink_installed && nailink=1
+	nailink_running && nailink_active=1
+	[ "$nailink" = 1 ] && [ "$(get_uci daed.main.enabled)" = 1 ] && nailink_enabled=1
+	adguardhome_running && agh=1
+	resolver_is_safe && safe_mode=1
+	force_status=$(force_dns_state)
+	tls_status=$(tls_download_state)
+	port_hint=$(dnsmasq_port_hint)
+	rule_sources=$(rule_sources_state)
+
+	if ! backend_available; then
+		state=unavailable
+	elif [ "$actual" = 1 ] && [ "$owner" = 0 ]; then
+		state=external_owner
+	elif [ "$configured" = 1 ] && [ "$owner" = 1 ] && [ "$actual" = 1 ] && \
+		 [ "$force_status" = off ] && [ "$tls_status" = strict ] && \
+		 [ -f "$FORCE_BACKUP" ] && [ -f "$TLS_BACKUP" ]; then
+		state=configured_unverified
+	elif [ "$configured" = 0 ] && [ "$actual" = 0 ] && [ "$owner" = 0 ] && \
+		 [ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ]; then
+		state=disabled
+	else
+		state=inconsistent
+	fi
+	if [ "$state" = configured_unverified ] && [ "$rule_sources" != configured ]; then state=inconsistent; fi
+
+	dns_review=0
+	[ "$nailink" = 1 ] && dns_review=1
+	[ "$agh" = 1 ] && dns_review=1
+	[ "$safe_mode" = 0 ] && dns_review=1
+	case "$(resolver_mode)" in
+		dnsmasq.*) [ "$port_hint" = default ] || dns_review=1 ;;
+	esac
+
+	# Fields are strictly enumerated; no private upstream DNS addresses.
+	compatibility=$(sh "$PROBE" 2>/dev/null) || compatibility=null
+	[ -n "$compatibility" ] || compatibility=null
+	adapter_status=$("$ADAPTER" status 2>/dev/null) || adapter_status=null
+	[ -n "$adapter_status" ] || adapter_status=null
+	if [ "$state" = configured_unverified ]; then
+		case "$adapter_status" in null|*recovery_required*|*preparing*|*restarting*|*restoring*) state=inconsistent ;; esac
+	fi
+	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":false,"rule_sources":"%s","compatibility":%s,"adapter":%s}\n' \
+		"$state" "$(json_bool "$owner")" "$(json_bool "$configured")" \
+		"$(json_bool "$actual")" "$(resolver_mode)" "$(json_bool "$nailink")" \
+		"$(json_bool "$nailink_active")" "$(json_bool "$nailink_enabled")" \
+		"$(json_bool "$agh")" "$(json_bool "$safe_mode")" "$(json_bool "$dns_review")" \
+		"$port_hint" "$force_status" "$tls_status" "$rule_sources" "$compatibility" "$adapter_status"
+}
+acquire_lock() {
+	mkdir "$LOCK_DIR" 2>/dev/null || error '另一项操作正在进行；若异常断电可检查临时锁。'
+	trap 'rmdir "$LOCK_DIR" 2>/dev/null || :' 0
+	trap 'exit 130' 1 2 3 15
+}
+# Store prior force_dns before changing anything. An unset value inherits the
+# upstream default (currently 1); restore absence rather than hard-coding "1".
+save_force_dns() {
+	current=$(get_uci adblock-fast.config.force_dns)
+	case "$current" in
+		0|1) ;;
+		'') current=unset ;;
+		*) error '现有 force_dns 值未知，拒绝修改。' ;;
+	esac
+	printf '%s\n' "$current" > "$FORCE_BACKUP" || error '无法保存 DNS 劫持配置备份。'
+}
+save_tls_download() {
+	current=$(get_uci adblock-fast.config.download_allow_insecure)
+	case "$current" in
+		0|1) ;;
+		'') current=unset ;;
+		*) error '当前证书校验配置未知，拒绝修改。' ;;
+	esac
+	printf '%s\n' "$current" > "$TLS_BACKUP" || error '无法备份证书校验配置。'
+}
+restore_tls_download() {
+	[ -f "$TLS_BACKUP" ] || return 1
+	original=$(cat "$TLS_BACKUP") || return 1
+	case "$original" in
+		0|1) write_uci adblock-fast.config.download_allow_insecure "$original" adblock-fast ;;
+		unset) delete_uci adblock-fast.config.download_allow_insecure adblock-fast ;;
+		*) return 1 ;;
+	esac
+}
+restore_force_dns() {
+	[ -f "$FORCE_BACKUP" ] || return 1
+	original=$(cat "$FORCE_BACKUP") || return 1
+	case "$original" in
+		0|1) write_uci adblock-fast.config.force_dns "$original" adblock-fast ;;
+		unset) delete_uci adblock-fast.config.force_dns adblock-fast ;;
+		*) return 1 ;;
+	esac
+}
+rollback_enable() {
+	old_enabled=$1
+	"$ADAPTER" remove || return 1
+	write_uci adblock-fast.config.enabled "$old_enabled" adblock-fast || return 1
+	restore_default_rule || return 1
+	restore_force_dns || return 1
+	restore_tls_download || return 1
+	"$BACKEND_INIT" restart || return 1
+	# The AdZero UCI flag can also have been partially written on commit failure.
+	write_uci adzero.main.enabled 0 adzero || return 1
+	rm -f "$MANAGED_MARKER" "$FORCE_BACKUP" "$TLS_BACKUP" || return 1
+}
+verify_supported() {
+	backend_available || error '未安装或无法调用 AdBlock-Fast 后端。'
+	resolver_is_safe || error '当前 DNS 模式可能使用防火墙集合或不受支持，请改为安全的域名解析模式后重试。'
+}
+reject_insecure_custom_fetch_flags() {
+	# curl_additional_param may override upstream download_allow_insecure=0.
+	# Inspect locally, never print potentially credential-bearing parameters.
+	params=$(get_uci adblock-fast.config.curl_additional_param)
+	for token in $params; do
+		case "$token" in
+			*--insecure*|*--proxy-insecure*|--config*|-K*)
+				error '检测到不安全或间接加载配置的 curl 参数，拒绝启用或刷新规则。' ;;
+			--*) ;;
+			-*) case "$token" in *k*|*K*) error '检测到不安全 curl 短参数，拒绝启用或刷新规则。' ;; esac ;;
+		esac
+	done
+}
+verify_policy_values() {
+	[ "$(force_dns_state)" != unknown ] || error 'force_dns 配置值异常，拒绝接管。'
+	[ "$(tls_download_state)" != unknown ] || error 'HTTPS 证书校验配置值异常，拒绝接管。'
+	reject_insecure_custom_fetch_flags
+}
+enable_protection() {
+	verify_supported
+	"$ADAPTER" check >/dev/null || error '代理 DNS 适配前置检查失败，请查看诊断。'
+	previous=$(get_uci adblock-fast.config.enabled)
+	[ "$previous" = 1 ] || previous=0
+	if [ -f "$MANAGED_MARKER" ]; then
+		if [ "$(get_uci adzero.main.enabled)" = 1 ] && [ "$previous" = 1 ] && \
+		   [ "$(force_dns_state)" = off ] && [ "$(tls_download_state)" = strict ] && \
+		   [ -f "$FORCE_BACKUP" ] && [ -f "$TLS_BACKUP" ]; then
+			[ "$(rule_sources_state)" = configured ] || error '缺少有效规则源，请关闭后重新启用以初始化默认规则。'
+			"$ADAPTER" apply || error '代理 DNS 适配失败，请检查恢复记录。'
+			printf 'already enabled (client DNS still unverified)\n'
+			return 0
+		fi
+		error '上一次操作状态不一致，请先执行关闭并检查诊断结果。'
+	fi
+	[ "$previous" = 0 ] || error '后端已经由其他插件启用，AdZero 不会接管。'
+	[ "$(get_uci adzero.main.enabled)" = 0 ] || error 'AdZero 配置与所有权不一致，请先排查。'
+	[ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ] && [ ! -e "$RULE_MARKER" ] || error '存在上次的恢复备份，拒绝覆盖；请先检查异常状态。'
+	adguardhome_running && error 'AdGuard Home 正在运行，请先确认 DNS 链路。'
+	verify_policy_values
+	mkdir -p "$STATE_DIR" || error '无法创建状态目录。'
+	save_force_dns
+	save_tls_download
+	: > "$MANAGED_MARKER" || error '无法记录后端所有权。'
+	if ! write_uci adblock-fast.config.download_allow_insecure 0 adblock-fast; then
+		rollback_enable "$previous" && error '启用 HTTPS 证书校验失败，原配置已恢复。'
+		error '启用 HTTPS 证书校验失败，回滚未确认，请检查状态。'
+	fi
+	if ! write_uci adblock-fast.config.force_dns 0 adblock-fast; then
+		rollback_enable "$previous" && error '关闭上游 DNS 劫持选项失败，原配置已恢复。'
+		error '关闭上游 DNS 劫持选项失败，回滚未确认，请检查状态。'
+	fi
+	if ! write_uci adblock-fast.config.enabled 1 adblock-fast; then
+		rollback_enable "$previous" && error '后端配置失败，原配置已恢复。'
+		error '后端配置失败，回滚未确认，请检查状态。'
+	fi
+	if ! prepare_default_rule; then
+		rollback_enable "$previous" && error '默认规则初始化失败，原配置已恢复。'
+		error '默认规则初始化失败，回滚未确认，请检查状态。'
+	fi
+	if ! "$BACKEND_INIT" restart; then
+		rollback_enable "$previous" && error '后端启动失败，原配置已恢复。'
+		error '后端启动失败，回滚未确认，请检查状态。'
+	fi
+	if ! write_uci adzero.main.enabled 1 adzero; then
+		rollback_enable "$previous" && error '状态保存失败，原配置已恢复。'
+		error '状态保存失败，回滚未确认，请检查状态。'
+	fi
+	if ! "$ADAPTER" apply; then
+		rollback_enable "$previous" && error '代理 DNS 适配失败，原配置已恢复。'
+		error '代理 DNS 适配失败，恢复未完成；备份已保留。'
+	fi
+	[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero start
+	printf 'enabled (force_dns disabled, real client DNS path not verified)\n'
+}
+disable_protection() {
+	[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero stop
+	"$ADAPTER" remove || error '代理 DNS 恢复失败，恢复记录已保留。'
+	if [ ! -f "$MANAGED_MARKER" ]; then
+		if [ "$(get_uci adzero.main.enabled)" != 0 ]; then
+			write_uci adzero.main.enabled 0 adzero || error '状态保存失败。'
+		fi
+		printf 'external backend left untouched\n'
+		return 0
+	fi
+	backend_available || error '后端不可用，所有权标记已保留以便人工恢复。'
+	[ -f "$FORCE_BACKUP" ] || error '缺少 force_dns 备份，拒绝猜测原始配置。'
+	[ -f "$TLS_BACKUP" ] || error '缺少 HTTPS 证书校验备份，拒绝猜测原始配置。'
+	previous=$(get_uci adblock-fast.config.enabled)
+	[ "$previous" = 1 ] || previous=0
+	if [ "$previous" = 1 ]; then
+		if ! write_uci adblock-fast.config.enabled 0 adblock-fast; then
+			error '无法停用后端；所有权标记已保留。'
+		fi
+		if ! "$BACKEND_INIT" restart; then
+			write_uci adblock-fast.config.enabled 1 adblock-fast >/dev/null 2>&1 || :
+			"$BACKEND_INIT" restart >/dev/null 2>&1 || :
+			error '停止后端失败；已尝试回到原来的启用状态。'
+		fi
+	fi
+	if ! write_uci adzero.main.enabled 0 adzero; then
+		if [ "$previous" = 1 ]; then
+			write_uci adblock-fast.config.enabled 1 adblock-fast >/dev/null 2>&1 || :
+			"$BACKEND_INIT" restart >/dev/null 2>&1 || :
+		fi
+		error '状态保存失败，所有权标记已保留。'
+	fi
+	# Do not undo a manual change to force_dns made while AdZero was enabled.
+	if [ "$(force_dns_state)" = off ]; then
+		restore_force_dns || error '已停用后端，但恢复原始 force_dns 失败；请重试关闭。'
+	fi
+	if [ "$(tls_download_state)" = strict ]; then
+		restore_tls_download || error '已停用后端，但恢复原始证书校验设置失败；请重试关闭。'
+	fi
+	restore_default_rule || error '后端已停用，但恢复默认规则配置失败；请重试关闭。'
+	rm -f "$MANAGED_MARKER" "$FORCE_BACKUP" "$TLS_BACKUP" || error '已停用后端，但清理所有权状态失败。'
+	printf 'disabled (restored previous force_dns when unchanged)\n'
+}
+refresh_blocklists() {
+	verify_supported
+	[ -f "$MANAGED_MARKER" ] || error '后端非 AdZero 管理，拒绝更新规则。'
+	[ "$(get_uci adzero.main.enabled)" = 1 ] || error 'AdZero 未启用。'
+	[ "$(get_uci adblock-fast.config.enabled)" = 1 ] || error '后端未启用。'
+	[ -f "$FORCE_BACKUP" ] || error '原始 DNS 劫持配置备份丢失，拒绝更新。'
+	[ -f "$TLS_BACKUP" ] || error '原始证书校验配置备份丢失，拒绝更新。'
+	[ "$(force_dns_state)" = off ] || error '上游 DNS 劫持选项被外部更改，拒绝更新。'
+	[ "$(tls_download_state)" = strict ] || error 'HTTPS 证书校验被外部关闭，拒绝更新规则。'
+	[ "$(rule_sources_state)" = configured ] || error '没有有效规则源，拒绝空更新。'
+	reject_insecure_custom_fetch_flags
+	"$BACKEND_INIT" dl || error '规则更新失败；请检查网络和后端日志。'
+	"$ADAPTER" apply || error '代理规则同步失败，现有恢复记录已保留。'
+	printf 'blocklist refresh requested\n'
+}
+
+case "$1" in
+	status) print_status ;;
+	enable) acquire_lock; enable_protection ;;
+	disable) acquire_lock; disable_protection ;;
+	refresh) acquire_lock; refresh_blocklists ;;
+	reconcile) acquire_lock; [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ] && "$ADAPTER" apply ;;
+	*) error '用法: ctl {status|enable|disable|refresh}' ;;
+esac

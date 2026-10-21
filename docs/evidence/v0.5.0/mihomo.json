@@ -1,0 +1,112 @@
+{
+  "core": "v1.19.32",
+  "asset_sha256": "ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20",
+  "checks": [
+    {
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    }
+  ],
+  "source_sha256": "3a290df6e47fae75d8ce2aab0e893732a2925836b33c9463f7167ab64bf23501",
+  "scope": "real local core, deterministic loopback upstream; router/LAN not tested"
+}

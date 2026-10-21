@@ -1,0 +1,42 @@
+name: Official SDK builds
+on:
+  workflow_dispatch:
+  push:
+    paths: ['luci-app-adzero/**', 'scripts/build_sdk.py', 'scripts/fetch_sdk.py', '.github/workflows/sdk.yml']
+permissions:
+  contents: read
+jobs:
+  sdk:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - release: '24.10.8'
+            format: ipk
+          - release: '25.12.5'
+            format: apk
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDK host prerequisites
+        run: sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev zstd unzip gawk rsync file python3
+      - name: Fetch pinned SDK and its matching feeds
+        env:
+          RELEASE: '${{ matrix.release }}'
+        run: |
+          python3 scripts/fetch_sdk.py --release "$RELEASE" --directory "$HOME/sdks" --cache "$HOME/sdk-cache"
+          sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
+          cd "$sdk"
+          ./scripts/feeds update base packages luci
+          ./scripts/feeds install luci-base adblock-fast rpcd-mod-file ca-bundle ucode-mod-fs ucode-mod-uci ucode-mod-ubus
+      - name: Build real package
+        env:
+          RELEASE: '${{ matrix.release }}'
+          FORMAT: '${{ matrix.format }}'
+        run: |
+          sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
+          sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import PINS;print(PINS['$RELEASE'][1])")
+          python3 scripts/build_sdk.py --sdk "$sdk" --firmware openwrt --release "$RELEASE" --target x86/64 --format "$FORMAT" --sdk-sha256 "$sha" --output dist/sdk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 'adzero-openwrt-${{ matrix.release }}-x86_64'
+          path: dist/sdk/
