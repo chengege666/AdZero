@@ -12,6 +12,16 @@ PINS = {
     "24.10.8": ("openwrt-sdk-24.10.8-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst", "ac4a0405d2eea821b06f93c14ba13ffa90ad0457648903df7dde02570027ab21"),
     "25.12.5": ("openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst", "0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c"),
 }
+TARGET_PINS = {
+    ("25.12.5", "rockchip/armv8"): ("openwrt-sdk-25.12.5-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst", "59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba"),
+}
+
+
+def sdk_pin(release, target="x86/64"):
+    try:
+        return PINS[release] if target == "x86/64" else TARGET_PINS[(release, target)]
+    except KeyError as error:
+        raise ValueError(f"No pinned SDK for {release} {target}") from error
 
 
 def sha256(path):
@@ -19,9 +29,9 @@ def sha256(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def fetch(release, directory, cache, zstd):
-    filename, expected = PINS[release]
-    url = f"https://downloads.openwrt.org/releases/{release}/targets/x86/64/{filename}"
+def fetch(release, directory, cache, zstd, target_name="x86/64"):
+    filename, expected = sdk_pin(release, target_name)
+    url = f"https://downloads.openwrt.org/releases/{release}/targets/{target_name}/{filename}"
     cache.mkdir(parents=True, exist_ok=True)
     archive = cache / filename
     if not archive.exists():
@@ -47,7 +57,7 @@ def fetch(release, directory, cache, zstd):
             if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != target.name:
                 raise ValueError("SDK archive contains an unexpected path")
         subprocess.run(["tar", "--use-compress-program", zstd, "--no-same-owner", "-xf", str(archive), "-C", str(directory)], check=True)
-    report = {"release": release, "target": "x86/64", "url": url, "sha256": expected, "sdk": str(target.resolve())}
+    report = {"release": release, "target": target_name, "url": url, "sha256": expected, "sdk": str(target.resolve())}
     (target / "adzero-sdk-origin.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 
@@ -55,11 +65,12 @@ def fetch(release, directory, cache, zstd):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release", required=True, choices=PINS)
+    parser.add_argument("--target", choices=("x86/64", "rockchip/armv8"), default="x86/64")
     parser.add_argument("--directory", required=True, type=Path)
     parser.add_argument("--cache", required=True, type=Path)
     parser.add_argument("--zstd", default=shutil.which("zstd") or "zstd")
     args = parser.parse_args()
-    print(json.dumps(fetch(args.release, args.directory, args.cache, args.zstd), indent=2))
+    print(json.dumps(fetch(args.release, args.directory, args.cache, args.zstd, args.target), indent=2))
 
 
 if __name__ == "__main__":

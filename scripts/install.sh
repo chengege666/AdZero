@@ -2,7 +2,7 @@
 # AdZero release installer. Only exact SDK-verified matrix rows are installable.
 set -eu
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.5.0}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.5.1}
 LOCAL_DIR=
 ENABLE=1
 ROOT=${ADZERO_INSTALL_ROOT:-}
@@ -23,8 +23,15 @@ release_value() {
 FIRMWARE=$(release_value DISTRIB_ID)
 VERSION=$(release_value DISTRIB_RELEASE)
 TARGET=$(release_value DISTRIB_TARGET)
+DECLARED_ARCH=$(release_value DISTRIB_ARCH)
 case "$FIRMWARE" in OpenWrt) FIRMWARE=openwrt ;; *) fail '此发行版尚未通过该固件 SDK 验证，请等待兼容矩阵扩展。' ;; esac
-case "$TARGET" in x86/64) ARCH=x86_64 ;; *) fail '此发行版尚未验证该 target / CPU 架构。' ;; esac
+case "$TARGET" in
+	x86/64) ARCH=x86_64; APK_MACHINE_ARCH=x86_64 ;;
+	rockchip/armv8) ARCH=aarch64_generic; APK_MACHINE_ARCH=aarch64 ;;
+	'') fail '固件信息中缺少 DISTRIB_TARGET，无法选择安装包。请提供 /etc/openwrt_release、uname -m 和软件包架构输出。尚未安装或修改网络配置。' ;;
+	*) fail "检测到固件 target=$TARGET；此发行版未提供该目标安装包（已支持 x86/64、rockchip/armv8）。请提供固件版本及软件包架构以继续适配。尚未安装或修改网络配置。" ;;
+esac
+[ -z "$DECLARED_ARCH" ] || [ "$DECLARED_ARCH" = "$ARCH" ] || fail "固件声明架构 $DECLARED_ARCH 与目标 $TARGET 的 SDK 架构 $ARCH 不一致。"
 PM=
 if command -v opkg >/dev/null 2>&1 && [ -r "$ROOT/usr/lib/opkg/status" ]; then PM=opkg; fi
 if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then
@@ -33,10 +40,13 @@ if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then
 fi
 [ -n "$PM" ] || fail '无法确定软件包管理器。'
 if [ "$PM" = opkg ]; then
-	opkg print-architecture | awk '$2=="x86_64" {found=1} END {exit !found}' || fail '软件包架构不匹配。'
+	opkg print-architecture | awk -v arch="$ARCH" '$2==arch {found=1} END {exit !found}' || fail '软件包架构不匹配。'
 	EXT=ipk
 else
-	[ "$(apk --print-arch)" = "$ARCH" ] || fail '软件包架构不匹配。'
+	# apk's compiled CPU name can differ from the OpenWrt repository/SDK ABI name.
+	# Accept only the explicit alias for this verified target, never a CPU guess.
+	ACTUAL_APK_ARCH=$(apk --print-arch)
+	[ "$ACTUAL_APK_ARCH" = "$ARCH" ] || [ "$ACTUAL_APK_ARCH" = "$APK_MACHINE_ARCH" ] || fail "APK 架构 $ACTUAL_APK_ARCH 与目标 $TARGET 不匹配。"
 	EXT=apk
 fi
 command -v sha256sum >/dev/null 2>&1 || fail '缺少 sha256sum。'
@@ -73,7 +83,7 @@ if [ "$PM" = opkg ]; then
 	opkg install "$TMP/package.ipk" || fail '安装失败，请检查当前固件软件源依赖。'
 else
 	apk update || fail '固件软件源更新失败。'
-	# Only this SHA-256-checked local APK is unsigned. Repository verification stays on.
+	# Refresh repository metadata with normal verification before allowing our unsigned package.
 	apk add --allow-untrusted "$TMP/package.apk" || fail '安装失败，请检查当前固件软件源依赖。'
 fi
 CTL="$ROOT/usr/libexec/adzero/ctl"

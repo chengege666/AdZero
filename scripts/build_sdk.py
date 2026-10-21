@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from build_ipk import version
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "luci-app-adzero"
@@ -96,7 +97,9 @@ def build(sdk, firmware, release, target, package_format, sdk_sha256, output):
     use_apk = config.get("CONFIG_USE_APK")
     if use_apk is not None and (use_apk == "y") != (package_format == "apk"):
         raise ValueError("SDK package format differs from requested format")
-    built = sorted((sdk / "bin/packages").rglob("luci-app-adzero*." + package_format))
+    expected_version = re.escape(version())
+    pattern = re.compile(r"^luci-app-adzero[_-]" + expected_version + r"(?:_[a-zA-Z0-9_+-]+)?\." + package_format + r"$")
+    built = sorted(path for path in (sdk / "bin/packages").rglob("luci-app-adzero*." + package_format) if pattern.fullmatch(path.name))
     if len(built) != 1:
         raise ValueError(f"Expected one {package_format} package, found {len(built)}; use a clean SDK output")
     output = output.resolve()

@@ -2,6 +2,7 @@ name: Official SDK builds
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths: ['luci-app-adzero/**', 'scripts/build_sdk.py', 'scripts/fetch_sdk.py', '.github/workflows/sdk.yml']
 permissions:
   contents: read
@@ -13,8 +14,16 @@ jobs:
         include:
           - release: '24.10.8'
             format: ipk
+            target: x86/64
+            label: x86_64
           - release: '25.12.5'
             format: apk
+            target: x86/64
+            label: x86_64
+          - release: '25.12.5'
+            format: apk
+            target: rockchip/armv8
+            label: rockchip-armv8
     steps:
       - uses: actions/checkout@v4
       - name: SDK host prerequisites
@@ -22,8 +31,9 @@ jobs:
       - name: Fetch pinned SDK and its matching feeds
         env:
           RELEASE: '${{ matrix.release }}'
+          TARGET: '${{ matrix.target }}'
         run: |
-          python3 scripts/fetch_sdk.py --release "$RELEASE" --directory "$HOME/sdks" --cache "$HOME/sdk-cache"
+          python3 scripts/fetch_sdk.py --release "$RELEASE" --target "$TARGET" --directory "$HOME/sdks" --cache "$HOME/sdk-cache"
           sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
           cd "$sdk"
           ./scripts/feeds update base packages luci
@@ -32,11 +42,12 @@ jobs:
         env:
           RELEASE: '${{ matrix.release }}'
           FORMAT: '${{ matrix.format }}'
+          TARGET: '${{ matrix.target }}'
         run: |
           sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
-          sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import PINS;print(PINS['$RELEASE'][1])")
-          python3 scripts/build_sdk.py --sdk "$sdk" --firmware openwrt --release "$RELEASE" --target x86/64 --format "$FORMAT" --sdk-sha256 "$sha" --output dist/sdk
+          sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import sdk_pin;print(sdk_pin('$RELEASE','$TARGET')[1])")
+          python3 scripts/build_sdk.py --sdk "$sdk" --firmware openwrt --release "$RELEASE" --target "$TARGET" --format "$FORMAT" --sdk-sha256 "$sha" --output dist/sdk
       - uses: actions/upload-artifact@v4
         with:
-          name: 'adzero-openwrt-${{ matrix.release }}-x86_64'
+          name: 'adzero-openwrt-${{ matrix.release }}-${{ matrix.label }}'
           path: dist/sdk/

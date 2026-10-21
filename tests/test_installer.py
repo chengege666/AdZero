@@ -87,3 +87,55 @@ class InstallerTest(unittest.TestCase):
     def test_no_enable_option(self):
         self.run_installer("--no-enable")
         self.assertNotIn("ctl enable", self.log.read_text())
+
+    def test_other_target_is_reported_even_with_x86_package_manager_fixture(self):
+        self.write("etc/openwrt_release", "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.5'\nDISTRIB_TARGET='mediatek/filogic'\n")
+        result = self.run_installer(success=False)
+        self.assertIn("target=mediatek/filogic", result.stderr)
+        self.assertIn("x86/64", result.stderr)
+        self.assertFalse(self.log.exists())
+        self.assertFalse((self.root / "etc/adzero-backups").exists())
+
+    def test_missing_target_is_reported_separately_without_installing(self):
+        self.write("etc/openwrt_release", "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.5'\n")
+        result = self.run_installer(success=False)
+        self.assertIn("缺少 DISTRIB_TARGET", result.stderr)
+        self.assertFalse(self.log.exists())
+        self.assertFalse((self.root / "etc/adzero-backups").exists())
+
+    def arm_apk(self, arch="aarch64", declared="aarch64_generic"):
+        self.write("etc/openwrt_release", "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.5'\nDISTRIB_REVISION='r33051-f5dae5ece4'\nDISTRIB_TARGET='rockchip/armv8'\nDISTRIB_ARCH='" + declared + "'\n")
+        (self.root / "usr/lib/opkg/status").unlink()
+        self.write("lib/apk/db/installed", "fixture")
+        self.executable(self.bin / "apk", '#!/bin/sh\nif [ "$1" = --print-arch ]; then echo "' + arch + '"; else echo "apk $1" >> "$MOCK_INSTALL_LOG"; fi\n')
+        package = self.release / "arm-test.apk"
+        package.write_bytes(b"ARM SDK package fixture, not executed")
+        sha = hashlib.sha256(package.read_bytes()).hexdigest()
+        (self.release / "releases.tsv").write_text(f"{sha}\tarm-test.apk\topenwrt\t25.12.5\trockchip/armv8\taarch64_generic\tapk\n")
+
+    def test_user_rockchip_metadata_selects_arm_apk_and_enables(self):
+        self.arm_apk()
+        result = self.run_installer()
+        self.assertIn("arm-test.apk", result.stdout)
+        self.assertEqual(self.log.read_text().splitlines(), ["apk update", "apk add", "ctl enable"])
+
+    def test_apk_repository_arch_spelling_is_accepted_for_exact_target(self):
+        self.arm_apk(arch="aarch64_generic")
+        self.run_installer("--no-enable")
+        self.assertEqual(self.log.read_text().splitlines(), ["apk update", "apk add"])
+
+    def test_rockchip_mismatched_apk_cpu_is_rejected_before_install(self):
+        self.arm_apk(arch="x86_64")
+        self.run_installer(success=False)
+        self.assertFalse(self.log.exists())
+
+    def test_rockchip_mismatched_declared_abi_is_rejected(self):
+        self.arm_apk(declared="aarch64_cortex-a53")
+        self.run_installer(success=False)
+        self.assertFalse(self.log.exists())
+
+    def test_rockchip_cannot_select_x86_or_other_release_catalog(self):
+        self.arm_apk()
+        (self.release / "releases.tsv").write_text(f"{self.sum}\tadzero-test.ipk\topenwrt\t25.12.5\tx86/64\tx86_64\tapk\n")
+        self.run_installer(success=False)
+        self.assertFalse(self.log.exists())

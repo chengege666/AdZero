@@ -26,7 +26,7 @@ class SdkBuildTest(unittest.TestCase):
         (self.sdk / ".config").write_text('CONFIG_TARGET_BOARD="x86"\nCONFIG_TARGET_SUBTARGET="64"\nCONFIG_TARGET_ARCH_PACKAGES="x86_64"\n')
 
     def compile(self, package_format):
-        path = self.sdk / "bin/packages/x86_64/local" / ("luci-app-adzero_0.4.0-r1_all." + package_format)
+        path = self.sdk / "bin/packages/x86_64/local" / ("luci-app-adzero_0.5.1-r1_all." + package_format)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"mock-sdk-package-" + package_format.encode())
         return path
@@ -84,6 +84,15 @@ class SdkBuildTest(unittest.TestCase):
         with mock.patch.object(build_sdk.subprocess, "run"):
             with self.assertRaisesRegex(ValueError, "Expected one"):
                 build_sdk.build(self.sdk, "openwrt", "24.10.8", "x86/64", "ipk", "a" * 64, self.output)
+
+    def test_old_sdk_outputs_are_preserved_but_not_selected(self):
+        current = self.compile("apk")
+        old = current.with_name("luci-app-adzero-0.5.0-r1.apk")
+        old.write_bytes(b"old-package")
+        with mock.patch.object(build_sdk.subprocess, "run"):
+            report = build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "apk", "a" * 64, self.output)
+        self.assertEqual(report["package"], current.name)
+        self.assertEqual(old.read_bytes(), b"old-package")
 
     def test_archive_checksum_is_required(self):
         with self.assertRaisesRegex(ValueError, "SHA-256"):
