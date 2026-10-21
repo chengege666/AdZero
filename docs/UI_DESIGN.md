@@ -1,4 +1,4 @@
-# AdZero v0.8.0 界面与交互
+# AdZero v0.8.1 界面与交互
 
 ## 信息顺序
 
@@ -74,3 +74,5 @@ v0.7.1 在暂停轮询确认状态已改变时清除旧操作提示，避免自�
 规则操作以随机回执提交后台，浏览器每两秒只读核对进度，完成后重读真实状态和选择。没有预先切换开关，也不以“已提交”当成成功。返回同一标签页会恢复任务结果查询。服务端错误不把下载日志或私有地址返回界面。更详细语义见 [RULE_SOURCES.md](RULE_SOURCES.md)。
 
 预览服务的规则库 JSON 可通过 `ADZERO_UCODE` 对 `scripts/source_transform.uc` 传入 `{"action":"catalog"}` 生成到 `artifacts/ui-preview/source_catalog.json`；静态源文件和域名数仅供隔离界面验证。
+
+v0.8.1 修正匿名订阅的回滚并保护未提交的外部 UCI 修改；界面布局和 CSS 与 v0.8.0 相同，继续使用该版隔离预览图片。

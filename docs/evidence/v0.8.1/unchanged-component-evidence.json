@@ -1,0 +1,15 @@
+{
+  "current_source_sha256": "6510e095c4c39b1afdf8f8e99391d8cc677637cde9248c09e95b1ea47a1e9ee8",
+  "previous_evidence": "../v0.8.0/",
+  "scope": "Core DNS, dae parser, source catalog import parser and RPC implementation are byte-identical to v0.8.0. Reuse their recorded checks; full controller/source transactions and SDK payloads are retested at v0.8.1.",
+  "components": {
+    "luci-app-adzero/root/usr/libexec/adzero/adapter.uc": "ce41d103c93f08d1ca06bd1881b757a90de6afbf3921658498db53c75b8ecfa7",
+    "luci-app-adzero/root/usr/libexec/adzero/adapter-lib.uc": "7c192a26a2a6cfb2037589ddd6cb9cc231a2c9d1babf798c63abb530570534a8",
+    "luci-app-adzero/root/usr/libexec/adzero/backend.uc": "e7df7b7e9e6885c3850a2c5234aaba5627848af9ba9759bfcb506cfd83c99e7b",
+    "luci-app-adzero/root/usr/libexec/adzero/policy.uc": "458728d742fd9c958a83959737372614443919a10b857df72ac47f235ace110d",
+    "luci-app-adzero/root/usr/libexec/adzero/policy-lib.uc": "ee158d348a7a2bae34bd17ceaa6004d70b1305b0df03737e879943ea3f364d8b",
+    "luci-app-adzero/root/usr/libexec/adzero/source-lib.uc": "f0c0312a20b3b3ff418f4fd1b2c9994ca6adfbdd51f28bb491b54d2c342a7bfe",
+    "luci-app-adzero/root/usr/libexec/adzero/job": "614a6b0b6e47145e04f58005ef97cc81dcb6424002ee020fff5f79f45fc2b79a",
+    "luci-app-adzero/root/usr/share/rpcd/ucode/adzero": "1780425b347cee565f920a9a66cf26c262dda4f59b0512a004a961eaf6f81c2a"
+  }
+}

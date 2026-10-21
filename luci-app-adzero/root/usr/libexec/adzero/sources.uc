@@ -22,7 +22,9 @@ function model() {
 	uci.foreach('adblock-fast',null,s => {
 		let values={};
 		for (let key in sort(keys(s))) if (substr(key,0,1) != '.' && !(key == 'size' && s['.type'] == 'file_url' && match(''+s[key],/^[0-9]+$/))) values[key]=s[key];
-		push(result,{id:s['.name'],type:s['.type'],values});
+		// libuci regenerates anonymous IDs after deletion. Compare their ordered
+		// contents, while retaining the actual identity of explicitly named ones.
+		push(result,{id:s['.anonymous'] ? null : s['.name'],type:s['.type'],values});
 	});
 	return result;
 }
@@ -30,6 +32,10 @@ function selected() {
 	let result=[];
 	uci.foreach('adblock-fast','file_url',s => { if ((s.action ?? 'block') == 'block' && s.url) push(result,s); });
 	return result;
+}
+function clean_uci() {
+	let changes=uci.changes('adblock-fast');
+	if (changes && length(changes)) die('后端有尚未提交的外部修改，请先保存或撤销后再管理规则。');
 }
 function list() {
 	let items=[];
@@ -75,6 +81,7 @@ function validate_sources() {
 }
 function begin(action,args) {
 	if (read(journal)) die('上次规则变更尚未恢复，请先关闭并恢复。');
+	clean_uci();
 	let before=fs.readfile(config), prior=model();
 	if (before == null) die('无法读取现有规则配置。');
 	let id=shift(args), address;
@@ -112,6 +119,7 @@ function begin(action,args) {
 }
 function rollback() {
 	let pending=read(journal);if (!pending) return;
+	clean_uci();
 	if (pending.schema != 1 || type(pending.before) != 'string' || (!same(model(),pending.after) && !same(model(),pending.prior))) die('配置出现并发变化，已保留规则恢复记录。');
 	atomic(config,pending.before,pending.mode ?? 0600);
 }

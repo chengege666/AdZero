@@ -74,6 +74,36 @@ class SourcesTest(unittest.TestCase):
         self.assertEqual(self.data()['items'][0]['catalog_id'],'hagezi-light')
         self.assertEqual(self.data()['items'][0]['format'],'domains')
 
+    def test_anonymous_sources_restore_and_reject_shifted_ids(self):
+        p=self.root/'etc/config/adblock-fast'
+        p.write_text(p.read_text()+"\nconfig file_url\n option url 'https://one.example/list'\n option enabled '1'\n\nconfig file_url\n option url 'https://two.example/list'\n option enabled '1'\n")
+        original=p.read_bytes();items=self.data()['items']
+        self.run_source('begin','remove',items[0]['id'],items[0]['url'])
+        self.assertNotEqual(self.data()['items'][0]['id'],items[1]['id'])
+        self.run_source('rollback');self.run_source('discard')
+        self.assertEqual(p.read_bytes(),original)
+        self.fixture.ctl('enable');before=p.read_bytes()
+        self.fixture.write('fail-backend-once','1')
+        self.fixture.ctl('source-remove',items[0]['id'],items[0]['url'],ok=False)
+        self.assertEqual(p.read_bytes(),before)
+        self.assertEqual(self.fixture.status()['state'],'configured_unverified')
+        self.assertFalse(self.data()['pending'])
+        self.fixture.ctl('source-remove',items[0]['id'],items[0]['url'])
+        self.fixture.ctl('source-toggle',items[0]['id'],items[0]['url'],'0',ok=False)
+        self.assertTrue(self.data()['items'][0]['enabled'])
+
+    def test_uncommitted_external_uci_is_not_committed_or_discarded(self):
+        p=self.root/'etc/config/adblock-fast';before=p.read_bytes()
+        command=[self.env['ADZERO_UCI']]
+        try:
+            subprocess.run(command+['set','adblock-fast.config.external_pending=keep'],check=True)
+            self.add(ok=False)
+            self.assertEqual(p.read_bytes(),before)
+            self.assertIn('external_pending',subprocess.check_output(command+['changes','adblock-fast'],text=True))
+            self.assertFalse(self.data()['pending'])
+        finally:
+            subprocess.run(command+['revert','adblock-fast'],check=True)
+
     def test_format_parsers_are_strict_but_support_common_hosts_headers(self):
         for kind,raw in [('hosts','127.0.0.1 localhost\n255.255.255.255 broadcasthost\nfe80::1%lo0 localhost\n0.0.0.0 ads.example\n'),('adblock','[Adblock Plus 2.0]\n! comment\n||ads.example^\n')]:
             self.body.write_text(raw);self.add(kind=kind);self.run_source('rollback');self.run_source('discard')

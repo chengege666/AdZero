@@ -373,7 +373,7 @@ return view.extend({
 		var self = this;
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.8.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.8.1' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {
