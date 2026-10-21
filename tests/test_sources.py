@@ -1,0 +1,131 @@
+"""Real ucode/libuci source transactions, with a no-network downloader fixture."""
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import unittest
+import test_controls
+
+ROOT=test_controls.ROOT
+UCODE=test_controls.UCODE
+PROGRAM=ROOT/'luci-app-adzero/root/usr/libexec/adzero/sources.uc'
+
+@unittest.skipUnless(UCODE,'requires actual OpenWrt ucode/UCI')
+class SourcesTest(unittest.TestCase):
+    def setUp(self):
+        self.fixture=test_controls.ControlsTest();self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
+        self.root=self.fixture.root;self.env=self.fixture.env
+        self.body=self.fixture.write('source-body','new-ads.example\nnew-track.example\n')
+        fetch=self.fixture.write('bin/fetch','#!/bin/sh\n[ ! -f "$ADZERO_SOURCES_ROOT/fetch-fail" ] || exit 1\ncp "$ADZERO_SOURCES_ROOT/source-body" "$2"\n',True)
+        self.env['ADZERO_SOURCE_FETCH_FIXTURE']=str(fetch)
+
+    def run_source(self,*args,ok=True):
+        p=subprocess.run(UCODE+[str(PROGRAM),'--',*args],env=self.env,text=True,capture_output=True,timeout=30)
+        self.assertEqual(p.returncode==0,ok,p.stdout+p.stderr);return p
+    def data(self): return json.loads(self.run_source('list').stdout)
+    def add(self,**kwargs): return self.run_source('begin','add','',kwargs.get('name','My list'),kwargs.get('url','https://rules.example/list.txt'),kwargs.get('kind','domains'),ok=kwargs.get('ok',True))
+
+    def test_add_offline_disabled_global_and_persist_explicit_choices(self):
+        self.add();data=self.data();self.assertEqual(data['items'][0]['domains'],2);self.assertTrue(data['pending'])
+        self.run_source('finish');self.assertFalse(self.data()['pending'])
+        self.assertTrue((self.root/'etc/adzero/sources-selected').exists())
+        self.assertEqual(self.fixture.status()['state'],'disabled')
+        self.fixture.ctl('disable');self.assertEqual(len(self.data()['items']),1)
+
+    def test_duplicate_and_stale_url_are_rejected(self):
+        self.add();self.run_source('finish');self.add(ok=False)
+        item=self.data()['items'][0]
+        self.run_source('begin','remove',item['id'],'https://changed.example/list',ok=False)
+        self.assertEqual(len(self.data()['items']),1)
+
+    def test_toggle_and_remove_restore_original_exact_config(self):
+        original=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.add();self.run_source('rollback');self.run_source('rollback');self.run_source('discard')
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),original)
+        self.add();self.run_source('finish');item=self.data()['items'][0]
+        self.run_source('begin','toggle',item['id'],item['url'],'0');self.run_source('finish')
+        self.assertFalse(self.data()['items'][0]['enabled'])
+        self.run_source('begin','remove',item['id'],item['url']);self.run_source('finish');self.assertEqual(self.data()['items'],[])
+
+    def test_invalid_download_does_not_commit_any_changes(self):
+        original=(self.root/'etc/config/adblock-fast').read_bytes()
+        for raw in ['', '<html>error</html>','@@||allowed.example^\n','ads.example\nexample.com##.ad']:
+            self.body.write_text(raw);self.add(ok=False)
+            self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),original)
+            self.assertFalse(self.data()['pending'])
+        self.fixture.write('fetch-fail','1');self.add(ok=False)
+
+    def test_source_urls_and_names_are_data(self):
+        for url in ['http://rules.example/list','https://user:pass@rules.example/list','https://rules.example:8443/list','file:///etc/passwd','https://rules.example/list#fragment','https://rules.example/\nls']:
+            self.add(url=url,ok=False)
+        self.add(name='bad\nname',ok=False)
+        self.add(url='https://rules.example/a?token=example&v=1')
+        self.run_source('rollback');self.run_source('discard')
+
+    def test_original_options_preserved_and_concurrent_edit_blocks_restore(self):
+        self.add();p=self.root/'etc/config/adblock-fast'
+        p.write_text(p.read_text()+"\nconfig file_url 'external'\n option url 'https://external.example/file'\n")
+        before=p.read_bytes();self.run_source('rollback',ok=False);self.assertEqual(p.read_bytes(),before)
+        self.assertTrue(self.data()['pending'])
+
+    def test_catalog_entry_uses_fixed_url_and_records_validation(self):
+        self.run_source('begin','add','hagezi-light','ignored','https://wrong.example/','hosts');self.run_source('finish')
+        self.assertEqual(self.data()['items'][0]['catalog_id'],'hagezi-light')
+        self.assertEqual(self.data()['items'][0]['format'],'domains')
+
+    def test_format_parsers_are_strict_but_support_common_hosts_headers(self):
+        for kind,raw in [('hosts','127.0.0.1 localhost\n255.255.255.255 broadcasthost\nfe80::1%lo0 localhost\n0.0.0.0 ads.example\n'),('adblock','[Adblock Plus 2.0]\n! comment\n||ads.example^\n')]:
+            self.body.write_text(raw);self.add(kind=kind);self.run_source('rollback');self.run_source('discard')
+        self.body.write_text('||ads.example^$third-party\n');self.add(kind='adblock',ok=False)
+
+    def test_full_controller_applies_and_rolls_back_rule_changes(self):
+        self.fixture.ctl('enable')
+        self.fixture.ctl('source-add','','Fresh','https://rules.example/list','domains')
+        self.assertEqual(self.fixture.status()['state'],'configured_unverified')
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.fixture.write('fail-backend-once','1')
+        self.fixture.ctl('source-add','','Another','https://second.example/list','domains',ok=False)
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+        self.assertEqual(self.fixture.status()['state'],'configured_unverified')
+        self.assertFalse(self.data()['pending'])
+
+    def test_offline_selection_forces_rebuild_on_next_enable(self):
+        self.fixture.ctl('source-add','','Fresh','https://rules.example/list','domains')
+        self.fixture.ctl('enable')
+        self.assertEqual((self.root/'last-start-method').read_text(),'dl')
+
+    def subscription_cycle(self, plugin):
+        self.fixture.select(plugin)
+        self.fixture.write('source-downloads.json',json.dumps({'https://rules.example/list':['new-ads.example','new-track.example']}))
+        self.fixture.ctl('enable')
+        self.fixture.ctl('allow','ads.example','ads.example')
+        self.fixture.ctl('source-add','','Fresh','https://rules.example/list','domains')
+        item=self.data()['items'][-1]
+        self.assertEqual(self.fixture.status()['adapter']['plugin'],plugin)
+        self.assertEqual(self.fixture.status()['adapter']['domains'],3)
+        self.assertEqual(self.fixture.query('new-ads.example')['match'],'exact')
+        self.assertEqual(self.fixture.query('ads.example')['match'],'allowed')
+        self.fixture.ctl('source-toggle',item['id'],item['url'],'0')
+        self.assertEqual(self.fixture.status()['adapter']['domains'],1)
+        self.assertEqual(self.fixture.query('new-ads.example')['match'],'none')
+        self.fixture.ctl('source-toggle',item['id'],item['url'],'1')
+        self.assertEqual(self.fixture.status()['adapter']['domains'],3)
+        self.fixture.ctl('source-remove',item['id'],item['url'])
+        self.assertEqual(self.fixture.status()['adapter']['domains'],1)
+        self.assertEqual(self.fixture.query('ads.example')['match'],'allowed')
+        self.fixture.ctl('disable')
+        self.assertFalse(self.data()['pending'])
+
+    def test_passwall_subscription_cycle(self): self.subscription_cycle('passwall')
+    def test_nailink_subscription_cycle(self): self.subscription_cycle('nailink')
+    def test_openclash_subscription_cycle(self): self.subscription_cycle('openclash')
+    def test_nikki_subscription_cycle(self): self.subscription_cycle('nikki')
+
+    def test_paused_and_external_owner_cannot_change_sources(self):
+        self.fixture.ctl('enable');self.fixture.ctl('pause','300')
+        self.fixture.ctl('source-add','','Fresh','https://rules.example/list','domains',ok=False)
+        self.fixture.ctl('disable')
+        subprocess.run([self.env['ADZERO_UCI'],'set','adblock-fast.config.enabled=1'],check=True)
+        subprocess.run([self.env['ADZERO_UCI'],'commit','adblock-fast'],check=True)
+        self.fixture.ctl('source-add','','Fresh','https://rules.example/list','domains',ok=False)

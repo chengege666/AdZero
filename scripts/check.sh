@@ -12,6 +12,8 @@ sh -n luci-app-adzero/root/usr/libexec/adzero/adapter
 sh -n luci-app-adzero/root/usr/libexec/adzero/backend
 sh -n luci-app-adzero/root/usr/libexec/adzero/watch
 sh -n luci-app-adzero/root/usr/libexec/adzero/policy
+sh -n luci-app-adzero/root/usr/libexec/adzero/sources
+sh -n luci-app-adzero/root/usr/libexec/adzero/job
 sh -n luci-app-adzero/root/etc/init.d/adzero
 sh -n scripts/install.sh
 node --check luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.js

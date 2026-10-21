@@ -12,7 +12,9 @@
           "exec"
         ],
         "adzero": [
-          "lookup"
+          "lookup",
+          "source_list",
+          "job_status"
         ]
       },
       "uci": [
@@ -39,7 +41,11 @@
           "allow",
           "revoke",
           "pause",
-          "resume"
+          "resume",
+          "source_add",
+          "source_toggle",
+          "source_remove",
+          "source_refresh"
         ]
       },
       "uci": [

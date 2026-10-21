@@ -1,0 +1,44 @@
+[
+  {
+    "firmware_declared": "openwrt",
+    "release_declared": "24.10.8",
+    "target_declared": "x86/64",
+    "target_observed": "x86/64",
+    "package_arch_observed": "x86_64",
+    "package_format": "ipk",
+    "sdk_archive_sha256_supplied": "ac4a0405d2eea821b06f93c14ba13ffa90ad0457648903df7dde02570027ab21",
+    "source_sha256": "0df85e237f30fa43bcd04afc13cf8822296238da309ef968550fda402c859c6a",
+    "package": "luci-app-adzero_0.8.0-r1_all.ipk",
+    "sha256": "537848a5540a6def560b884673a16b4657fb999401a4b3f7d8f86a921b16bdf6",
+    "sdk_build": "passed",
+    "device_acceptance": "not_run"
+  },
+  {
+    "firmware_declared": "openwrt",
+    "release_declared": "25.12.5",
+    "target_declared": "x86/64",
+    "target_observed": "x86/64",
+    "package_arch_observed": "x86_64",
+    "package_format": "apk",
+    "sdk_archive_sha256_supplied": "0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c",
+    "source_sha256": "0df85e237f30fa43bcd04afc13cf8822296238da309ef968550fda402c859c6a",
+    "package": "luci-app-adzero-0.8.0-r1.apk",
+    "sha256": "19fcd0933cf81ed2e9d4a2faf773924f7c87ade296774fdb63ac2499662ddb90",
+    "sdk_build": "passed",
+    "device_acceptance": "not_run"
+  },
+  {
+    "firmware_declared": "openwrt",
+    "release_declared": "25.12.5",
+    "target_declared": "rockchip/armv8",
+    "target_observed": "rockchip/armv8",
+    "package_arch_observed": "aarch64_generic",
+    "package_format": "apk",
+    "sdk_archive_sha256_supplied": "59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba",
+    "source_sha256": "0df85e237f30fa43bcd04afc13cf8822296238da309ef968550fda402c859c6a",
+    "package": "luci-app-adzero-0.8.0-r1.apk",
+    "sha256": "19fcd0933cf81ed2e9d4a2faf773924f7c87ade296774fdb63ac2499662ddb90",
+    "sdk_build": "passed",
+    "device_acceptance": "not_run"
+  }
+]

@@ -31,6 +31,7 @@ RULES_LIBRARY=${ADZERO_RULES_LIBRARY:-$(dirname "$0")/rules.sh}
 ADAPTER=${ADZERO_ADAPTER:-$(dirname "$0")/adapter}
 BACKEND_CHECK=${ADZERO_BACKEND_CHECK:-$(dirname "$0")/backend}
 POLICY=${ADZERO_POLICY:-$(dirname "$0")/policy}
+SOURCES=${ADZERO_SOURCES:-$(dirname "$0")/sources}
 [ -r "$RULES_LIBRARY" ] || { echo 'AdZero: missing rules library' >&2; exit 1; }
 . "$RULES_LIBRARY"
 
@@ -133,7 +134,11 @@ resolver_mode() {
 }
 policy_clean() {
 	policy_rc=0; "$POLICY" pending >/dev/null 2>&1 || policy_rc=$?
-	[ "$policy_rc" = 1 ] && "$POLICY" validate >/dev/null 2>&1
+	[ "$policy_rc" = 1 ] && "$POLICY" validate >/dev/null 2>&1 && sources_clean
+}
+sources_clean() {
+	sources_rc=0; "$SOURCES" pending >/dev/null 2>&1 || sources_rc=$?
+	[ "$sources_rc" = 1 ]
 }
 json_bool() {
 	if [ "$1" = 1 ]; then printf true; else printf false; fi
@@ -363,6 +368,7 @@ enable_protection() {
 	fi
 	start_method=start
 	"$POLICY" has-allowed && start_method=dl
+	[ ! -f "$STATE_DIR/sources-selected" ] || start_method=dl
 	if ! backend_restart "$start_method"; then
 		rule_failure_hint
 		rollback_enable "$previous" && error '后端启动失败，原配置已恢复。'
@@ -382,6 +388,9 @@ enable_protection() {
 disable_protection() {
 	[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero stop
 	"$ADAPTER" remove || error '代理 DNS 恢复失败，恢复记录已保留。'
+	if ! sources_clean; then
+		"$SOURCES" rollback && "$SOURCES" discard || error '规则变更恢复失败，恢复记录已保留。'
+	fi
 	if [ ! -f "$MANAGED_MARKER" ]; then
 		"$POLICY" restore || error '放行恢复记录尚未处理。'
 		"$POLICY" pause-clear || error '无法清除暂停记录。'
@@ -426,6 +435,35 @@ disable_protection() {
 	"$POLICY" pause-clear || error '已关闭过滤，但暂停记录未能清理。'
 	printf 'disabled (restored previous force_dns when unchanged)\n'
 }
+
+change_sources() {
+	# Rule selections are explicit user configuration, retained after disable.
+	verify_supported
+	reject_insecure_custom_fetch_flags
+	policy_clean || error '有未完成的配置恢复，请先关闭并恢复。'
+	[ ! -e "$STATE_DIR/pause.json" ] || error '请先恢复保护或保持关闭，再管理规则。'
+	active=0
+	if [ -f "$MANAGED_MARKER" ]; then require_active; active=1
+	else
+		[ "$(get_uci adzero.main.enabled)" = 0 ] && [ "$(get_uci adblock-fast.config.enabled)" = 0 ] || error '过滤后端正由其他服务管理，拒绝更改规则。'
+		[ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ] || error '仍有未完成的恢复记录，请先关闭并恢复。'
+	fi
+	if "$SOURCES" begin "$@"; then
+		if [ "$active" = 0 ] || { backend_restart dl && "$ADAPTER" apply; }; then
+			"$SOURCES" finish || error '规则已处理，但完成记录清理失败。'
+			return 0
+		fi
+	fi
+	if ! sources_clean; then
+		"$SOURCES" rollback || error '规则恢复遇到并发修改，恢复记录已保留。'
+		if [ "$active" = 0 ] || { backend_restart dl && "$ADAPTER" apply; }; then
+			"$SOURCES" discard || error '旧规则已恢复，但记录清理失败。'
+			error '规则变更未完成，已恢复原配置。'
+		fi
+		error '规则变更未完成，恢复记录已保留，请关闭并恢复。'
+	fi
+	error '规则未应用，请检查订阅地址和格式。'
+}
 refresh_blocklists() {
 	[ ! -e "$STATE_DIR/pause.json" ] || error '请先恢复保护，再更新规则。'
 	policy_clean || error '放行恢复尚未完成，请先关闭并恢复。'
@@ -439,9 +477,7 @@ refresh_blocklists() {
 	[ "$(tls_download_state)" = strict ] || error 'HTTPS 证书校验被外部关闭，拒绝更新规则。'
 	[ "$(rule_sources_state)" = configured ] || error '没有有效规则源，拒绝空更新。'
 	reject_insecure_custom_fetch_flags
-	backend_restart dl || { rule_failure_hint; error '规则更新失败；请检查网络和后端日志。'; }
-	"$ADAPTER" apply || error '代理规则同步失败，现有恢复记录已保留。'
-	printf 'blocklist refresh requested\n'
+	change_sources refresh
 }
 
 require_active() {
@@ -449,6 +485,7 @@ require_active() {
 	[ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ] && \
 	[ "$(get_uci adblock-fast.config.enabled)" = 1 ] && [ ! -e "$STATE_DIR/pause.json" ] || error '请先开启或恢复 AdZero。'
 	[ "$(force_dns_state)" = off ] && [ "$(tls_download_state)" = strict ] || error '过滤配置已被外部修改。'
+	[ -f "$FORCE_BACKUP" ] && [ -f "$TLS_BACKUP" ] || error '原始配置备份丢失，请先检查恢复记录。'
 	policy_clean || error '上次放行操作尚未恢复，请先关闭并恢复。'
 	backend_confirm ready || error '当前规则未就绪，请重新检测。'
 }
@@ -502,6 +539,11 @@ resume_protection() {
 
 case "$1" in
 	status) print_status ;;
+	sources-list) "$SOURCES" list ;;
+	source-add) acquire_lock source-add; shift; change_sources add "$@" ;;
+	source-toggle) acquire_lock source-toggle; shift; change_sources toggle "$@" ;;
+	source-remove) acquire_lock source-remove; shift; change_sources remove "$@" ;;
+	source-refresh) acquire_lock source-refresh; change_sources refresh ;;
 	enable) acquire_lock enable; enable_protection ;;
 	disable) acquire_lock disable; disable_protection ;;
 	refresh) acquire_lock refresh; refresh_blocklists ;;

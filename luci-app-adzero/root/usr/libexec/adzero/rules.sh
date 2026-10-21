@@ -24,6 +24,8 @@ prepare_default_rule() {
 		empty) ;;
 		*) return 1 ;;
 	esac
+	# An explicit empty selection must not silently reinstall the default.
+	[ ! -f "$STATE_DIR/sources-selected" ] || return 1
 	[ -z "$(get_uci "$DEFAULT_RULE")" ] || return 1
 	# Marker precedes writes, so an interrupted creation remains recoverable.
 	printf 'hagezi-light-v1\n' > "$RULE_MARKER" || return 1

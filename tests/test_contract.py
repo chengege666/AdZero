@@ -34,14 +34,14 @@ class PackageContractTest(unittest.TestCase):
         self.assertNotIn("*", json.dumps(item["write"]["file"]))
         self.assertEqual(item["read"]["uci"], ["adzero"])
         self.assertEqual(item["write"]["uci"], ["adzero"])
-        self.assertEqual(item["write"]["ubus"], {"file": ["exec"], "adzero": ["allow", "revoke", "pause", "resume"]})
-        self.assertEqual(item["read"]["ubus"]["adzero"], ["lookup"])
+        self.assertEqual(item["write"]["ubus"], {"file": ["exec"], "adzero": ["allow", "revoke", "pause", "resume", "source_add", "source_toggle", "source_remove", "source_refresh"]})
+        self.assertEqual(item["read"]["ubus"]["adzero"], ["lookup", "source_list", "job_status"])
 
     def test_default_is_off_and_dependencies_explicit(self):
         config = (PACKAGE / "root/etc/config/adzero").read_text()
         makefile = (PACKAGE / "Makefile").read_text()
         self.assertIn("option enabled '0'", config)
-        self.assertIn("PKG_VERSION:=0.7.1", makefile)
+        self.assertIn("PKG_VERSION:=0.8.0", makefile)
         self.assertIn("+adblock-fast", makefile)
         self.assertIn("+rpcd-mod-file", makefile)
         self.assertIn("+ca-bundle", makefile)

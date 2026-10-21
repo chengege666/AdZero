@@ -30,7 +30,7 @@ class ControlsTest(unittest.TestCase):
         self.write('proc/uptime', '1000.0 100\n')
         native = ROOT / '.sdk/runtime-24.10.8'
         uci = self.write('bin/uci', '#!/bin/sh\nexec ' + shlex.join([str(native/'libc.so'), '--library-path', str(native), str(native/'uci'), '-c', str(self.root/'etc/config')]) + ' "$@"\n', True)
-        self.env = {**os.environ, 'ADZERO_UCI': str(uci), 'ADZERO_POLICY_ROOT': str(self.root),
+        self.env = {**os.environ, 'ADZERO_UCI': str(uci), 'ADZERO_POLICY_ROOT': str(self.root), 'ADZERO_SOURCES_ROOT': str(self.root),
                     'ADZERO_ADAPTER_ROOT': str(self.root), 'ADZERO_BACKEND_ROOT': str(self.root),
                     'ADZERO_STATE_DIR': str(self.root/'etc/adzero'), 'ADZERO_LOCK_DIR': str(self.root/'lock'),
                     'ADZERO_ADAPTER_INVENTORY': str(self.root/'inventory.json'),
@@ -43,10 +43,25 @@ from pathlib import Path
 r=Path(os.environ['ADZERO_POLICY_ROOT']); output=r/'var/run/adblock-fast/dnsmasq.servers'
 service={'dnsmasq':{'instances':{'test':{'running':True}}}}
 if sys.argv[1] != 'stop':
+ (r/'last-start-method').write_text(sys.argv[1])
  flag=r/'fail-backend-once'
  if flag.exists(): flag.unlink(); sys.exit(2)
  values=subprocess.check_output([os.environ['ADZERO_UCI'],'-q','get','adblock-fast.config.allowed_domain'],text=True).split()
- rules=[d for d in ['ads.example','tracker.example','sub.ads.example'] if not any(d==a or d.endswith('.'+a) for a in values)]
+ domains=['ads.example','tracker.example','sub.ads.example']
+ # Optional DNS-domain subscription fixtures exercise the production source ->
+ # backend output -> adapter pipeline without downloading or restarting a router.
+ downloads=r/'source-downloads.json'
+ if downloads.exists():
+  import re
+  bodies=json.loads(downloads.read_text())
+  def option(key):
+   p=subprocess.run([os.environ['ADZERO_UCI'],'-q','get',key],text=True,capture_output=True)
+   return p.stdout.strip()
+  config=subprocess.check_output([os.environ['ADZERO_UCI'],'show','adblock-fast'],text=True)
+  for section in re.findall(r'^adblock-fast\.([^=]+)=file_url$',config,re.M):
+   key='adblock-fast.'+section+'.'
+   if option(key+'enabled')=='1': domains.extend(bodies.get(option(key+'url'),[]))
+ rules=sorted({d for d in domains if not any(d==a or d.endswith('.'+a) for a in values)})
  output.parent.mkdir(parents=True,exist_ok=True)
  output.write_text(''.join('server=/'+d+'/\\n' for d in rules)+''.join('server=/'+d+'/#\\n' for d in values))
  service['adblock-fast']={'data':{'status':'statusSuccess','errors':[],'warnings':[],'entries':len(rules),'dns':'dnsmasq.servers','force_dns_active':False,'outputFile':'/var/run/adblock-fast/dnsmasq.servers'}}

@@ -2,11 +2,19 @@
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
-**v0.7.1 是公开测试版。** 新增域名查询、误杀放行/撤销、5/15/30 分钟临时暂停及到期恢复，沿用 NaiLink、PassWall、OpenClash、Nikki 的原生接入与恢复机制。安装矩阵为 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）、25.12.5 rockchip/armv8（APK）**，使用对应官方 SDK。新功能的四适配器联动检查已通过，仍需分别完成真机和 LAN 验收。
+**v0.8.0 是公开测试版。** 新增可选规则库、自定义 HTTPS 订阅及逐项开关/删除；返回菜单时先保留最近概览，再后台核对真实状态。保留域名查询、误杀放行、临时暂停及 NaiLink、PassWall、OpenClash、Nikki 的原生接入。安装矩阵为 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）、25.12.5 rockchip/armv8（APK）**，使用对应官方 SDK；真机和 LAN 验收仍需分别完成。
 
 菜单名称为 **AdZero**。首屏异步读取当前状态，提供保护开关、临时暂停、域名查询和个人放行名单；不显示固件/CPU/未启用代理等诊断面板，也不虚构拦截次数。支持手机、深色外观、键盘操作和失败重试。
 
-![AdZero v0.7.1 本地交互预览，使用隔离状态，未连接路由器](docs/images/adzero-v0.7.1-desktop.jpg)
+![AdZero v0.8.0 规则库本地预览，使用隔离状态，未连接路由器](docs/images/adzero-v0.8.0-rules-desktop.jpg)
+
+## 规则库与自定义订阅
+
+进入「过滤规则」，从 HaGeZi Light / Normal / Pro、anti-AD、AdAway 中按需添加，或填写自己的 HTTPS 地址。支持域名列表、Hosts 和 `||domain^` 基础 DNS Adblock；不支持网页元素、正则、修饰符或高级例外。不限于预置来源，但格式必须适合路由器域名过滤。
+
+每项订阅可启用、停用或删除，关闭保护时保留选择；个人放行名单始终保留。建议同系列选一项，数量不代表实际拦截率。新订阅先下载校验，再处理并同步到当前接入；失败时尝试恢复原配置，有并发修改则保留恢复记录。任务在路由器后台运行，离开页面仍会继续，返回同一标签页可查看回执。
+
+返回菜单时，当前登录会话内最近 5 分钟的概览可立即展示，并标明「上次状态」。后台核对完成前禁用修改，核对失败保留概览并提供重试。订阅地址、令牌和个人名单不会写入页面快照。首次进入、重新登录、快照过期或浏览器禁止存储时正常读取。详见 [规则管理说明](docs/RULE_SOURCES.md)。
 
 ## 查询、误杀放行与暂停
 
@@ -24,10 +32,10 @@
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.7.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.8.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.7.1)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.8.0)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -36,14 +44,14 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本可使用 --upgrade：先校验安装包、备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.7.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.8.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
 
 旧版短暂占锁时，升级器最多等待 30 秒重试；只重试旧版明确的“另一项操作正在进行”提示，其他恢复失败立即停止。锁持续占用则停止安装并保留配置、锁和恢复记录。请先提供 `ls -la /tmp/adzero.lock` 与 `ps w | grep -E '[a]dzero/(ctl|watch|adapter|backend)'` 的只读结果，不要直接删除锁。升级备份中的 state.tar.gz 可能含原有 DNS 配置，请仅保留在路由器本地。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.7.1 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.8.0 地址。
 
 v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修正旧默认规则源；v0.6.0 已解决 LuCI 将 disabled=false 写为实际禁用属性的问题。缺少 gawk、GNU grep/sed、coreutils-sort 仍为后端推荐提示，本版未因此新增依赖。
 
@@ -85,7 +93,7 @@ Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 40 组本机查询
 
 ## 开发与验证
 
-路由器端使用 BusyBox shell、ucode、现有代理自身的 Ruby/yq，不捆绑代理内核，不新增大型常驻引擎。依赖为 luci-base、adblock-fast、rpcd-mod-file、rpcd-mod-ucode、ca-bundle 和 ucode 的 fs/uci/ubus 模块。
+路由器端使用 BusyBox shell、ucode、现有代理自身的 Ruby/yq，不捆绑代理内核，不新增大型常驻引擎。依赖为 luci-base、adblock-fast、rpcd-mod-file、rpcd-mod-ucode、ca-bundle、curl 和 ucode 的 fs/uci/ubus 模块。
 
 ~~~sh
 sh scripts/check.sh
@@ -96,6 +104,7 @@ python3 scripts/check_rpc.py
 python3 scripts/check_dns_core.py
 python3 scripts/check_dae.py
 python3 scripts/check_rule_source.py
+python3 scripts/check_source_catalog.py
 # 指定 ADZERO_TEST_SHELL 可用真实 OpenWrt ash 复现上游钩子返回值
 python3 scripts/check_backend_hooks.py
 ~~~

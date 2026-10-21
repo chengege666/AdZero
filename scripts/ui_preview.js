@@ -28,9 +28,22 @@ const api = { exec: async (_program, args) => {
   if (document.getElementById('fail').checked) return { code: 1, stderr: '模拟错误：规则下载失败，原配置已恢复。' };
   state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified'; return { code: 0, stdout: 'ok' };
 } };
-const rpc = {declare: spec => async (...args) => {
+let sourceData={items:[],catalog:[]};
+const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
+  if (spec.method === 'source_list') return {ok:true,data:structuredClone(sourceData)};
+  if (spec.method === 'job_status') return {ok:true,pending:false};
+  if (spec.method.startsWith('source_')) {
+    if (spec.method === 'source_add') {
+      const rule=sourceData.catalog.find(r=>r.id===args[0]);
+      sourceData.items.push({id:'source'+Date.now(),name:rule?rule.name:args[1],url:rule?rule.url:args[2],format:rule?rule.format:args[3],catalog_id:rule?rule.id:null,enabled:true,https:true,domains:rule?66425:12500,updated:Math.floor(Date.now()/1000)});
+    }
+    if (spec.method === 'source_toggle') sourceData.items.find(r=>r.id===args[0]).enabled=args[2];
+    if (spec.method === 'source_remove') sourceData.items=sourceData.items.filter(r=>r.id!==args[0]);
+    sourceData.last={at:Math.floor(Date.now()/1000),ok:true};
+    return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  }
   if (spec.method === 'lookup') {
     const domain = args[0].replace(/^https?:\/\//,'').split('/')[0].toLowerCase();
     if (!/^[a-z0-9.-]+\.[a-z]+$/.test(domain)) return {ok:false,message:'请输入有效域名。'};
@@ -72,7 +85,8 @@ document.getElementById('host-frame').addEventListener('change', ev => {
   const host = document.getElementById('preview-host');
   host.classList.toggle('main-right', ev.target.checked); host.querySelector('header').hidden = !ev.target.checked;
 });
-fetch('/luci-static/resources/view/adzero/overview.js').then(r => r.text()).then(source => {
+Promise.all([fetch('/luci-static/resources/view/adzero/overview.js').then(r => r.text()),fetch('/source_catalog.json').then(r=>r.json())]).then(([source,catalog]) => {
+  sourceData.catalog=catalog; sourceData.items=[{...catalog[0],id:'adzero_default',catalog_id:catalog[0].id,enabled:true,https:true,domains:66425,updated:Math.floor(Date.now()/1000)}];
   app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', source)({ extend: x => x }, api,
     window.previewDom || { content: (el, content) => el.replaceChildren(content) }, x => x, window.E || fallbackE, document, { resource: x => '/luci-static/resources/' + x }, rpc, poll); initialMount(700);
 });

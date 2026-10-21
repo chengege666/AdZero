@@ -1,0 +1,28 @@
+#!/bin/sh
+# A short RPC launches a worker with detached stdio. ctl owns serialization.
+umask 077
+set -f
+jobs=${ADZERO_JOB_DIR:-/tmp/adzero-jobs}
+ctl=${ADZERO_JOB_CTL:-$(dirname "$0")/ctl}
+case "$1" in
+ start)
+	shift
+	case "$1" in source-add|source-toggle|source-remove|source-refresh) ;; *) exit 1 ;; esac
+	[ ! -L "$jobs" ] || exit 1
+	mkdir -p "$jobs" || exit 1
+	id=$(cat /proc/sys/kernel/random/uuid) || exit 1
+	printf '%s\n' "$id" | grep -Eq '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' || exit 1
+	mkdir "$jobs/$id" || exit 1
+	"$0" run "$id" "$@" </dev/null >"$jobs/$id/log" 2>&1 &
+	printf '{"job":"%s"}\n' "$id"
+	;;
+ run)
+	id=$2;shift 2
+	printf '%s\n' "$id" | grep -Eq '^[a-f0-9-]{36}$' || exit 1
+	[ -d "$jobs/$id" ] || exit 1
+	code=0
+	"$ctl" "$@" || code=$?
+	printf '%s\n' "$code" > "$jobs/$id/result.new" && mv "$jobs/$id/result.new" "$jobs/$id/result"
+	;;
+ *) exit 1 ;;
+esac

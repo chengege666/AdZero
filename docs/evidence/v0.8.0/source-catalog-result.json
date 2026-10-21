@@ -1,0 +1,48 @@
+{
+  "source_sha256": "0df85e237f30fa43bcd04afc13cf8822296238da309ef968550fda402c859c6a",
+  "checked_at": "2026-10-21T09:45:56.470603+00:00",
+  "lists": [
+    {
+      "id": "hagezi-light",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt",
+      "format": "domains",
+      "bytes": 1398563,
+      "domains": 66425,
+      "sha256": "4caa6dc2c5b7f30b0d4c25f75d56decce4b56549d466fb7c666fa366e07e9e56"
+    },
+    {
+      "id": "hagezi-normal",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/multi-onlydomains.txt",
+      "format": "domains",
+      "bytes": 3360185,
+      "domains": 168161,
+      "sha256": "300719576667b66eb91fa34257fd22a9314fff13aa47fef7d8087b13cb65ec34"
+    },
+    {
+      "id": "hagezi-pro",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt",
+      "format": "domains",
+      "bytes": 3884915,
+      "domains": 204782,
+      "sha256": "5751047cbb6984269b1ad75f1edbc0749a70c474ec429cd0e825edafbcedf156"
+    },
+    {
+      "id": "anti-ad",
+      "url": "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-domains.txt",
+      "format": "domains",
+      "bytes": 2146238,
+      "domains": 111307,
+      "sha256": "829b6e3145973be54c0e01c4263f55d94856161b04d550a2520189f9c42e015b"
+    },
+    {
+      "id": "adaway",
+      "url": "https://raw.githubusercontent.com/AdAway/adaway.github.io/master/hosts.txt",
+      "format": "hosts",
+      "bytes": 243454,
+      "domains": 6540,
+      "sha256": "8c925c37a5eaa5e1c582c76e12301797861addee5ad0fa0e6e46c9dd0136fe55"
+    }
+  ],
+  "validation": "all catalog downloads accepted by the production parser",
+  "scope": "development HTTPS and real ucode only; no router or DNS lifecycle"
+}

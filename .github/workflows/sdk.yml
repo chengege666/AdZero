@@ -37,7 +37,7 @@ jobs:
           sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
           cd "$sdk"
           ./scripts/feeds update base packages luci
-          ./scripts/feeds install luci-base adblock-fast rpcd-mod-file ca-bundle ucode-mod-fs ucode-mod-uci ucode-mod-ubus
+          ./scripts/feeds install luci-base adblock-fast rpcd-mod-file rpcd-mod-ucode ca-bundle curl ucode-mod-fs ucode-mod-uci ucode-mod-ubus
       - name: Build real package
         env:
           RELEASE: '${{ matrix.release }}'

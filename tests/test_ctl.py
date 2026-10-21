@@ -131,6 +131,7 @@ exit 0
             "ADZERO_UCI": str(self.uci),
             "ADZERO_ADAPTER": str(self.adapter),
             "ADZERO_POLICY": str(policy),
+            "ADZERO_SOURCES": str(policy),
             "ADZERO_BACKEND_INIT": str(self.backend),
             "ADZERO_BACKEND_CHECK": str(self.backend_check),
             "ADZERO_STATE_DIR": str(self.state),

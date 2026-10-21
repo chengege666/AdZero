@@ -37,10 +37,20 @@ const api = { exec: async (program, args) => {
   if (!staleResult) state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified';
   return { code: 0, stdout: 'ok' };
 } };
-let rpcFailure = false, rpcStale = false, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
-const rpc = { declare: spec => async (...args) => {
+let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked = false, sessionID = 'b'.repeat(32), ruleData, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
+const storage = new Map();
+const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
+const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   assert.equal(spec.object,'adzero'); commands.push(spec.method);
   if (rpcFailure) return {ok:false,message:'typed failure'};
+  if (spec.method === 'source_list') return rpcListFailure ? {ok:false,message:'list unavailable'} : {ok:true,data:structuredClone(ruleData)};
+  if (spec.method === 'job_status') return {ok:true,pending:false};
+  if (spec.method.startsWith('source_')) {
+    if (!rpcStale && spec.method==='source_add') ruleData.items.push({id:'new1',catalog_id:args[0]||null,name:args[1]||'Library rule',url:args[2]||'https://library.example/list',https:true,enabled:true,domains:42});
+    if (!rpcStale && spec.method==='source_toggle') ruleData.items.find(i=>i.id===args[0]).enabled=args[2];
+    if (!rpcStale && spec.method==='source_remove') ruleData.items=ruleData.items.filter(i=>i.id!==args[0]);
+    return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  }
   if (spec.method === 'lookup') return {ok:true,data:lookup};
   if (!rpcStale) {
     if (spec.method === 'allow') state.policy.allowed.push(args[1]);
@@ -50,14 +60,16 @@ const rpc = { declare: spec => async (...args) => {
   }
   return {ok:true};
 } };
-const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', source)(
-  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}});
+const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', 'sessionStorage', source)(
+  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}},session);
 function reset(overrides = {}) {
   state = { state: 'disabled', managed: false, dns_mode_safe: true, resolver: 'dnsmasq.servers', client_dns_verified: false,
     policy:{allowed:[],pause:null}, force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
     compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
-  failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = false; commands.length = 0;
+  failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = rpcListFailure = storageBlocked = false; sessionID='b'.repeat(32); commands.length = 0;
+  storage.clear();ruleData={items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
+  app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
   app.busy = app.notice = app.domainResult = null; app.domainInput = ''; root = app.render(state); active = body;
 }
 const find = id => doc.getElementById(id);
@@ -152,5 +164,33 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset({state:'paused',policy:{allowed:['ads.example'],pause:{remaining:0,error:'resume_failed'}}});
   check(text(root).includes('自动恢复未完成') && !find('az-resume').disabled,'failed automatic resume remains actionable');
   await app.runAction('disable'); check(state.state==='disabled','manual close cancels pause via canonical controller');
+  reset({state:'configured_unverified'});await app.refreshStatus();
+  statusPending=true;const cached=await app.load();root=app.render(cached);
+  check(cached.stale && text(root).includes('66,425') && !text(root).includes('正在读取运行状态'),'return navigation paints last snapshot immediately');
+  check(find('az-toggle').disabled && find('az-update').disabled && find('az-domain').disabled,'cached snapshot cannot authorize mutations');
+  resolveStatus();await app.initialRequest;check(!app.currentStatus.stale && !find('az-toggle').disabled,'background recheck restores live controls');
+  statusPending=false;failStatus=true;await app.refreshStatus();
+  check(app.currentStatus.stale && text(root).includes('66,425') && find('az-toggle').disabled && !find('az-status').disabled,'recheck failure preserves snapshot with retry and locked operations');
+  check(!JSON.stringify([...storage.values()]).includes('aarch64_generic'),'snapshot excludes technical inventory');
+  reset();await app.refreshStatus();const cacheKey='adzero.v0.8.'+sessionID+'.snapshot',snapshot=storage.get(cacheKey);
+  const expired=JSON.parse(snapshot);expired.at-=300001;storage.set(cacheKey,JSON.stringify(expired));
+  check((await app.load()).state==='loading','expired snapshot falls back to live loading');
+  storage.set(cacheKey,snapshot);sessionID='c'.repeat(32);check((await app.load()).state==='loading','new login cannot reuse old session snapshot');
+  sessionID='b'.repeat(32);storage.set(cacheKey,'invalid JSON');check((await app.load()).state==='loading','corrupt storage falls back safely');
+  storageBlocked=true;await app.refreshStatus();check(!find('az-toggle').disabled && (await app.load()).state==='loading','storage-disabled browser retains live controls');
+  reset();await app.openRules();check(text(root).includes('我的过滤规则') && text(root).includes('Library example'),'rule library renders separately');
+  await app.runSource('source_add',['','Personal list','https://rules.example/list','domains']);
+  check(ruleData.items.length===1 && text(root).includes('Personal list') && state.state==='disabled','add source while off preserves master switch');
+  await app.runSource('source_toggle',['new1','https://rules.example/list',false]);
+  check(!ruleData.items[0].enabled && text(root).includes('选择已保存'),'rule switch persisted after job and canonical reread');
+  await app.runSource('source_remove',['new1','https://rules.example/list']);check(!ruleData.items.length,'source removal');
+  check(!storage.has('adzero.v0.8.'+'b'.repeat(32)+'.job'),'completed job receipt cleared');
+  const before=commands.length;await app.runSource('source_add',['','','http://unsafe.example/list','domains']);check(commands.length===before && app.notice.kind==='error','invalid custom form stays local');
+  rpcStale=true;await app.runSource('source_add',['','Not persisted','https://missing.example/list','domains']);check(app.notice.kind==='error','finished job without persisted subscription is not success');
+  rpcStale=false;rpcListFailure=true;await app.runSource('source_refresh',[]);check(app.notice.kind==='error' && find('az-source-add').disabled,'unreadable source list prevents success and editing');
+  reset();storage.set('adzero.v0.8.'+sessionID+'.job',JSON.stringify('11111111-1111-1111-1111-111111111111'));
+  root=app.render({state:'loading'});await app.initialRequest;
+  check(app.rulesOpen && commands.includes('job_status') && !storage.has('adzero.v0.8.'+sessionID+'.job'),'navigation resumes stored job receipt and reconciles result');
+  reset({state:'paused'});await app.openRules();check(find('az-source-add').disabled,'paused sources cannot be edited');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

@@ -2,6 +2,8 @@
 // Typed methods, no command or environment arguments exposed to the browser.
 import { connect } from 'ubus';
 import { hostname } from '../../../libexec/adzero/policy-lib.uc';
+import * as fs from 'fs';
+import * as sources from '../../../libexec/adzero/source-lib.uc';
 const bus = connect();
 function invoke(request, action, args, output) {
 	// Nested asynchronous exec keeps rpcd free to serve NaiLink's local session.
@@ -21,7 +23,48 @@ function domain(request, action, scope) {
 		return invoke(request,action,args,!scope);
 	} catch(e) { return {ok:false,message:e.message}; }
 }
+function job(request,action,args) {
+	// Only the local launcher is synchronous: it never downloads, waits on
+	// ctl's lock, or invokes ubus. The detached worker performs all slow work.
+	let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
+	let proc=fs.popen(join(' ',map(['/usr/libexec/adzero/job','start',action,...args],quote))+' 2>/dev/null','r');
+	if (proc) {
+		let raw=proc.read('all'),code=proc.close();
+		if (code == 0) try { let data=json(raw); if (match(data.job ?? '',/^[a-f0-9-]{36}$/)) return {ok:true,job:data.job}; } catch(e) {}
+	}
+	return {ok:false,message:'规则任务未能开始，请重新检测。'};
+}
+function source_id(value) { if (!match(value ?? '',/^[A-Za-z0-9_]{1,80}$/)) die('规则标识无效。');return value; }
+function source_change(r,action) {
+	try {
+		let a=r.args;
+		if (action == 'source-add') {
+			if (a.catalog) {
+				if (!length(filter(sources.catalog,c=>c.id == a.catalog))) die('未知规则库项目。');
+				return job(r,action,[a.catalog,'','','domains']);
+			}
+			return job(r,action,['',sources.title(a.name),sources.url(a.url),sources.format(a.format)]);
+		}
+		let id=source_id(a.id);
+		if (type(a.expected_url) != 'string' || length(a.expected_url) > 2048) die('规则地址已变化，请重新读取。');
+		return job(r,action,action == 'source-toggle' ? [id,a.expected_url,a.enabled ? '1':'0'] : [id,a.expected_url]);
+	} catch(e) { return {ok:false,message:e.message}; }
+}
 return {adzero:{
+	source_list:{call:r=>invoke(r,'sources-list',[],true)},
+	source_add:{args:{catalog:'',name:'',url:'',format:'domains'},call:r=>source_change(r,'source-add')},
+	source_toggle:{args:{id:'',expected_url:'',enabled:true},call:r=>source_change(r,'source-toggle')},
+	source_remove:{args:{id:'',expected_url:''},call:r=>source_change(r,'source-remove')},
+	source_refresh:{call:r=>job(r,'source-refresh',[])},
+	job_status:{args:{job:''},call:function(r) {
+		let id=r.args.job;
+		if (!match(id ?? '',/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)) return {ok:false,message:'任务标识无效。'};
+		let path='/tmp/adzero-jobs/'+id;
+		if (!fs.stat(path)) return {ok:false,message:'任务记录不存在，设备可能已重启。请重新检测。'};
+		let code=fs.readfile(path+'/result');
+		if (code == null) return {ok:true,pending:true};
+		return int(trim(code)) == 0 ? {ok:true,pending:false} : {ok:false,pending:false,message:'规则未确认应用。请检查地址、格式和当前状态；必要时关闭并恢复。'};
+	}},
 	lookup:{args:{domain:''},call:r => domain(r,'lookup',false)},
 	allow:{args:{domain:'',scope:''},call:r => domain(r,'allow',true)},
 	revoke:{args:{domain:'',scope:''},call:r => domain(r,'revoke',true)},

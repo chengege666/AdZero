@@ -1,0 +1,24 @@
+{
+  "scope": "loopback-only preview, production LuCI view/native DOM/Argon shell; fixture data and commands; no router access",
+  "view": "v0.8.0",
+  "desktop_css_width": 1536,
+  "mobile_css_widths": [
+    390,
+    320
+  ],
+  "checks": [
+    "custom subscription add -> confirmed row",
+    "toggle -> confirmed disabled",
+    "remove -> inline confirmation -> row removed",
+    "five catalog cards and duplicate add disabled",
+    "5-second simulated status delay shows cached overview, stale label and locked mutations",
+    "dark form and mobile no horizontal overflow"
+  ],
+  "screenshots": [
+    "adzero-v0.8.0-rules-desktop.jpg",
+    "adzero-v0.8.0-rules-mobile.jpg",
+    "adzero-v0.8.0-rules-mobile-dark.jpg",
+    "adzero-v0.8.0-rules-320-dark.jpg",
+    "adzero-v0.8.0-cached-return.jpg"
+  ]
+}

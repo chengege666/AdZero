@@ -11,6 +11,7 @@ parser.add_argument('--port', type=int, default=8765)
 args = parser.parse_args()
 routes = {
     '/': ROOT / 'scripts/ui_preview.html', '/ui_preview.js': ROOT / 'scripts/ui_preview.js',
+    '/source_catalog.json': ROOT / 'artifacts/ui-preview/source_catalog.json',
     '/native-dom.js': ROOT / 'artifacts/ui-preview/native-dom.js',
     '/luci-static/resources/view/adzero/overview.js': ROOT / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.js',
     '/luci-static/resources/view/adzero/overview.css': ROOT / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.css',
