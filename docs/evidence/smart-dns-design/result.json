@@ -1,0 +1,180 @@
+{
+  "status": "passed",
+  "scope": "design experiment, literal test config; not production integration, proxy, TLS, router or LAN validation",
+  "assets": [
+    {
+      "url": "https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/packages/smartdns_1.2023.43-r1_x86_64.ipk",
+      "sha256": "b7d07896aff635899207a7fdfd5f76440b3262dde467db42dc3281af3dd35074",
+      "version": "1.2023.43-r1"
+    },
+    {
+      "url": "https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base/libopenssl3_3.0.22-r1_x86_64.ipk",
+      "sha256": "8684c161bbdaecc47db47526191852a64af4bd2544ec425420ea416cf0820c16",
+      "version": "3.0.22-r1"
+    }
+  ],
+  "checks": [
+    {
+      "name": "www.udp.cn.example",
+      "type": 1,
+      "transport": "udp",
+      "upstream": "cn"
+    },
+    {
+      "name": "www.udp.foreign.example",
+      "type": 1,
+      "transport": "udp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "udp.remote.cn.example",
+      "type": 1,
+      "transport": "udp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "sub.ads.example",
+      "type": 1,
+      "transport": "udp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "tracker.cn.example",
+      "type": 1,
+      "transport": "udp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "sub.tracker.cn.example",
+      "type": 1,
+      "transport": "udp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "www.udp.cn.example",
+      "type": 28,
+      "transport": "udp",
+      "upstream": "cn"
+    },
+    {
+      "name": "www.udp.foreign.example",
+      "type": 28,
+      "transport": "udp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "udp.remote.cn.example",
+      "type": 28,
+      "transport": "udp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "sub.ads.example",
+      "type": 28,
+      "transport": "udp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "tracker.cn.example",
+      "type": 28,
+      "transport": "udp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "sub.tracker.cn.example",
+      "type": 28,
+      "transport": "udp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "www.tcp.cn.example",
+      "type": 1,
+      "transport": "tcp",
+      "upstream": "cn"
+    },
+    {
+      "name": "www.tcp.foreign.example",
+      "type": 1,
+      "transport": "tcp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "tcp.remote.cn.example",
+      "type": 1,
+      "transport": "tcp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "sub.ads.example",
+      "type": 1,
+      "transport": "tcp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "tracker.cn.example",
+      "type": 1,
+      "transport": "tcp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "sub.tracker.cn.example",
+      "type": 1,
+      "transport": "tcp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "www.tcp.cn.example",
+      "type": 28,
+      "transport": "tcp",
+      "upstream": "cn"
+    },
+    {
+      "name": "www.tcp.foreign.example",
+      "type": 28,
+      "transport": "tcp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "tcp.remote.cn.example",
+      "type": 28,
+      "transport": "tcp",
+      "upstream": "foreign"
+    },
+    {
+      "name": "sub.ads.example",
+      "type": 28,
+      "transport": "tcp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "tracker.cn.example",
+      "type": 28,
+      "transport": "tcp",
+      "blocked_before_upstream": true
+    },
+    {
+      "name": "sub.tracker.cn.example",
+      "type": 28,
+      "transport": "tcp",
+      "blocked_before_upstream": true
+    },
+    {
+      "cache_reuse": true,
+      "group": "cn"
+    },
+    {
+      "local_name_preserved": true
+    },
+    {
+      "foreign_failure_no_domestic_fallback": true,
+      "client_outcome": "timeout"
+    },
+    {
+      "domestic_group_works_while_foreign_fails": true
+    }
+  ],
+  "request_counts": {
+    "cn": 6,
+    "foreign": 12
+  }
+}

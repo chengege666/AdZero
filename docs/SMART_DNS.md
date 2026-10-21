@@ -4,6 +4,14 @@
 
 用户目标：有 NaiLink、PassWall、OpenClash 或 Nikki 时自动适配；没有代理时也能独立完成国内/国外域名分流和广告过滤。主页面只增加「智能 DNS」开关，默认先检查当前链路；国内上游、国外上游与域名例外放入按需展开的设置。
 
+## 已完成的独立链路实验
+
+2026-10-21 使用真实 OpenWrt 24.10.8 dnsmasq 2.93 与官方 SmartDNS 1.2023.43，在临时 chroot 内通过 **28 项检查**：两个可记录请求的回环上游分别返回不同地址，国内、国外和「国内父域下的国外例外」到达正确上游；客户端 UDP/TCP 和 A/AAAA 都检查，广告与被拦截父域的子域不会到达上游。另验证缓存复用、本地名称保留、国外上游失效时不回退国内组，以及国内组继续可用。
+
+可复现脚本：[check_smart_dns_design.py](../scripts/check_smart_dns_design.py)。证据：[smart-dns-design/result.json](evidence/smart-dns-design/result.json)。运行方式为 WSL/Linux root 执行 `python3 scripts/check_smart_dns_design.py`，仅用于临时 chroot；没有在宿主或路由器安装 SmartDNS。脚本在执行官方包内容前验证 SHA-256，报告记录版本与下载地址。
+
+实验使用写死的隔离测试配置和 `.example` 测试域名，DNS 上游均为回环地址；A/AAAA 返回的文字地址不会建立连接。**没有调用 AdZero 的生产启停、事务、四代理适配器或界面**，也没有测试真实 DoH/DoT、代理传输或 LAN。它验证组件组合的可行性，不能充当智能 DNS 功能已交付的证据。
+
 ## 解析路径
 
 ```mermaid
