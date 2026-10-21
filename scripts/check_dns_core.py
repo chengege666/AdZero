@@ -62,6 +62,8 @@ def main():
     if os.name == "nt" or os.uname().machine != "x86_64":
         raise SystemExit("Use Linux/WSL x86_64")
     cache = ROOT / "artifacts/upstream"
+    cache.mkdir(parents=True, exist_ok=True)
+    (ROOT / "artifacts/runtime").mkdir(parents=True, exist_ok=True)
     archive = cache / f"mihomo-linux-amd64-compatible-{VERSION}.gz"
     if not archive.exists():
         with urllib.request.urlopen(URL, timeout=60) as source:

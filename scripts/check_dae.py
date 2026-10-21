@@ -20,6 +20,8 @@ SHA256 = "c550af580dc97cc90986260da78c4bf72917f3213c2b5d8b79c45199d9c3dc90"
 
 def main():
     archive = ROOT / "artifacts/upstream/dae-v2.1.1.tar.xz"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    (ROOT / "artifacts/runtime").mkdir(parents=True, exist_ok=True)
     if not archive.exists():
         with urllib.request.urlopen(URL, timeout=60) as response:
             archive.write_bytes(response.read(50 * 1024 * 1024))
