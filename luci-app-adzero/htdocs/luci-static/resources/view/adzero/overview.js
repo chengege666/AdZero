@@ -6,7 +6,7 @@
 'require poll';
 
 var policyCalls = {};
-[ ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
+[ ['enable', []], ['disable', []], ['refresh', []], ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
 	policyCalls[method[0]] = rpc.declare({ object: 'adzero', method: method[0], params: method[1] });
 });
 var sourceCalls = {};
@@ -37,19 +37,25 @@ function readSnapshot() {
 	if (!saved || typeof saved.at !== 'number' || Date.now()-saved.at < 0 || Date.now()-saved.at > 300000 || !saved.status || typeof saved.status.state !== 'string') return null;
 	return Object.assign({},saved.status,{stale:true,cached_at:saved.at});
 }
-function waitSourceJob(reply) {
+function waitJob(reply) {
 	if (!reply || !reply.ok) return Promise.reject(new Error(reply && reply.message || _('操作未完成，请重新检测。')));
 	if (!reply.job) return Promise.resolve();
 	var attempts=0;
 	function check() {
 		return sourceCalls.job_status(reply.job).then(function(result) {
-			if (!result || !result.ok) throw new Error(result && result.message || _('规则任务结果未知，请重新检测。'));
+			if (!result || !result.ok) throw new Error(result && result.message || _('任务结果未知，请重新检测。'));
 			if (!result.pending) return;
 			if (++attempts > 1200) throw new Error(_('后台任务仍可能执行，请重新检测后查看结果。'));
 			return new Promise(function(resolve) { setTimeout(resolve,2000); }).then(check);
 		});
 	}
 	return check();
+}
+function trackJob(reply,kind,action) {
+	// Never persist domain scopes, custom URLs or private arguments in receipts.
+	if (reply && reply.ok && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(reply.job || '')) return Promise.reject(new Error(_('未收到有效任务回执，请重新检测。')));
+	if (reply && reply.job) sessionValue('job',{job:reply.job,kind:kind,action:action});
+	return waitJob(reply);
 }
 
 // Phosphor Icons (MIT), license: /usr/share/licenses/luci-app-adzero/.
@@ -257,8 +263,7 @@ return view.extend({
 	},
 	continueSourceJob: function(reply) {
 		var self=this,failure=null;self.busy='rules';self.notice=null;self.paint();
-		if (reply.job) sessionValue('job',reply.job);
-		return waitSourceJob(reply).catch(function(e){failure=String(e.message || e);}).then(getStatus).then(function(s){
+		return trackJob(reply,'source',null).catch(function(e){failure=String(e.message || e);}).then(getStatus).then(function(s){
 			self.currentStatus=s;self.lastChecked=new Date();self.domainResult=null;self.removeSource=null;
 			var healthy=s.state==='disabled' || s.state==='configured_unverified';
 			self.notice=failure || !healthy ? {kind:'error',text:_('规则未确认应用，已重新读取当前状态。'),detail:failure || _('请先处理恢复记录。')} :
@@ -310,24 +315,24 @@ return view.extend({
 		}).catch(function(err) { self.domainResult = {error:String(err.message || err)}; })
 			.then(function() { self.busy = null; self.paint('az-domain'); });
 	},
-	runPolicy: function(action, args) {
+	runPolicy: function(action, args, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (self.busy || (self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause'].indexOf(action) >= 0 && f.enabled))) return Promise.resolve();
+		if (['allow','revoke','pause','resume'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
 		self.busy = action; self.notice = null; self.paint();
 		var failure;
-		return policyCalls[action].apply(null,args).then(function(result) {
-			if (!result || !result.ok) throw new Error(result && result.message || _('操作结果未确认，请重新检测。'));
+		return (receipt ? Promise.resolve(receipt) : policyCalls[action].apply(null,args)).then(function(result) {
+			return trackJob(result,'policy',action);
 		}).catch(function(err) { failure = String(err.message || err); }).then(getStatus).then(function(s) {
 			self.currentStatus = s; self.lastChecked = new Date(); self.domainResult = null;
 			var allowed = (s.policy || {}).allowed || [], expected = action === 'pause' ? s.state === 'paused' : s.state === 'configured_unverified';
-			if (action === 'allow') expected = expected && allowed.indexOf(args[1]) >= 0;
-			if (action === 'revoke') expected = expected && allowed.indexOf(args[1]) < 0;
+			if (action === 'allow' && !receipt) expected = expected && allowed.indexOf(args[1]) >= 0;
+			if (action === 'revoke' && !receipt) expected = expected && allowed.indexOf(args[1]) < 0;
 			self.notice = failure || !expected ? {kind:'error',text:_('操作未确认完成，已重新读取当前状态。'),detail:failure || _('请检查当前状态后重试。')} :
 				{kind:'success',text: action === 'pause' ? _('保护已暂停，到期后自动尝试恢复。') : action === 'resume' ? _('保护已恢复。') : action === 'allow' ? _('放行名单已应用，并同步到当前接入。') : _('已撤销放行，并同步到当前接入。')};
 		}).catch(function(err) {
 			self.currentStatus = {state:'error',error:String(err)};
 			self.notice = {kind:'error',text:_('操作结果暂时无法确认，请重新检测。'),detail:failure || String(err)};
-		}).then(function() { self.busy = null; self.paint(action === 'allow' || action === 'revoke' ? 'az-domain' : 'az-toggle'); });
+		}).then(function() { sessionValue('job',null); self.busy = null; self.paint(action === 'allow' || action === 'revoke' ? 'az-domain' : 'az-toggle'); });
 	},
 	paint: function(focusId) {
 		var panel = this.panelNode || document.getElementById('adzero-panel');
@@ -352,13 +357,13 @@ return view.extend({
 			})
 			.then(function() { self.busy = null; self.paint(initial === true ? null : 'az-status'); });
 	},
-	runAction: function(action) {
+	runAction: function(action, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (self.busy || (self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || (action === 'refresh' && f.enabled))) return Promise.resolve();
+		if (['enable','disable','refresh'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || (action === 'refresh' && f.enabled)))) return Promise.resolve();
 		self.busy = action; self.notice = null; self.paint();
 		var failure = null;
-		return fs.exec('/usr/libexec/adzero/ctl', [ action ]).then(function(result) {
-			if (Number(result.code) !== 0) throw new Error(result.stderr || _('操作未完成，请查看错误信息后重新检测。'));
+		return (receipt ? Promise.resolve(receipt) : policyCalls[action]()).then(function(result) {
+			return trackJob(result,'action',action);
 		}).catch(function(err) { failure = String(err); }).then(function() { return getStatus(); }).then(function(s) {
 			self.currentStatus = s; self.lastChecked = new Date();
 			var expected = action === 'disable' ? 'disabled' : 'configured_unverified';
@@ -367,13 +372,13 @@ return view.extend({
 		}).catch(function(err) {
 			self.currentStatus = { state: 'error', error: String(err) };
 			self.notice = { kind: 'error', text: _('操作结果暂时无法确认，请重新检测。'), detail: failure || String(err) };
-		}).then(function() { self.busy = null; self.paint(action === 'refresh' ? 'az-update' : 'az-toggle'); });
+		}).then(function() { sessionValue('job',null); self.busy = null; self.paint(action === 'refresh' ? 'az-update' : 'az-toggle'); });
 	},
 	render: function(status) {
 		var self = this;
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.8.1' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.8.2' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {
@@ -392,7 +397,12 @@ return view.extend({
 		if (status.state === 'loading' || status.stale) {
 			var pendingJob=sessionValue('job');
 			this.initialRequest = this.refreshStatus(true).then(function(){
-				if (typeof pendingJob==='string' && /^[a-f0-9-]{36}$/.test(pendingJob)) { self.rulesOpen=true; self.loadSources(); return self.continueSourceJob({ok:true,job:pendingJob}); }
+				if (typeof pendingJob==='string') pendingJob={job:pendingJob,kind:'source'};
+				if (!pendingJob || !/^[a-f0-9-]{36}$/.test(pendingJob.job || '')) return;
+				var receipt={ok:true,job:pendingJob.job};
+				if (pendingJob.kind==='action') return self.runAction(pendingJob.action,receipt);
+				if (pendingJob.kind==='policy') return self.runPolicy(pendingJob.action,[],receipt);
+				if (pendingJob.kind==='source') { self.rulesOpen=true; self.loadSources(); return self.continueSourceJob(receipt); }
 			});
 		}
 		return root;

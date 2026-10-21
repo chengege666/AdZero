@@ -7,7 +7,7 @@ ctl=${ADZERO_JOB_CTL:-$(dirname "$0")/ctl}
 case "$1" in
  start)
 	shift
-	case "$1" in source-add|source-toggle|source-remove|source-refresh) ;; *) exit 1 ;; esac
+	case "$1" in enable|disable|refresh|allow|revoke|pause|resume|source-add|source-toggle|source-remove|source-refresh) ;; *) exit 1 ;; esac
 	[ ! -L "$jobs" ] || exit 1
 	mkdir -p "$jobs" || exit 1
 	id=$(cat /proc/sys/kernel/random/uuid) || exit 1

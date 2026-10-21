@@ -31,11 +31,8 @@ const commands = [];
 let state, failAction, failStatus, pending, resolveAction, staleResult, statusPending, resolveStatus;
 const api = { exec: async (program, args) => {
   assert.equal(program, '/usr/libexec/adzero/ctl'); commands.push(args[0]);
+  assert.equal(args[0], 'status', 'only short reads may use file.exec');
   if (args[0] === 'status') { if (statusPending) await new Promise(r => { resolveStatus = r; }); if (failStatus) throw new Error('status unreachable'); return { code: 0, stdout: JSON.stringify(state) }; }
-  if (pending) await new Promise(r => { resolveAction = r; });
-  if (failAction) return { code: 1, stderr: '<script>untrusted error</script>' };
-  if (!staleResult) state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified';
-  return { code: 0, stdout: 'ok' };
 } };
 let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked = false, sessionID = 'b'.repeat(32), ruleData, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
 const storage = new Map();
@@ -43,6 +40,12 @@ const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable'
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   assert.equal(spec.object,'adzero'); commands.push(spec.method);
   if (rpcFailure) return {ok:false,message:'typed failure'};
+  if (['enable','disable','refresh'].includes(spec.method)) {
+    if (pending) await new Promise(r => { resolveAction = r; });
+    if (failAction) return {ok:false,message:'<script>untrusted error</script>'};
+    if (!staleResult) state.state = spec.method === 'disable' ? 'disabled' : 'configured_unverified';
+    return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  }
   if (spec.method === 'source_list') return rpcListFailure ? {ok:false,message:'list unavailable'} : {ok:true,data:structuredClone(ruleData)};
   if (spec.method === 'job_status') return {ok:true,pending:false};
   if (spec.method.startsWith('source_')) {
@@ -58,7 +61,7 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
     state.state = spec.method === 'pause' ? 'paused' : 'configured_unverified';
     state.policy.pause = spec.method === 'pause' ? {stage:'paused',remaining:args[0]} : null;
   }
-  return {ok:true};
+  return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
 } };
 const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', 'sessionStorage', source)(
   { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}},session);
@@ -82,7 +85,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(find('az-update').disabled, 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
   check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v='), 'local versioned CSS');
-  await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'status']);
+  await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-update').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
   check(text(root).includes('66,425'), 'real domain count');
@@ -191,6 +194,13 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset();storage.set('adzero.v0.8.'+sessionID+'.job',JSON.stringify('11111111-1111-1111-1111-111111111111'));
   root=app.render({state:'loading'});await app.initialRequest;
   check(app.rulesOpen && commands.includes('job_status') && !storage.has('adzero.v0.8.'+sessionID+'.job'),'navigation resumes stored job receipt and reconciles result');
+  for (const [kind,action] of [['action','enable'],['policy','allow'],['policy','resume']]) {
+    reset({state:'configured_unverified'});
+    storage.set('adzero.v0.8.'+sessionID+'.job',JSON.stringify({job:'11111111-1111-1111-1111-111111111111',kind,action}));
+    root=app.render({state:'loading'});await app.initialRequest;
+    check(commands.join(',')==='status,job_status,status' && app.notice.kind==='success','navigation reconciles '+action+' without submitting it twice');
+    check(!storage.has('adzero.v0.8.'+sessionID+'.job'),'receipt cleared after '+action+' confirmation');
+  }
   reset({state:'paused'});await app.openRules();check(find('az-source-add').disabled,'paused sources cannot be edited');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

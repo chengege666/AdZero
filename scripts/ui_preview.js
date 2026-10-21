@@ -23,10 +23,7 @@ const baseline = {
 let state = structuredClone(baseline), app, calls = 0, statusDelay = 700;
 const api = { exec: async (_program, args) => {
   if (args[0] === 'status') { await new Promise(resolve => setTimeout(resolve, statusDelay)); if (state.state === 'error') throw new Error('模拟：连接暂时中断'); return { code: 0, stdout: JSON.stringify(state) }; }
-  document.getElementById('calls').textContent = '操作次数：' + (++calls);
-  await new Promise(resolve => setTimeout(resolve, 1600));
-  if (document.getElementById('fail').checked) return { code: 1, stderr: '模拟错误：规则下载失败，原配置已恢复。' };
-  state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified'; return { code: 0, stdout: 'ok' };
+  throw Error('Only status uses file.exec');
 } };
 let sourceData={items:[],catalog:[]};
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
@@ -34,6 +31,11 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
   if (spec.method === 'source_list') return {ok:true,data:structuredClone(sourceData)};
   if (spec.method === 'job_status') return {ok:true,pending:false};
+  document.getElementById('calls').textContent = '操作次数：' + (++calls);
+  if (['enable','disable','refresh'].includes(spec.method)) {
+    state.state = spec.method === 'disable' ? 'disabled' : 'configured_unverified';
+    return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  }
   if (spec.method.startsWith('source_')) {
     if (spec.method === 'source_add') {
       const rule=sourceData.catalog.find(r=>r.id===args[0]);
@@ -55,7 +57,7 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   if (spec.method==='revoke') state.policy.allowed=state.policy.allowed.filter(x=>x!==args[1]);
   state.state=spec.method==='pause'?'paused':'configured_unverified';
   state.policy.pause=spec.method==='pause'?{remaining:args[0],stage:'paused'}:null;
-  return {ok:true};
+  return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
 }};
 const poll = {add:fn=>{setInterval(fn,5000);},remove:()=>{}};
 function mount() { app.busy = app.notice = null; app.lastChecked = new Date(); document.getElementById('preview').replaceChildren(app.render(state)); }

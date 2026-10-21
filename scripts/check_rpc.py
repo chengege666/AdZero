@@ -13,6 +13,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+import uuid as uuidlib
 
 from check_openwrt_runtime import ROOT, SHA256
 
@@ -44,6 +45,12 @@ ubus -s /tmp/ubus.sock call session create '{"timeout":2}' >/tmp/nested.json || 
 case "$1" in
  lookup) printf '{"available":true,"domain":"%s","match":"none"}\\n' "$2";;
  pause) exit 1;;
+ enable|disable|refresh)
+   mkdir /tmp/long-operation.lock || exit 1
+   trap 'rmdir /tmp/long-operation.lock' EXIT
+   echo $$ > /tmp/long-operation.pid
+   sleep 2
+   echo 'private-backend-token-not-for-browser';;
  source-add) sleep 2;;
  sources-list) echo '{"catalog":[],"items":[],"pending":false}';;
  *) echo 'private-backend-token-not-for-browser';;
@@ -55,7 +62,8 @@ esac
             log=(ROOT/'artifacts/runtime/rpc-smoke.log').open('w+')
             procs.append(subprocess.Popen(['chroot',tmp,'/sbin/ubusd','-s','/tmp/ubus.sock'],stdout=log,stderr=log))
             time.sleep(.2)
-            procs.append(subprocess.Popen(['chroot',tmp,'/sbin/rpcd','-s','/tmp/ubus.sock'],stdout=log,stderr=log))
+            # Lower the real rpcd execution timer only in this disposable chroot.
+            procs.append(subprocess.Popen(['chroot',tmp,'/sbin/rpcd','-s','/tmp/ubus.sock','-t','1'],stdout=log,stderr=log))
             for _ in range(30):
                 r=run('/bin/ubus','-s','/tmp/ubus.sock','-v','list','adzero')
                 if 'lookup' in r.stdout: break
@@ -63,36 +71,57 @@ esac
             log.flush()
             assert 'lookup' in r.stdout,r.stdout+r.stderr+(ROOT/'artifacts/runtime/rpc-smoke.log').read_text()
             def call(method,data):
+                uuid.write_text(str(uuidlib.uuid4())+'\n')
                 r=run('/bin/ubus','-s','/tmp/ubus.sock','-t','8','call','adzero',method,json.dumps(data))
                 if r.returncode:
                     debug={str(p.relative_to(base)):p.read_text() for p in (base/'tmp/adzero-jobs').glob('*/result*')}
                     raise AssertionError(r.stdout+r.stderr+json.dumps(debug))
                 return json.loads(r.stdout)
+            def finished(receipt):
+                assert receipt['ok'] and uuidlib.UUID(receipt['job'])
+                for _ in range(60):
+                    reply=call('job_status',{'job':receipt['job']})
+                    if not reply.get('pending'): return reply
+                    time.sleep(.1)
+                raise AssertionError('worker did not finish')
             reply=call('lookup',{'domain':'HTTPS://Example.COM/path'})
             assert reply.get('data',{}).get('domain')=='example.com',reply
             assert (base/'tmp/nested.json').exists()
             assert not call('lookup',{'domain':'x.example;id'})['ok']
             assert not call('pause',{'seconds':1})['ok']
-            assert not call('pause',{'seconds':300})['ok']
+            assert not finished(call('pause',{'seconds':300}))['ok']
             result=call('allow',{'domain':'ads.example','scope':'ads.example'})
-            assert result['ok'] and 'private-backend' not in json.dumps(result)
-            assert call('resume',{})['ok']
+            assert result['ok'] and 'private-backend' not in json.dumps(result),result
+            assert finished(result)['ok']
+            assert finished(call('resume',{}))['ok']
             assert call('source_list',{})['data']['items']==[]
             assert not call('source_add',{'catalog':'','name':'test','url':'http://example.com/list','format':'domains'})['ok']
             assert not call('source_toggle',{'id':'../../etc','expected_url':'x','enabled':True})['ok']
             start=time.monotonic()
             started=call('source_add',{'catalog':'adaway','name':'','url':'','format':'hosts'})
             assert time.monotonic()-start < 1.5,'launcher waited for worker'
-            assert started['ok'] and started['job']=='12345678-1234-1234-1234-123456789012',started
-            for _ in range(30):
-                done=call('job_status',{'job':started['job']})
-                if not done.get('pending'): break
-                time.sleep(.1)
+            done=finished(started)
             assert done.get('ok') and not done.get('pending'),done
             assert 'private-backend' not in json.dumps(done)
-            assert run('/bin/ubus','call','adzero','exec','{}').returncode != 0
+            assert run('/bin/ubus','-s','/tmp/ubus.sock','call','adzero','exec','{}').returncode != 0
+            # Old direct file.exec kills ctl with SIGKILL before the EXIT trap.
+            direct=run('/bin/ubus','-s','/tmp/ubus.sock','call','file','exec',json.dumps({'command':'/usr/libexec/adzero/ctl','params':['enable']}))
+            assert direct.returncode != 0 and 'timed out' in direct.stderr.lower(),direct
+            assert (base/'tmp/long-operation.lock').is_dir(),'expected orphan after SIGKILL'
+            time.sleep(1.2)  # let the fixture child sleep end before cleanup
+            (base/'tmp/long-operation.lock').rmdir()
+            for action in ('enable','disable','refresh'):
+                start=time.monotonic()
+                receipt=call(action,{})
+                assert time.monotonic()-start < .9,'launcher crossed one-second rpcd limit'
+                assert finished(receipt)['ok'],action
+                assert not (base/'tmp/long-operation.lock').exists(),'detached worker did not release lock'
+                private=(base/'tmp/adzero-jobs'/receipt['job']/'log').read_text()
+                assert 'private-backend-token' in private and 'private-backend' not in json.dumps(receipt)
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
-                    'checks':15,'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed','router':'not_touched'}
+                    'checks':26,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced',
+                    'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
+                    'enable_disable_refresh_survive_timeout':'passed','router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')
             print(json.dumps(report,indent=2))
         finally:

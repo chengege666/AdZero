@@ -16,13 +16,6 @@ function invoke(request, action, args, output) {
 		request.reply(reply);
 	});
 }
-function domain(request, action, scope) {
-	try {
-		let name = hostname(request.args.domain), args = [name];
-		if (scope) push(args,hostname(request.args.scope));
-		return invoke(request,action,args,!scope);
-	} catch(e) { return {ok:false,message:e.message}; }
-}
 function job(request,action,args) {
 	// Only the local launcher is synchronous: it never downloads, waits on
 	// ctl's lock, or invokes ubus. The detached worker performs all slow work.
@@ -32,7 +25,14 @@ function job(request,action,args) {
 		let raw=proc.read('all'),code=proc.close();
 		if (code == 0) try { let data=json(raw); if (match(data.job ?? '',/^[a-f0-9-]{36}$/)) return {ok:true,job:data.job}; } catch(e) {}
 	}
-	return {ok:false,message:'规则任务未能开始，请重新检测。'};
+	return {ok:false,message:'后台任务未能开始，请重新检测。'};
+}
+function domain(request, action, scope) {
+	try {
+		let name = hostname(request.args.domain), args = [name];
+		if (scope) push(args,hostname(request.args.scope));
+		return scope ? job(request,action,args) : invoke(request,action,args,true);
+	} catch(e) { return {ok:false,message:e.message}; }
 }
 function source_id(value) { if (!match(value ?? '',/^[A-Za-z0-9_]{1,80}$/)) die('规则标识无效。');return value; }
 function source_change(r,action) {
@@ -51,6 +51,9 @@ function source_change(r,action) {
 	} catch(e) { return {ok:false,message:e.message}; }
 }
 return {adzero:{
+	enable:{call:r=>job(r,'enable',[])},
+	disable:{call:r=>job(r,'disable',[])},
+	refresh:{call:r=>job(r,'refresh',[])},
 	source_list:{call:r=>invoke(r,'sources-list',[],true)},
 	source_add:{args:{catalog:'',name:'',url:'',format:'domains'},call:r=>source_change(r,'source-add')},
 	source_toggle:{args:{id:'',expected_url:'',enabled:true},call:r=>source_change(r,'source-toggle')},
@@ -63,14 +66,14 @@ return {adzero:{
 		if (!fs.stat(path)) return {ok:false,message:'任务记录不存在，设备可能已重启。请重新检测。'};
 		let code=fs.readfile(path+'/result');
 		if (code == null) return {ok:true,pending:true};
-		return int(trim(code)) == 0 ? {ok:true,pending:false} : {ok:false,pending:false,message:'规则未确认应用。请检查地址、格式和当前状态；必要时关闭并恢复。'};
+		return int(trim(code)) == 0 ? {ok:true,pending:false} : {ok:false,pending:false,message:'操作未确认完成。请重新检测当前状态；必要时关闭并恢复。'};
 	}},
 	lookup:{args:{domain:''},call:r => domain(r,'lookup',false)},
 	allow:{args:{domain:'',scope:''},call:r => domain(r,'allow',true)},
 	revoke:{args:{domain:'',scope:''},call:r => domain(r,'revoke',true)},
 	pause:{args:{seconds:0},call:function(r) {
 		if (index([300,900,1800],r.args.seconds) < 0) return {ok:false,message:'请选择 5、15、30 分钟。'};
-		return invoke(r,'pause',[''+r.args.seconds],false);
+		return job(r,'pause',[''+r.args.seconds]);
 	}},
-	resume:{call:r => invoke(r,'resume',[],false)}
+	resume:{call:r => job(r,'resume',[])}
 }};

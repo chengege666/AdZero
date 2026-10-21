@@ -22,22 +22,12 @@
       ]
     },
     "write": {
-      "file": {
-        "/usr/libexec/adzero/ctl enable": [
-          "exec"
-        ],
-        "/usr/libexec/adzero/ctl disable": [
-          "exec"
-        ],
-        "/usr/libexec/adzero/ctl refresh": [
-          "exec"
-        ]
-      },
+      "file": {},
       "ubus": {
-        "file": [
-          "exec"
-        ],
         "adzero": [
+          "enable",
+          "disable",
+          "refresh",
           "allow",
           "revoke",
           "pause",
