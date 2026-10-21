@@ -9,6 +9,7 @@ sh -n luci-app-adzero/root/usr/libexec/adzero/ctl
 sh -n luci-app-adzero/root/usr/libexec/adzero/probe
 sh -n luci-app-adzero/root/usr/libexec/adzero/rules.sh
 sh -n luci-app-adzero/root/usr/libexec/adzero/adapter
+sh -n luci-app-adzero/root/usr/libexec/adzero/backend
 sh -n luci-app-adzero/root/usr/libexec/adzero/watch
 sh -n luci-app-adzero/root/etc/init.d/adzero
 sh -n scripts/install.sh

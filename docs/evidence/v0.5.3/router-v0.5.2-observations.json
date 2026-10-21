@@ -1,0 +1,21 @@
+{
+  "evidence": "user-provided SSH logs and read-only commands, 2026-10-21",
+  "firmware": "OpenWrt 25.12.5 r33051-f5dae5ece4",
+  "target": "rockchip/armv8",
+  "adzero": "0.5.2-r1",
+  "backend": "adblock-fast 1.2.4-r4",
+  "download": "success, HaGeZi Light domains format",
+  "domains_reported_by_backend": 66425,
+  "backend_processing_dnsmasq_test_heartbeat": "success in supplied log",
+  "enable_result": "AdZero treated init nonzero return as failure and rolled back",
+  "post_rollback_ctl_state": "disabled",
+  "post_rollback_managed": false,
+  "post_rollback_backend_enabled": false,
+  "active_proxy": "NaiLink / daed",
+  "other_installed_proxies": ["PassWall", "PassWall 2", "OpenClash"],
+  "active_proxy_count": 1,
+  "device_service_started_and_stopped_hooks": "test _fw4_restart=1 followed by conditional firewall notification, no final return 0",
+  "device_dnsmasq_procd_running": true,
+  "v0.5.3_device_acceptance": "not_run",
+  "nailink_api_ebpf_lan": "not_run"
+}

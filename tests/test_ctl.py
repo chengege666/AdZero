@@ -46,16 +46,36 @@ else:
 '''
 MOCK_BACKEND = r'''#!/bin/sh
 printf '%s\n' "$1" >> "$MOCK_LOG"
-if [ "$1" = restart ] && [ -f "$MOCK_FAIL_ONCE" ]; then
+if [ "$1" != stop ] && [ -f "$MOCK_FAIL_ONCE" ]; then
     rm -f "$MOCK_FAIL_ONCE"
     echo "simulated one-time restart failure" >&2
     exit 17
 fi
-if [ "$1" = restart ] && [ -f "$MOCK_FAIL" ]; then
+if [ -f "$MOCK_FAIL" ]; then
     echo "simulated persistent restart failure" >&2
     exit 17
 fi
-exit 0
+if [ "$1" = stop ]; then
+    printf stopped > "$MOCK_BACKEND_RUNTIME"
+elif [ "${MOCK_FALSE_SUCCESS:-0}" = 1 ]; then
+    printf failed > "$MOCK_BACKEND_RUNTIME"
+elif [ "${MOCK_NOOP_START:-0}" != 1 ]; then
+    printf ready > "$MOCK_BACKEND_RUNTIME"
+fi
+exit "${MOCK_HOOK_RC:-0}"
+'''
+MOCK_BACKEND_CHECK = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+path = Path(os.environ["MOCK_BACKEND_RUNTIME"])
+state = path.read_text() if path.exists() else "stopped"
+conf = json.loads(Path(os.environ["MOCK_CONFIG"]).read_text())
+ready = state == "ready" and conf["adblock-fast.config.enabled"] == "1" and not Path(os.environ["MOCK_BAD_HEALTH"]).exists()
+print(json.dumps({"state": "ready" if ready else state, "domains": 2 if ready else 0}))
+action = sys.argv[1]
+if action == 'download-error': sys.exit(0 if os.environ.get("MOCK_DOWNLOAD_ERROR") == '1' else 1)
+if action == 'stopped': sys.exit(0 if state == 'stopped' else 1)
+sys.exit(0 if ready else 1)
 '''
 
 
@@ -84,10 +104,15 @@ class AdZeroTest(unittest.TestCase):
         self.daed_check = base / "daed_check"
         self.uci = base / "mock_uci"
         self.backend = base / "mock_adblock_fast"
+        self.backend_check = base / "mock_backend_check"
+        self.runtime = base / "backend_runtime"
+        self.bad_health = base / "backend_bad_health"
         self.uci.write_text(MOCK_UCI)
         self.backend.write_text(MOCK_BACKEND)
         self.uci.chmod(0o700)
         self.backend.chmod(0o700)
+        self.backend_check.write_text(MOCK_BACKEND_CHECK)
+        self.backend_check.chmod(0o700)
         self.adapter = base / "mock_adapter"
         self.adapter.write_text('#!/bin/sh\nif [ "$1" = status ]; then echo \'{"plugin":"none","stage":"inactive","domains":0}\'; fi\nexit 0\n')
         self.adapter.chmod(0o700)
@@ -96,6 +121,7 @@ class AdZeroTest(unittest.TestCase):
             "ADZERO_UCI": str(self.uci),
             "ADZERO_ADAPTER": str(self.adapter),
             "ADZERO_BACKEND_INIT": str(self.backend),
+            "ADZERO_BACKEND_CHECK": str(self.backend_check),
             "ADZERO_STATE_DIR": str(self.state),
             "ADZERO_LOCK_DIR": str(self.lock),
             "ADZERO_NAILINK_CONFIG": str(self.nailink),
@@ -108,12 +134,14 @@ class AdZeroTest(unittest.TestCase):
             "MOCK_LOG": str(self.log),
             "MOCK_FAIL": str(self.backend_fail),
             "MOCK_FAIL_ONCE": str(self.fail_once),
+            "MOCK_BACKEND_RUNTIME": str(self.runtime),
+            "MOCK_BAD_HEALTH": str(self.bad_health),
         }
 
     def run_ctl(self, command, success=True):
         result = subprocess.run(
             shlex.split(os.environ.get("ADZERO_TEST_SHELL", "/bin/sh")) + [str(CTL), command],
-            text=True, capture_output=True, env=self.env, timeout=8
+            text=True, capture_output=True, env=self.env, timeout=20
         )
         if success:
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -158,11 +186,50 @@ class AdZeroTest(unittest.TestCase):
     def test_failed_start_restores_backend(self):
         self.fail_once.touch()
         result = self.run_ctl("enable", success=False)
-        self.assertIn("wildcard/light-onlydomains.txt", result.stderr)
+        self.assertNotIn("默认规则", result.stderr)
         self.assertEqual(self.config()["adblock-fast.config.enabled"], "0")
         self.assertEqual(self.config()["adblock-fast.config.force_dns"], "1")
         self.assertEqual(self.config()["adzero.main.enabled"], "0")
         self.assertFalse((self.state / "managed").exists())
+
+    def test_hook_exit_one_after_success_allows_enable_refresh_and_disable(self):
+        self.env["MOCK_HOOK_RC"] = "1"
+        before = self.config()
+        self.run_ctl("enable")
+        self.assertEqual(self.status()["state"], "configured_unverified")
+        self.run_ctl("refresh")
+        self.run_ctl("disable")
+        self.assertEqual(self.config(), before)
+        self.assertEqual(self.log.read_text().splitlines(), ["stop", "start", "stop", "dl", "stop"])
+
+    def test_exit_zero_without_successful_state_is_rolled_back(self):
+        before = self.config()
+        self.env["MOCK_FALSE_SUCCESS"] = "1"
+        result = self.run_ctl("enable", success=False)
+        self.assertEqual(self.config(), before)
+        self.assertNotIn("规则下载", result.stderr)
+        self.assertFalse((self.state / "managed").exists())
+
+    def test_actual_download_error_can_show_public_default_url(self):
+        self.env.update(MOCK_FALSE_SUCCESS="1", MOCK_DOWNLOAD_ERROR="1")
+        result = self.run_ctl("enable", success=False)
+        self.assertIn("wildcard/light-onlydomains.txt", result.stderr)
+        self.assertFalse((self.state / "managed").exists())
+
+    def test_prior_success_cannot_mask_noop_start_with_exit_one(self):
+        self.runtime.write_text("ready")
+        self.env.update(MOCK_HOOK_RC="1", MOCK_NOOP_START="1")
+        self.run_ctl("enable", success=False)
+        self.assertEqual(self.runtime.read_text(), "stopped")
+        self.assertEqual(self.config()["adzero.main.enabled"], "0")
+
+    def test_lost_live_backend_state_is_not_reported_as_enabled(self):
+        self.run_ctl("enable")
+        self.bad_health.touch()
+        self.assertEqual(self.status()["state"], "inconsistent")
+        self.run_ctl("enable", success=False)
+        self.run_ctl("reconcile", success=False)
+        self.assertTrue((self.state / "managed").exists())
 
     def test_failed_backend_does_not_disclose_user_subscription(self):
         config = self.config()
@@ -552,6 +619,23 @@ class AdZeroTest(unittest.TestCase):
         self.conf.write_text(json.dumps(config))
         self.run_ctl("disable")
         self.assertEqual(self.config()["adblock-fast.adzero_default.custom"], "keep")
+
+    def test_backend_download_size_does_not_orphan_owned_default_rule(self):
+        before = self.config()
+        self.run_ctl("enable")
+        config = self.config()
+        config["adblock-fast.adzero_default.size"] = "1398563"
+        self.conf.write_text(json.dumps(config))
+        self.run_ctl("disable")
+        self.assertEqual(self.config(), before)
+
+    def test_non_numeric_extra_metadata_is_preserved(self):
+        self.run_ctl("enable")
+        config = self.config()
+        config["adblock-fast.adzero_default.size"] = "user-custom-value"
+        self.conf.write_text(json.dumps(config))
+        self.run_ctl("disable")
+        self.assertEqual(self.config()["adblock-fast.adzero_default.size"], "user-custom-value")
 
     def test_empty_sources_after_external_change_are_not_reported_as_enabled(self):
         self.run_ctl("enable")

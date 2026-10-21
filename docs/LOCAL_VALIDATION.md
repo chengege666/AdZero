@@ -1,4 +1,19 @@
-# v0.5.2 验证记录（2026-10-21）
+# v0.5.3 验证记录（2026-10-21）
+
+本轮针对 v0.5.2 在真机上完成 66,425 条规则加载后仍被 AdZero 回滚的问题，修正后端操作确认方式。
+
+- 用户日志确认规则下载、处理、dnsmasq 配置检查、重启和心跳探测成功，但 ctl 只按 init 命令返回值判断失败。用户随后读取的状态确认已回滚为 disabled / managed=false，只有 NaiLink / daed 正在运行。
+- 对照 [adblock-fast 1.2.4-r4 init](https://github.com/openwrt/packages/blob/65493e273e4b9cd7014236b69fd6fdc617b88436/net/adblock-fast/files/etc/init.d/adblock-fast) 和 [OpenWrt 25.12.5 rc.common](https://github.com/openwrt/openwrt/blob/v25.12.5/package/base-files/files/etc/rc.common)：未需要 fw4 重启时，service_started/service_stopped 的最后条件判断返回 1，并传播为 start、stop、dl 的退出码。真机读取的两个函数与此一致，dnsmasq 的 procd running 字段为 true。
+- check_backend_hooks.py 校验固定上游源码哈希，在真实 OpenWrt ash 执行其原始函数体，使用无副作用的 procd 替身。6 组检查确认：不需要 fw4 重启时三个动作均返回 1，需要重启时均返回 0。没有启动真实服务或执行防火墙操作。
+- 新增 backend/backend.uc，只读核对 UCI、procd data 的 status/errors/dns/outputFile/entries/force_dns_active、实际有效规则及解析器进程。操作返回 0/1 后均须状态检查通过；其他返回码失败。开启和更新先停用并确认旧状态清除，再执行 start/dl，避免旧 statusSuccess 或旧文件掩盖失败。关闭/回滚只停止后端，不再对 disabled 后端执行启动。
+- status 不再仅凭配置开关显示正常；重复启用及后台同步也要求实际后端正常。异常时输出不含订阅地址或配置内容的检查结果。只有明确的后端下载错误才显示默认源检查提示。
+- 后端自动写入的数字 file_url.size 不再被当作用户修改，关闭时可清理本次自建默认源；其他额外字段和用户改动继续保留。
+- **128 项回归全部通过**：官方 BusyBox/ash、真实 ucode/UCI、Ruby/yq；涵盖非零返回但成功、零返回但失败、旧成功状态、实际错误/空规则/解析器未运行及 size 元数据恢复。服务/包管理器数据和动作使用隔离替身。
+- 三个 SDK 组合重建完成，14 个运行文件内容/权限及实际 LuCI JS 解包检查通过。最终包源码 SHA-256：`4b34bbd45e75c01d52cc5bb3d4e2aed1f12eac0e2dd90fb780b392adb3158221`。证据保存在 [evidence/v0.5.3](evidence/v0.5.3/)。
+
+本版仍需在路由器上重新安装/启用，确认 NaiLink API 接入和实际 LAN DNS；v0.5.2 的成功规则处理及只读输出不替代 v0.5.3 设备验收。历史 Mihomo/dae 证据保持原范围。
+
+## v0.5.2 验证记录（2026-10-21）
 
 本轮修复用户在 OpenWrt 25.12.5 rockchip/armv8 上报告的默认规则下载失败。
 

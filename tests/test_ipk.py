@@ -44,7 +44,7 @@ def list_tar(content):
 class IpkPackagingTest(unittest.TestCase):
     def test_ar_structure_and_control(self):
         package, version = build_ipk.build_bytes()
-        self.assertEqual(version, "0.5.2-r1")
+        self.assertEqual(version, "0.5.3-r1")
         members = parse_ar(package)
         self.assertEqual(set(members), {"debian-binary", "control.tar.gz", "data.tar.gz"})
         self.assertEqual(members["debian-binary"], b"2.0\n")
@@ -52,7 +52,7 @@ class IpkPackagingTest(unittest.TestCase):
         self.assertEqual(set(control), {"control", "conffiles", "postinst", "prerm"})
         body = control["control"][1].decode()
         self.assertIn("Package: luci-app-adzero\n", body)
-        self.assertIn("Version: 0.5.2-r1\n", body)
+        self.assertIn("Version: 0.5.3-r1\n", body)
         self.assertIn("Architecture: all\n", body)
         self.assertIn("Depends: luci-base, adblock-fast, rpcd-mod-file, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus\n", body)
         self.assertEqual(control["conffiles"][1], b"/etc/config/adzero\n")
@@ -73,6 +73,8 @@ class IpkPackagingTest(unittest.TestCase):
             "usr/libexec/adzero/adapter",
             "usr/libexec/adzero/adapter.uc",
             "usr/libexec/adzero/adapter-lib.uc",
+            "usr/libexec/adzero/backend",
+            "usr/libexec/adzero/backend.uc",
             "usr/libexec/adzero/watch",
             "etc/init.d/adzero",
             "usr/share/luci/menu.d/luci-app-adzero.json",
@@ -82,7 +84,7 @@ class IpkPackagingTest(unittest.TestCase):
         self.assertEqual(installed["usr/libexec/adzero/ctl"][0].mode & 0o777, 0o755)
         self.assertEqual(installed["usr/libexec/adzero/probe"][0].mode & 0o777, 0o755)
         for name, (member, data) in installed.items():
-            if name not in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/watch", "etc/init.d/adzero"}:
+            if name not in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "etc/init.d/adzero"}:
                 self.assertEqual(member.mode & 0o777, 0o644)
             self.assertTrue(data)
 

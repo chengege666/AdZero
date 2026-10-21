@@ -29,6 +29,7 @@ TLS_BACKUP=$STATE_DIR/download_allow_insecure.previous
 PROBE=${ADZERO_PROBE:-$(dirname "$0")/probe}
 RULES_LIBRARY=${ADZERO_RULES_LIBRARY:-$(dirname "$0")/rules.sh}
 ADAPTER=${ADZERO_ADAPTER:-$(dirname "$0")/adapter}
+BACKEND_CHECK=${ADZERO_BACKEND_CHECK:-$(dirname "$0")/backend}
 [ -r "$RULES_LIBRARY" ] || { echo 'AdZero: missing rules library' >&2; exit 1; }
 . "$RULES_LIBRARY"
 
@@ -79,7 +80,35 @@ dnsmasq_port_hint() {
 	esac
 }
 backend_available() {
-	[ -x "$BACKEND_INIT" ] && command -v "$UCI_BIN" >/dev/null 2>&1
+	[ -x "$BACKEND_INIT" ] && [ -x "$BACKEND_CHECK" ] && command -v "$UCI_BIN" >/dev/null 2>&1
+}
+backend_confirm() {
+	# Resolver restarts may be acknowledged by procd before the process is up.
+	attempt=0
+	backend_result=
+	while [ "$attempt" -lt 5 ]; do
+		backend_result=$("$BACKEND_CHECK" "$1" 2>/dev/null) && return 0
+		attempt=$((attempt + 1))
+		[ "$attempt" -ge 5 ] || sleep 1
+	done
+	printf 'AdZero: 后端状态检查未通过（%s）：%s\n' "$1" "${backend_result:-unavailable}" >&2
+	return 1
+}
+backend_stop() {
+	# adblock-fast's service_stopped hook returns 1 when no fw4 restart is
+	# needed. Accept that code only with independently confirmed stopped state.
+	backend_rc=0
+	"$BACKEND_INIT" stop || backend_rc=$?
+	case "$backend_rc" in 0|1) backend_confirm stopped ;; *) return 1 ;; esac
+}
+backend_restart() {
+	# Clear and confirm old state first: an old statusSuccess and rule file
+	# must not disguise an invocation that failed before producing new state.
+	backend_stop || return 1
+	[ "$(get_uci adblock-fast.config.enabled)" = 1 ] || return 0
+	backend_rc=0
+	"$BACKEND_INIT" "${1:-start}" || backend_rc=$?
+	case "$backend_rc" in 0|1) backend_confirm ready ;; *) return 1 ;; esac
 }
 adguardhome_running() {
 	command -v "$PIDOF_BIN" >/dev/null 2>&1 && "$PIDOF_BIN" AdGuardHome >/dev/null 2>&1
@@ -148,15 +177,19 @@ print_status() {
 	[ -n "$compatibility" ] || compatibility=null
 	adapter_status=$("$ADAPTER" status 2>/dev/null) || adapter_status=null
 	[ -n "$adapter_status" ] || adapter_status=null
+	backend_ready=0
+	backend_status=$("$BACKEND_CHECK" ready 2>/dev/null) && backend_ready=1
+	[ -n "$backend_status" ] || backend_status=null
 	if [ "$state" = configured_unverified ]; then
 		case "$adapter_status" in null|*recovery_required*|*preparing*|*restarting*|*restoring*) state=inconsistent ;; esac
+		[ "$backend_ready" = 1 ] || state=inconsistent
 	fi
-	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":false,"rule_sources":"%s","compatibility":%s,"adapter":%s}\n' \
+	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":false,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s}\n' \
 		"$state" "$(json_bool "$owner")" "$(json_bool "$configured")" \
 		"$(json_bool "$actual")" "$(resolver_mode)" "$(json_bool "$nailink")" \
 		"$(json_bool "$nailink_active")" "$(json_bool "$nailink_enabled")" \
 		"$(json_bool "$agh")" "$(json_bool "$safe_mode")" "$(json_bool "$dns_review")" \
-		"$port_hint" "$force_status" "$tls_status" "$rule_sources" "$compatibility" "$adapter_status"
+		"$port_hint" "$force_status" "$tls_status" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status"
 }
 acquire_lock() {
 	mkdir "$LOCK_DIR" 2>/dev/null || error '另一项操作正在进行；若异常断电可检查临时锁。'
@@ -208,7 +241,7 @@ rollback_enable() {
 	restore_default_rule || return 1
 	restore_force_dns || return 1
 	restore_tls_download || return 1
-	"$BACKEND_INIT" restart || return 1
+	backend_restart || return 1
 	# The AdZero UCI flag can also have been partially written on commit failure.
 	write_uci adzero.main.enabled 0 adzero || return 1
 	rm -f "$MANAGED_MARKER" "$FORCE_BACKUP" "$TLS_BACKUP" || return 1
@@ -245,6 +278,7 @@ enable_protection() {
 		   [ "$(force_dns_state)" = off ] && [ "$(tls_download_state)" = strict ] && \
 		   [ -f "$FORCE_BACKUP" ] && [ -f "$TLS_BACKUP" ]; then
 			[ "$(rule_sources_state)" = configured ] || error '缺少有效规则源，请关闭后重新启用以初始化默认规则。'
+			backend_confirm ready || error '后端实际状态未确认，请检查诊断并关闭后重试。'
 			"$ADAPTER" apply || error '代理 DNS 适配失败，请检查恢复记录。'
 			printf 'already enabled (client DNS still unverified)\n'
 			return 0
@@ -276,7 +310,7 @@ enable_protection() {
 		rollback_enable "$previous" && error '默认规则初始化失败，原配置已恢复。'
 		error '默认规则初始化失败，回滚未确认，请检查状态。'
 	fi
-	if ! "$BACKEND_INIT" restart; then
+	if ! backend_restart; then
 		rule_failure_hint
 		rollback_enable "$previous" && error '后端启动失败，原配置已恢复。'
 		error '后端启动失败，回滚未确认，请检查状态。'
@@ -311,16 +345,16 @@ disable_protection() {
 		if ! write_uci adblock-fast.config.enabled 0 adblock-fast; then
 			error '无法停用后端；所有权标记已保留。'
 		fi
-		if ! "$BACKEND_INIT" restart; then
+		if ! backend_restart; then
 			write_uci adblock-fast.config.enabled 1 adblock-fast >/dev/null 2>&1 || :
-			"$BACKEND_INIT" restart >/dev/null 2>&1 || :
+			backend_restart >/dev/null 2>&1 || :
 			error '停止后端失败；已尝试回到原来的启用状态。'
 		fi
 	fi
 	if ! write_uci adzero.main.enabled 0 adzero; then
 		if [ "$previous" = 1 ]; then
 			write_uci adblock-fast.config.enabled 1 adblock-fast >/dev/null 2>&1 || :
-			"$BACKEND_INIT" restart >/dev/null 2>&1 || :
+			backend_restart >/dev/null 2>&1 || :
 		fi
 		error '状态保存失败，所有权标记已保留。'
 	fi
@@ -346,7 +380,7 @@ refresh_blocklists() {
 	[ "$(tls_download_state)" = strict ] || error 'HTTPS 证书校验被外部关闭，拒绝更新规则。'
 	[ "$(rule_sources_state)" = configured ] || error '没有有效规则源，拒绝空更新。'
 	reject_insecure_custom_fetch_flags
-	"$BACKEND_INIT" dl || { rule_failure_hint; error '规则更新失败；请检查网络和后端日志。'; }
+	backend_restart dl || { rule_failure_hint; error '规则更新失败；请检查网络和后端日志。'; }
 	"$ADAPTER" apply || error '代理规则同步失败，现有恢复记录已保留。'
 	printf 'blocklist refresh requested\n'
 }
@@ -356,6 +390,6 @@ case "$1" in
 	enable) acquire_lock; enable_protection ;;
 	disable) acquire_lock; disable_protection ;;
 	refresh) acquire_lock; refresh_blocklists ;;
-	reconcile) acquire_lock; [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ] && "$ADAPTER" apply ;;
+	reconcile) acquire_lock; [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ] && backend_confirm ready && "$ADAPTER" apply ;;
 	*) error '用法: ctl {status|enable|disable|refresh}' ;;
 esac

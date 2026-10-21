@@ -2,17 +2,17 @@
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
-**v0.5.2 是公开测试版。** 安装矩阵覆盖 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）和 25.12.5 rockchip/armv8（APK）**。各目标使用对应官方 SDK。四种代理适配已经实现；真实路由器、eBPF 和 LAN 终端验收仍待完成，不能把配置成功当作所有设备都已拦截。
+**v0.5.3 是公开测试版。** 安装矩阵覆盖 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）和 25.12.5 rockchip/armv8（APK）**。各目标使用对应官方 SDK。四种代理适配已经实现；真实路由器、eBPF 和 LAN 终端验收仍待完成，不能把配置成功当作所有设备都已拦截。
 
 ## 一键安装
 
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.5.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.5.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.5.2)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.5.3)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -20,9 +20,9 @@ sh install.sh --local-dir "$(pwd)"
 
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。更新已有适配版本前，先在原版关闭保护，保留恢复记录。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.5.2 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.5.3 地址。
 
-v0.5.2 修正 HaGeZi 默认规则的失效地址。v0.5.1 若已安装但启用时报「Failed to download AdZero - HaGeZi Light」，在确认回滚完成后重新运行上面的安装命令即可升级。缺少 gawk、GNU grep/sed、coreutils-sort 的推荐提示本身不表示启动失败；本轮用 OpenWrt BusyBox 校验规则过滤和排序，未因此新增依赖。
+v0.5.3 修正「规则已加载成功却被判失败回滚」：开启、关闭、更新均核对实际 procd 状态、规则文件和 DNS 服务；只有返回 0/1 且状态检查通过才继续。下载提示只在后端明确报告下载错误时显示。v0.5.1 的旧默认源问题已在 v0.5.2 修正；这些版本启用失败且回滚完成的设备可运行上面的命令升级。缺少 gawk、GNU grep/sed、coreutils-sort 是推荐提示，本版未因此新增依赖。
 
 安装依赖使用固件自己的软件源，不升级整套固件。依赖下载需要联网；离线发行包没有捆绑所有依赖。当前 APK 为开发者未签名包，安装器只对通过 SHA-256 检查的本地 APK 使用 --allow-untrusted。SHA-256 防止文件损坏，下载可信度依赖 GitHub HTTPS。
 
@@ -48,6 +48,7 @@ Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 8 组本机查询�
 - /etc/adzero/adapter.json 保存恢复日志，权限 0600，可能含原有 DNS 配置，应保留在路由器上。重复同步且内容不变时不重启代理、不反复写配置。
 - 启动/更新失败会尝试恢复；恢复失败保留记录并报告异常。用户修改的列表区块会保留；混入等配置存在并发修改时拒绝覆盖，等待检查。
 - procd 任务每 60 秒检查规则更新及代理切换。关闭或卸载先恢复自有入口，再停止自管后端。不要手动删除恢复日志。
+- 状态输出包含只读 backend 检查结果；旧的 statusSuccess 或仅有 UCI 开关不会被当作当前后端正常。规则下载后由后端写入的数字 size 元数据不算用户修改，关闭时可清理本次自建且未改动的默认源。
 
 ~~~sh
 /usr/libexec/adzero/ctl status
@@ -65,10 +66,12 @@ Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 8 组本机查询�
 ~~~sh
 sh scripts/check.sh
 python3 scripts/check_openwrt_runtime.py
-# 以下两项需要 ADZERO_UCODE 指向真实 ucode 命令（含 -L 模块目录）
+# 以下三项需要 ADZERO_UCODE 指向真实 ucode 命令（含 -L 模块目录）
 python3 scripts/check_dns_core.py
 python3 scripts/check_dae.py
 python3 scripts/check_rule_source.py
+# 指定 ADZERO_TEST_SHELL 可用真实 OpenWrt ash 复现上游钩子返回值
+python3 scripts/check_backend_hooks.py
 ~~~
 
 [验证记录](docs/LOCAL_VALIDATION.md) · [DNS 适配设计](docs/DNS_ADAPTERS.md) · [SDK 构建](docs/PACKAGING.md) · [兼容矩阵](docs/COMPATIBILITY.md) · [设备验收](docs/DEVICE_ACCEPTANCE.md)

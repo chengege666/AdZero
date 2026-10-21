@@ -67,7 +67,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
             name = (Path(prefix) / relative).as_posix()
             if name in output:
                 raise ValueError(f"Duplicate package path: {name}")
-            mode = 0o755 if name in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/watch", "etc/init.d/adzero"} else 0o644
+            mode = 0o755 if name in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "etc/init.d/adzero"} else 0o644
             output[name] = (src.read_bytes(), mode)
 
     expected = {
@@ -78,6 +78,8 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/libexec/adzero/adapter",
         "usr/libexec/adzero/adapter.uc",
         "usr/libexec/adzero/adapter-lib.uc",
+        "usr/libexec/adzero/backend",
+        "usr/libexec/adzero/backend.uc",
         "usr/libexec/adzero/watch",
         "etc/init.d/adzero",
         "usr/share/luci/menu.d/luci-app-adzero.json",

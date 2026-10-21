@@ -52,6 +52,10 @@ default_rule_unchanged() {
 	for key in $rule_keys; do
 		case "$key" in
 			adblock-fast.adzero_default|adblock-fast.adzero_default.name|adblock-fast.adzero_default.url|adblock-fast.adzero_default.action|adblock-fast.adzero_default.enabled) ;;
+			adblock-fast.adzero_default.size)
+				# adblock-fast records download sizes in UCI; this is metadata,
+				# not a user change to the rule source we created.
+				case "$(get_uci "$key")" in ''|*[!0-9]*) return 1 ;; esac ;;
 			*) return 1 ;;
 		esac
 	done
@@ -70,7 +74,8 @@ restore_default_rule() {
 }
 rule_failure_hint() {
 	# Only print our public URL, never a user subscription or its credentials.
-	if [ -f "$RULE_MARKER" ] && [ "$(get_uci "$DEFAULT_RULE.url")" = "$DEFAULT_RULE_URL" ]; then
-		printf 'AdZero: 默认规则下载/处理未完成，请检查此 HTTPS 地址的可达性及后端日志：%s\n' "$DEFAULT_RULE_URL" >&2
+	if [ -f "$RULE_MARKER" ] && [ "$(get_uci "$DEFAULT_RULE.url")" = "$DEFAULT_RULE_URL" ] && \
+		"$BACKEND_CHECK" download-error >/dev/null 2>&1; then
+		printf 'AdZero: 后端报告规则下载错误，可检查默认 HTTPS 地址：%s\n' "$DEFAULT_RULE_URL" >&2
 	fi
 }

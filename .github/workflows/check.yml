@@ -37,3 +37,5 @@ jobs:
           python3 scripts/check_dae.py
           export PATH="$PWD/.sdk/runtime-24.10.8/wrappers:$PATH"
           python3 scripts/check_rule_source.py
+          export ADZERO_TEST_SHELL="$PWD/.sdk/runtime-24.10.8/libc.so --library-path $PWD/.sdk/runtime-24.10.8 $PWD/.sdk/runtime-24.10.8/busybox ash"
+          python3 scripts/check_backend_hooks.py
