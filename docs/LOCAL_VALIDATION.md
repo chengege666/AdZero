@@ -1,3 +1,14 @@
+# v0.9.4 升级过渡验证
+
+真机证据确认旧版 reconcile/backend 检查仍在运行，安装器在旧版 disable 等锁时退出，新性能修复尚未装上。本版修改 `scripts/install.sh`、安装器回归及版本元数据；运行时控制器、四代理适配器、规则处理和界面代码与 v0.9.3 相同。升级流程见 [INTERACTION_FIXES.md](INTERACTION_FIXES.md)。
+
+- **235 项原生 Python 回归、115 项 UI 断言通过，无原生跳过**。安装器共 28 项，包括真实 Linux 进程及 STOP/CONT/TERM、子任务继续完成、完成后备份、中断/超时/恢复失败后恢复调度、互斥及新旧占锁消息。
+- 三个官方 SDK 实际构建通过；每包 30 个文件内容、权限及压缩 JS 的 115 项断言通过。
+- 安装包目录源码 SHA-256：`83e26a0e05c6627de5c9aee4919c6c4acfb63c1e9a48b115c702468c568c3441`。安装脚本 SHA-256：`ec77ca4f7f1ea8c1db47e71584acb554db346548ebedae2eb57674411cafc4f2`。
+- 本轮没有重复 dae/Mihomo/RPC/大规则量性能实验，相关运行代码未变化；上一版隔离结果见下方 v0.9.3 记录。本轮不把那些检查标记为重新完成。
+
+证据见 [evidence/v0.9.4](evidence/v0.9.4/)。安装器测试的包管理器和恢复控制器为替身，使用真实 Linux 调度器/子任务和官方 OpenWrt BusyBox；未在用户路由器执行，procd 生命周期、实际升级、分流和 LAN 过滤仍需设备确认。
+
 # v0.9.3 执行性能与订阅校验验证
 
 状态读取修复后，进一步处理 100 秒级切换与等待锁失败；同时补齐旧订阅的格式识别和数量记录。主要修改规则解析器、`rules-cache.uc`、`adapter.uc`、`sources.uc`、任务阶段回执和 LuCI 订阅列表，未新增运行依赖。行为说明见 [INTERACTION_FIXES.md](INTERACTION_FIXES.md)。

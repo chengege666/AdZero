@@ -1,8 +1,9 @@
 #!/bin/sh
 # AdZero release installer. Only exact SDK-verified matrix rows are installable.
 set -eu
+set -f
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.9.3}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.9.4}
 LOCAL_DIR=
 ENABLE=1
 UPGRADE=0
@@ -54,8 +55,101 @@ fi
 command -v sha256sum >/dev/null 2>&1 || fail '缺少 sha256sum。'
 [ "$UPGRADE" = 1 ] || [ ! -e "$ROOT/etc/adzero/adapter.json" ] || fail '请使用 --upgrade 自动准备升级，或先在现有版本中关闭保护；保留原有恢复记录。'
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/adzero-install.XXXXXX") || fail '无法创建临时目录。'
-trap 'rm -f "$TMP/releases.tsv" "$TMP/package.$EXT" "$TMP/disable.log"; rmdir "$TMP" 2>/dev/null || :' 0
+WATCH="$ROOT/usr/libexec/adzero/watch"
+INSTALL_LOCK="$ROOT/tmp/adzero-install.lock"
+INSTALL_LOCK_OWNED=0
+# Strip the whole comm field, which may contain spaces or parentheses.
+# Linux start ticks distinguish a surviving process from a reused PID.
+process_snapshot() (
+	IFS= read -r proc_stat < "/proc/$1/stat" 2>/dev/null || exit 1
+	proc_fields=${proc_stat##*) }
+	set -- $proc_fields
+	[ "$#" -ge 20 ] || exit 1
+	proc_state=$1
+	shift 19
+	case "$1" in ''|*[!0-9]*) exit 1 ;; esac
+	printf '%s %s\n' "$1" "$proc_state"
+)
+watch_matches() (
+	# Only the exact scheduler command and our UID may receive a signal.
+	proc_args=$(tr '\000' '\n' < "/proc/$1/cmdline" 2>/dev/null) || exit 1
+	case "$proc_args" in
+		"/bin/sh
+$WATCH"|"/bin/ash
+$WATCH"|"/bin/busybox
+sh
+$WATCH"|"/bin/busybox
+ash
+$WATCH") ;;
+		*) exit 1 ;;
+	esac
+	self_uid=$(awk '/^Uid:/ { print $2, $3, $4, $5 }' /proc/self/status)
+	proc_uid=$(awk '/^Uid:/ { print $2, $3, $4, $5 }' "/proc/$1/status" 2>/dev/null) || exit 1
+	[ -n "$self_uid" ] && [ "$self_uid" = "$proc_uid" ]
+)
+resume_watchers() {
+	[ -f "$TMP/watchers" ] || return 0
+	while read -r watch_pid watch_start; do
+		current=$(process_snapshot "$watch_pid") || continue
+		[ "${current%% *}" = "$watch_start" ] && watch_matches "$watch_pid" || continue
+		kill -CONT "$watch_pid" 2>/dev/null || :
+	done < "$TMP/watchers"
+}
+cleanup() {
+	resume_watchers
+	[ "$INSTALL_LOCK_OWNED" != 1 ] || rmdir "$INSTALL_LOCK" 2>/dev/null || :
+	rm -f "$TMP/releases.tsv" "$TMP/package.$EXT" "$TMP/disable.log" "$TMP/watchers"
+	rmdir "$TMP" 2>/dev/null || :
+}
+trap 'cleanup' 0
 trap 'exit 130' 1 2 3 15
+watch_candidates() (
+	set +f
+	grep -lF "$WATCH" /proc/[0-9]*/cmdline 2>/dev/null || :
+)
+pause_watchers() {
+	[ -r /proc/self/stat ] || fail '无法核对后台调度进程，已停止升级。'
+	: > "$TMP/watchers"
+	# Output only numeric /proc paths, never command-line content.
+	for proc_file in $(watch_candidates); do
+		watch_pid=${proc_file#/proc/}; watch_pid=${watch_pid%/cmdline}
+		case "$watch_pid" in ''|*[!0-9]*) continue ;; esac
+		before=$(process_snapshot "$watch_pid") || continue
+		watch_matches "$watch_pid" || continue
+		current=$(process_snapshot "$watch_pid") || continue
+		[ "${current%% *}" = "${before%% *}" ] || fail '后台进程已变化，请重试升级。'
+		case "${current#* }" in T|t) continue ;; esac
+		printf '%s %s\n' "$watch_pid" "${before%% *}" >> "$TMP/watchers"
+		kill -STOP "$watch_pid" 2>/dev/null || fail '无法暂停后台调度，已停止升级。'
+		after=$(process_snapshot "$watch_pid") || fail '后台进程已退出，请重试升级。'
+		[ "${after%% *}" = "${before%% *}" ] && watch_matches "$watch_pid" || fail '后台进程身份已变化，已停止升级。'
+		# SIGSTOP is asynchronous. Its children continue their current work.
+		stop_checks=0
+		while [ "${after#* }" != T ] && [ "${after#* }" != t ]; do
+			[ "$stop_checks" -lt 3 ] || fail '后台调度未暂停，已停止升级。'
+			sleep 1
+			after=$(process_snapshot "$watch_pid") || fail '后台进程已退出，请重试升级。'
+			[ "${after%% *}" = "${before%% *}" ] || fail '后台进程身份已变化，已停止升级。'
+			stop_checks=$((stop_checks + 1))
+		done
+	done
+	[ ! -s "$TMP/watchers" ] || printf 'AdZero: 已暂停后台调度，正在让旧版任务完成；退出安装器会恢复调度。\n'
+}
+upgrade_tick() {
+	[ "$upgrade_waits" -lt "$upgrade_limit" ] || fail '旧版操作锁持续占用，已停止升级并恢复后台调度；没有删除锁或安装新包。请提供锁和进程信息。'
+	[ "$((upgrade_waits % 15))" != 0 ] || printf 'AdZero: 等待旧版任务完成（已等 %s 秒，最多 %s 秒）；不会终止任务或删除锁。\n' "$upgrade_waits" "$upgrade_limit"
+	sleep 1
+	upgrade_waits=$((upgrade_waits + 1))
+}
+wait_upgrade_lock() {
+	while [ -e "$ROOT/tmp/adzero.lock" ] || [ -L "$ROOT/tmp/adzero.lock" ]; do upgrade_tick; done
+}
+backup_state() {
+	tar -czf "$BACKUP/config.tar.gz" -C "$ROOT/etc" config || fail '配置备份失败。'
+	if [ -d "$ROOT/etc/adzero" ]; then
+		tar -czf "$BACKUP/state.tar.gz" -C "$ROOT/etc" adzero || fail '恢复记录备份失败。'
+	fi
+}
 fetch() {
 	if [ -n "$LOCAL_DIR" ]; then
 		cp "$LOCAL_DIR/$1" "$2" || fail '本地发行文件缺失。'
@@ -75,30 +169,36 @@ case "$FILE" in ''|*[!a-zA-Z0-9._+-]*|.*) fail '不安全的安装包文件名�
 fetch "$FILE" "$TMP/package.$EXT"
 ACTUAL=$(sha256sum "$TMP/package.$EXT")
 [ "${ACTUAL%% *}" = "$SUM" ] || fail 'SHA-256 不匹配，已停止安装。'
+mkdir -p "$ROOT/tmp"
+mkdir "$INSTALL_LOCK" 2>/dev/null || fail '另一项安装正在进行，或安装器锁仍待检查；没有停止现有保护。'
+INSTALL_LOCK_OWNED=1
+CTL="$ROOT/usr/libexec/adzero/ctl"
+upgrade_limit=${ADZERO_UPGRADE_WAIT_SECONDS:-180}
+case "$upgrade_limit" in ''|*[!0-9]*) fail '升级等待时限无效。' ;; esac
+[ "$upgrade_limit" -ge 1 ] && [ "$upgrade_limit" -le 300 ] || fail '升级等待时限应为 1 至 300 秒。'
+upgrade_waits=0
+if [ "$UPGRADE" = 1 ] && [ -x "$CTL" ]; then
+	pause_watchers
+	wait_upgrade_lock
+fi
 BACKUP="$ROOT/etc/adzero-backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP"
 chmod 700 "$ROOT/etc/adzero-backups" "$BACKUP"
-tar -czf "$BACKUP/config.tar.gz" -C "$ROOT/etc" config || fail '配置备份失败。'
-CTL="$ROOT/usr/libexec/adzero/ctl"
+backup_state
 if [ "$UPGRADE" = 1 ]; then
 	# Keep config and recovery state together before asking the OLD controller
 	# to restore its changes. Never replace a controller that still owns them.
-	if [ -d "$ROOT/etc/adzero" ]; then
-		tar -czf "$BACKUP/state.tar.gz" -C "$ROOT/etc" adzero || fail '恢复记录备份失败。'
-	fi
 	if [ -x "$CTL" ]; then
-		upgrade_waits=0
-		while ! "$CTL" disable > "$TMP/disable.log" 2>&1; do
-			# Only this exact old, pre-mutation error is safe to retry. Any
-			# restore/backend failure stops immediately with its record intact.
-			if [ "$(cat "$TMP/disable.log")" != 'AdZero: 另一项操作正在进行；若异常断电可检查临时锁。' ]; then
-				cat "$TMP/disable.log" >&2
-				fail '旧版未能完成关闭与恢复，已停止升级；恢复记录保留。'
-			fi
-			[ "$upgrade_waits" -lt 6 ] || fail '旧版操作锁持续占用，已停止升级；请提供锁目录和 AdZero 进程信息。没有删除锁或安装新包。'
-			[ "$upgrade_waits" != 0 ] || printf 'AdZero: 旧版正忙，最多等待 30 秒后重试关闭；不会删除操作锁。\n'
-			sleep 5
-			upgrade_waits=$((upgrade_waits + 1))
+		# Recent controllers understand zero wait. Older ones fail immediately.
+		# Retry only known pre-mutation busy responses, never restore failures.
+		while ! ADZERO_LOCK_WAIT_SECONDS=0 "$CTL" disable > "$TMP/disable.log" 2>&1; do
+			case "$(cat "$TMP/disable.log")" in
+				'AdZero: 另一项操作正在进行；若异常断电可检查临时锁。'|'AdZero: 等待操作锁超时；可能仍有操作或遗留锁。请检查进程后重试，勿直接删除锁。') ;;
+				*) cat "$TMP/disable.log" >&2; fail '旧版未能完成关闭与恢复，已停止升级；恢复记录保留。' ;;
+			esac
+			upgrade_tick
+			wait_upgrade_lock
+			backup_state
 		done
 		cat "$TMP/disable.log"
 	fi

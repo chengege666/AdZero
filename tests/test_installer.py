@@ -2,9 +2,11 @@
 import hashlib
 import os
 from pathlib import Path
+import signal
 import shlex
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +23,7 @@ class InstallerTest(unittest.TestCase):
         self.bin.mkdir()
         self.release.mkdir()
         self.log = self.base / "operations"
-        self.env = {**os.environ, "PATH": str(self.bin) + ":" + os.environ["PATH"], "ADZERO_INSTALL_ROOT": str(self.root), "MOCK_INSTALL_LOG": str(self.log)}
+        self.env = {**os.environ, "PATH": str(self.bin) + ":" + os.environ["PATH"], "ADZERO_INSTALL_ROOT": str(self.root), "MOCK_INSTALL_LOG": str(self.log), "ADZERO_UPGRADE_WAIT_SECONDS": "3"}
         self.write("etc/openwrt_release", "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='24.10.8'\nDISTRIB_TARGET='x86/64'\n")
         self.write("etc/config/keep", "private=original\n")
         self.write("usr/lib/opkg/status", "fixture")
@@ -49,7 +51,7 @@ class InstallerTest(unittest.TestCase):
 
     def run_installer(self, *extra, success=True):
         command = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "sh"))
-        result = subprocess.run(command + [str(ROOT / "scripts/install.sh"), "--local-dir", str(self.release), *extra], env=self.env, text=True, capture_output=True)
+        result = subprocess.run(command + [str(ROOT / "scripts/install.sh"), "--local-dir", str(self.release), *extra], env=self.env, text=True, capture_output=True, timeout=20)
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return result
 
@@ -148,7 +150,12 @@ class InstallerTest(unittest.TestCase):
 echo "ctl $1" >> "$MOCK_INSTALL_LOG"
 if [ "$1" = disable ]; then
     if [ "$MOCK_UPGRADE_MODE" = busy_forever ] || [ -e "$MOCK_UPGRADE_BUSY" ]; then
-        echo 'AdZero: 另一项操作正在进行；若异常断电可检查临时锁。' >&2
+        if [ "$MOCK_UPGRADE_MODE" = modern_busy ]; then
+            [ "$ADZERO_LOCK_WAIT_SECONDS" = 0 ] || exit 3
+            echo 'AdZero: 等待操作锁超时；可能仍有操作或遗留锁。请检查进程后重试，勿直接删除锁。' >&2
+        else
+            echo 'AdZero: 另一项操作正在进行；若异常断电可检查临时锁。' >&2
+        fi
         exit 1
     fi
     if [ "$MOCK_UPGRADE_MODE" = restore_failure ]; then echo '恢复失败，保留记录' >&2; exit 1; fi
@@ -179,8 +186,14 @@ fi
         self.upgrade_fixture()
         Path(self.env["MOCK_UPGRADE_BUSY"]).touch()
         result = self.run_installer("--upgrade")
-        self.assertIn("最多等待 30 秒", result.stdout)
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "wait 5", "ctl disable", "opkg update", "opkg install", "ctl enable"])
+        self.assertIn("最多 3 秒", result.stdout)
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "wait 1", "ctl disable", "opkg update", "opkg install", "ctl enable"])
+
+    def test_upgrade_retries_modern_zero_wait_busy_without_nested_30_second_wait(self):
+        self.upgrade_fixture("modern_busy")
+        Path(self.env["MOCK_UPGRADE_BUSY"]).touch()
+        self.run_installer("--upgrade")
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "wait 1", "ctl disable", "opkg update", "opkg install", "ctl enable"])
 
     def test_upgrade_persistent_busy_preserves_lock_and_recovery(self):
         journal = self.upgrade_fixture("busy_forever")
@@ -191,7 +204,7 @@ fi
         self.assertTrue(journal.exists())
         self.assertTrue(lock.is_dir())
         operations = self.log.read_text().splitlines()
-        self.assertEqual(operations.count("ctl disable"), 7)
+        self.assertEqual(operations.count("ctl disable"), 0)
         self.assertFalse(any(x.startswith("opkg") for x in operations))
 
     def test_upgrade_restore_failure_is_not_retried_or_installed(self):
@@ -210,3 +223,125 @@ fi
         self.upgrade_fixture()
         self.run_installer("--upgrade", "--no-enable")
         self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "opkg update", "opkg install"])
+
+    def test_second_installer_does_not_remove_first_installer_lock(self):
+        lock = self.root / "tmp/adzero-install.lock"
+        lock.mkdir(parents=True)
+        self.run_installer("--upgrade", success=False)
+        self.assertTrue(lock.is_dir())
+        self.assertFalse(self.log.exists())
+
+    def live_watcher(self, hold=False, args=()):
+        """Real Linux PIDs/signals and child work, with no router service calls."""
+        self.env["MOCK_WATCH_BASE"] = str(self.base)
+        self.env["ADZERO_UPGRADE_WAIT_SECONDS"] = "5"
+        self.upgrade_fixture()
+        (self.root / "tmp").mkdir(exist_ok=True)
+        (self.bin / "sleep").unlink()  # Real sleep for lifecycle/signal tests.
+        if hold:
+            self.executable(self.root / "usr/libexec/adzero/worker", '''#!/bin/sh
+mkdir "$ADZERO_INSTALL_ROOT/tmp/adzero.lock" || exit 1
+echo "$$ reconcile" > "$ADZERO_INSTALL_ROOT/tmp/adzero.lock/owner"
+touch "$MOCK_WATCH_BASE/started"
+/bin/sleep 1.2
+echo finished-before-backup > "$MOCK_UPGRADE_JOURNAL"
+rm "$ADZERO_INSTALL_ROOT/tmp/adzero.lock/owner"
+rmdir "$ADZERO_INSTALL_ROOT/tmp/adzero.lock"
+touch "$MOCK_WATCH_BASE/finished"
+''')
+        watch = self.root / "usr/libexec/adzero/watch"
+        self.executable(watch, '''#!/bin/sh
+if [ -x "$ADZERO_INSTALL_ROOT/usr/libexec/adzero/worker" ]; then
+    "$ADZERO_INSTALL_ROOT/usr/libexec/adzero/worker"
+fi
+touch "$MOCK_WATCH_BASE/idle"
+while :; do /bin/sleep 0.05; done
+''')
+        process = subprocess.Popen(["/bin/sh", str(watch), *args], env=self.env, start_new_session=True)
+        def stop():
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGCONT)
+                os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=3)
+        self.addCleanup(stop)
+        ready = self.base / ("started" if hold else "idle")
+        self.wait_for(lambda: ready.exists())
+        return process
+
+    def wait_for(self, condition):
+        end = time.monotonic() + 5
+        while time.monotonic() < end:
+            if condition():
+                return
+            time.sleep(0.02)
+        self.fail("Lifecycle condition did not complete")
+
+    def process_state(self, process):
+        return Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()[0]
+
+    def test_live_scheduler_paused_child_finishes_and_backup_is_after_drain(self):
+        import tarfile
+        process = self.live_watcher(hold=True)
+        result = self.run_installer("--upgrade")
+        self.assertIn("已暂停后台调度", result.stdout)
+        self.assertTrue((self.base / "finished").exists())
+        self.assertIsNone(process.poll())
+        self.wait_for(lambda: self.process_state(process) != "T")
+        backup = next((self.root / "etc/adzero-backups").glob("*/state.tar.gz"))
+        with tarfile.open(backup) as archive:
+            self.assertEqual(archive.extractfile("adzero/adapter.json").read(), b"finished-before-backup\n")
+        self.assertFalse((self.root / "tmp/adzero-install.lock").exists())
+
+    def test_live_scheduler_resumes_when_existing_lock_never_drains(self):
+        process = self.live_watcher()
+        self.env["ADZERO_UPGRADE_WAIT_SECONDS"] = "1"
+        lock = self.root / "tmp/adzero.lock"
+        lock.mkdir()
+        (lock / "owner").write_text("999999 reconcile\n")
+        self.run_installer("--upgrade", success=False)
+        self.assertEqual((lock / "owner").read_text(), "999999 reconcile\n")
+        self.wait_for(lambda: self.process_state(process) != "T")
+        self.assertFalse(self.log.exists())
+
+    def test_live_scheduler_resumes_after_real_restore_failure(self):
+        process = self.live_watcher()
+        self.env["MOCK_UPGRADE_MODE"] = "restore_failure"
+        self.run_installer("--upgrade", success=False)
+        self.wait_for(lambda: self.process_state(process) != "T")
+        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable"])
+        self.assertTrue((self.root / "etc/adzero/adapter.json").exists())
+
+    def test_previously_stopped_scheduler_is_not_resumed(self):
+        process = self.live_watcher()
+        os.kill(process.pid, signal.SIGSTOP)
+        self.wait_for(lambda: self.process_state(process) == "T")
+        self.run_installer("--upgrade")
+        self.assertEqual(self.process_state(process), "T")
+
+    def test_similar_command_with_extra_argument_is_not_signalled(self):
+        process = self.live_watcher(args=("unrelated",))
+        result = self.run_installer("--upgrade")
+        self.assertNotIn("已暂停后台调度", result.stdout)
+        self.assertNotEqual(self.process_state(process), "T")
+
+    def test_signal_interrupt_resumes_scheduler_preserves_recovery_and_lock(self):
+        process = self.live_watcher()
+        lock = self.root / "tmp/adzero.lock"
+        lock.mkdir()
+        self.env["ADZERO_UPGRADE_WAIT_SECONDS"] = "10"
+        command = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "sh"))
+        installer = subprocess.Popen(command + [str(ROOT / "scripts/install.sh"), "--local-dir", str(self.release), "--upgrade"], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            self.wait_for(lambda: self.process_state(process) == "T")
+            installer.send_signal(signal.SIGTERM)
+            installer.communicate(timeout=5)
+            self.assertEqual(installer.returncode, 130)
+            self.wait_for(lambda: self.process_state(process) != "T")
+            self.assertTrue(lock.is_dir())
+            self.assertTrue((self.root / "etc/adzero/adapter.json").exists())
+            self.assertFalse((self.root / "tmp/adzero-install.lock").exists())
+            self.assertFalse(self.log.exists())
+        finally:
+            if installer.poll() is None:
+                installer.kill()
+                installer.communicate(timeout=3)

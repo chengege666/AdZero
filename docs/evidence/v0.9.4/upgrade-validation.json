@@ -1,0 +1,22 @@
+{
+  "scope": "Isolated root, actual OpenWrt ash/applets, real Linux scheduler/child processes and signals; package manager/old controller restoration fixtures",
+  "installer_sha256": "ec77ca4f7f1ea8c1db47e71584acb554db346548ebedae2eb57674411cafc4f2",
+  "source_sha256": "83e26a0e05c6627de5c9aee4919c6c4acfb63c1e9a48b115c702468c568c3441",
+  "installer_tests": 28,
+  "native_regression_tests": 235,
+  "ui_assertions": 115,
+  "runtime_change_from_v093": "Makefile version only; runtime adapter/controller code unchanged",
+  "checks": [
+    "active child drains while scheduler paused",
+    "backup after child finishes",
+    "timeout/restore failure/signal restores scheduler",
+    "preexisting stopped process preserved",
+    "extra-argument command ignored",
+    "installation serialization",
+    "legacy and modern busy retry",
+    "persistent operation lock and journal preserved",
+    "checksum before signalling"
+  ],
+  "device_acceptance": "not_run",
+  "router_procd_acceptance": "not_run"
+}
