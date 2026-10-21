@@ -2,21 +2,32 @@
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
-**v0.6.3 是公开测试版。** 本轮修复 Argon 顶栏装饰与标题/检测按钮的重叠，移除首页的代理兼容和设备诊断区。保留 v0.6.2 的异步状态读取、轻量环境检测，以及既有操作锁、恢复机制与四种代理适配。安装矩阵覆盖 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）和 25.12.5 rockchip/armv8（APK）**，各目标使用对应官方 SDK。用户已反馈 v0.5.3 在 Rockchip 真机启用成功并完成 NaiLink 配置同步；实际 LAN 过滤效果及其他设备组合仍待验收。
+**v0.7.0 是公开测试版。** 新增域名查询、误杀放行/撤销、5/15/30 分钟临时暂停及到期恢复，沿用 NaiLink、PassWall、OpenClash、Nikki 的原生接入与恢复机制。安装矩阵为 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）、25.12.5 rockchip/armv8（APK）**，使用对应官方 SDK。新功能的四适配器联动检查已通过，仍需分别完成真机和 LAN 验收。
 
-菜单名称统一为 **AdZero**。首屏提供状态与保护开关、规则域名、当前接入和终端验证；规则更新与接入检查并排，不展示固件、CPU、未启用代理等明细；必要的失败原因与恢复操作仍会显示。页面先显示，取得真实状态前禁用操作。支持手机、深色外观、键盘操作、等待反馈和失败重试。未采集的拦截次数不会显示为统计。设计与预览说明见 [UI_DESIGN.md](docs/UI_DESIGN.md)。
+菜单名称为 **AdZero**。首屏异步读取当前状态，提供保护开关、临时暂停、域名查询和个人放行名单；不显示固件/CPU/未启用代理等诊断面板，也不虚构拦截次数。支持手机、深色外观、键盘操作和失败重试。
 
-![AdZero v0.6.3 本地界面预览，使用隔离的状态快照](docs/images/adzero-v0.6.3-desktop.jpg)
+![AdZero v0.7.0 本地交互预览，使用隔离状态，未连接路由器](docs/images/adzero-v0.7.0-desktop.jpg)
+
+## 查询、误杀放行与暂停
+
+1. 输入域名或 HTTP(S) 网址，点击「查询域名」，查看是否命中当前已处理规则及具体命中域名。查询不访问输入的网址，不进行 DNS 探测；结果不是浏览记录，也不能代替实际终端验证。支持 ASCII/punycode 域名，不接受 IP、通配符、带账号密码的网址。
+2. 命中后先阅读放行范围，再点击「放行此范围」。例如 login.ads.example 命中 ads.example，会明确提示**放行 ads.example 及其所有子域**。这是本版四种适配器共有的范围放行语义，不提供更窄的子域例外。服务端在操作锁内再次核对命中范围，规则已变化时拒绝应用。最多保存 100 项。
+3. 展开「已放行」可随时撤销。名单保存在 /etc/config/adzero，关闭/暂停和标准 --upgrade 升级时保留；撤销后该域名是否再次被拦截，取决于当前规则。后端原有放行名单保留，关闭时恢复。
+4. 网站或 App 异常时，可先「临时暂停」5、15、30 分钟做对比。暂停会移除 AdZero 自己的代理规则并停止自管过滤后端，保留当前 DNS/代理的原有配置；到期约 5 秒内开始尝试恢复，繁忙操作可能延后。也可「立即恢复」或「保持关闭」取消定时恢复。路由器重启会提前尝试恢复保护。
+
+应用/撤销放行会重新下载和处理当前规则，需要网络，可能重启 DNS 或代理；执行期间请等待状态确认。查询和名单管理在保护已开启且规则就绪时可用。放行只移除 AdZero 自己的拦截，其他插件/订阅的独立规则、浏览器或终端缓存仍可能影响结果。
+
+恢复失败会保留暂停/恢复记录并明确显示；不会显示成已开启。计时使用启动时钟而非系统日期，避免校时改变期限。不要手动删除 /etc/adzero 的恢复记录。交互说明见 [UI_DESIGN.md](docs/UI_DESIGN.md)，验收边界见 [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md)。
 
 ## 一键安装
 
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.6.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.7.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.6.3)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.7.0)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -25,14 +36,14 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本可使用 --upgrade：先校验安装包、备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.6.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.7.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
 
 旧版短暂占锁时，升级器最多等待 30 秒重试；只重试旧版明确的“另一项操作正在进行”提示，其他恢复失败立即停止。锁持续占用则停止安装并保留配置、锁和恢复记录。请先提供 `ls -la /tmp/adzero.lock` 与 `ps w | grep -E '[a]dzero/(ctl|watch|adapter|backend)'` 的只读结果，不要直接删除锁。升级备份中的 state.tar.gz 可能含原有 DNS 配置，请仅保留在路由器本地。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.6.3 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.7.0 地址。
 
 v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修正旧默认规则源；v0.6.0 已解决 LuCI 将 disabled=false 写为实际禁用属性的问题。缺少 gawk、GNU grep/sed、coreutils-sort 仍为后端推荐提示，本版未因此新增依赖。
 
@@ -47,7 +58,7 @@ v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修
 | OpenClash | 官方 custom_overwrite 钩子；仅修改生成的运行配置，调用 Meta 内核检查 | 实际 Ruby YAML/锚点处理通过，Mihomo DNS 实测通过；真机待测 |
 | Nikki | 原生 mixin.yaml、mixin 开关及必要的 Fake-IP 列表合并 | 实际 yq/UCI 混入与恢复通过，Mihomo DNS 实测通过；真机待测 |
 
-Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 8 组本机查询通过：被测广告域名返回 NXDOMAIN，正常域名保持可用。测试使用真实 v1.19.32 内核与隔离的本地 DNS 上游，不经过家庭网络。Nikki/OpenClash 的不同内核版本仍需要分别验收。
+Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 40 组本机查询通过（覆盖拦截、放行、暂停、恢复、撤销五种配置）：被测广告域名返回 NXDOMAIN，正常域名保持可用。测试使用真实 v1.19.32 内核与隔离的本地 DNS 上游，不经过家庭网络。Nikki/OpenClash 的不同内核版本仍需要分别验收。
 
 多代理同时开启、未知代理内核、Nikki core_only、现有禁用但非空的 Nikki 混入、Fake-IP 白名单模式，以及无法等价保留的放行例外会拒绝自动修改。PassWall 2 目前只识别，不自动适配。
 
@@ -74,11 +85,13 @@ Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 8 组本机查询�
 
 ## 开发与验证
 
-路由器端使用 BusyBox shell、ucode、现有代理自身的 Ruby/yq，不捆绑代理内核，不新增大型常驻引擎。依赖为 luci-base、adblock-fast、rpcd-mod-file、ca-bundle 和 ucode 的 fs/uci/ubus 模块。
+路由器端使用 BusyBox shell、ucode、现有代理自身的 Ruby/yq，不捆绑代理内核，不新增大型常驻引擎。依赖为 luci-base、adblock-fast、rpcd-mod-file、rpcd-mod-ucode、ca-bundle 和 ucode 的 fs/uci/ubus 模块。
 
 ~~~sh
 sh scripts/check.sh
 python3 scripts/check_openwrt_runtime.py
+# 在 Linux/WSL 的隔离 chroot 中验证 RPC，需要 root
+python3 scripts/check_rpc.py
 # 以下三项需要 ADZERO_UCODE 指向真实 ucode 命令（含 -L 模块目录）
 python3 scripts/check_dns_core.py
 python3 scripts/check_dae.py

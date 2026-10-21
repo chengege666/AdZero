@@ -94,48 +94,51 @@ def main():
         thread = threading.Thread(target=respond, daemon=True)
         thread.start()
         try:
-            for mode in ("redir-host", "fake-ip"):
-                with tempfile.TemporaryDirectory(prefix="adzero-mihomo-") as directory:
-                    home = Path(directory)
-                    provider = home / "adzero.txt"
-                    provider.write_text("+.ads.adzero.invalid\n")
-                    with socket.socket() as temp:
-                        temp.bind(("127.0.0.1", 0))
-                        port = temp.getsockname()[1]
-                    config = {"mode": "rule", "log-level": "error", "dns": {
-                        "enable": True, "listen": f"127.0.0.1:{port}", "ipv6": True,
-                        "enhanced-mode": mode, "fake-ip-range": "198.18.0.1/16",
-                        "default-nameserver": ["127.0.0.1"],
-                        "nameserver": [f"udp://127.0.0.1:{upstream.getsockname()[1]}"],
-                    }, "rules": ["MATCH,DIRECT"]}
-                    config = transform("mihomo", config, str(provider), False)
-                    path = home / "config.json"
-                    path.write_text(json.dumps(config))
-                    check = subprocess.run([str(binary), "-t", "-d", directory, "-f", str(path)], text=True, capture_output=True)
-                    if check.returncode:
-                        raise RuntimeError(check.stdout + check.stderr)
-                    with (home / "core.log").open("w+") as log:
-                        process = subprocess.Popen([str(binary), "-d", directory, "-f", str(path)], stdout=log, stderr=log)
-                        try:
-                            for _ in range(50):
-                                try:
-                                    query(port, "normal.adzero.invalid")
-                                    break
-                                except (OSError, TimeoutError):
-                                    if process.poll() is not None:
-                                        raise RuntimeError((home / "core.log").read_text())
-                                    time.sleep(0.1)
-                            for tcp in (False, True):
-                                for kind in (1, 28):
-                                    blocked = query(port, "sub.ads.adzero.invalid", kind, tcp)
-                                    normal = query(port, "normal.adzero.invalid", kind, tcp)
-                                    row = {"mode": mode, "transport": "tcp" if tcp else "udp", "query": "AAAA" if kind == 28 else "A", "blocked": blocked, "normal": normal}
-                                    results.append(row)
-                                    if blocked != (3, 0) or normal[0] != 0 or (kind == 1 and not normal[1]):
-                                        raise RuntimeError(f"DNS behavior mismatch: {row}")
-                        finally:
-                            process.terminate()
-                            process.wait(timeout=10)
+            for phase in ("blocked", "allowed", "paused", "resumed", "revoked"):
+                for mode in ("redir-host", "fake-ip"):
+                    with tempfile.TemporaryDirectory(prefix="adzero-mihomo-") as directory:
+                        home = Path(directory)
+                        provider = home / "adzero.txt"
+                        provider.write_text("+.tracker.adzero.invalid\n" + ("+.ads.adzero.invalid\n" if phase in ("blocked", "revoked") else ""))
+                        with socket.socket() as temp:
+                            temp.bind(("127.0.0.1", 0))
+                            port = temp.getsockname()[1]
+                        config = {"mode": "rule", "log-level": "error", "dns": {
+                            "enable": True, "listen": f"127.0.0.1:{port}", "ipv6": True,
+                            "enhanced-mode": mode, "fake-ip-range": "198.18.0.1/16",
+                            "default-nameserver": ["127.0.0.1"],
+                            "nameserver": [f"udp://127.0.0.1:{upstream.getsockname()[1]}"],
+                        }, "rules": ["MATCH,DIRECT"]}
+                        config = transform("mihomo", config, str(provider), phase == "paused")
+                        path = home / "config.json"
+                        path.write_text(json.dumps(config))
+                        check = subprocess.run([str(binary), "-t", "-d", directory, "-f", str(path)], text=True, capture_output=True)
+                        if check.returncode:
+                            raise RuntimeError(check.stdout + check.stderr)
+                        with (home / "core.log").open("w+") as log:
+                            process = subprocess.Popen([str(binary), "-d", directory, "-f", str(path)], stdout=log, stderr=log)
+                            try:
+                                for _ in range(50):
+                                    try:
+                                        query(port, "normal.adzero.invalid")
+                                        break
+                                    except (OSError, TimeoutError):
+                                        if process.poll() is not None:
+                                            raise RuntimeError((home / "core.log").read_text())
+                                        time.sleep(0.1)
+                                for tcp in (False, True):
+                                    for kind in (1, 28):
+                                        blocked = query(port, "sub.ads.adzero.invalid", kind, tcp)
+                                        normal = query(port, "normal.adzero.invalid", kind, tcp)
+                                        tracker = query(port, "tracker.adzero.invalid", kind, tcp)
+                                        row = {"phase": phase, "tracker": tracker, "mode": mode, "transport": "tcp" if tcp else "udp", "query": "AAAA" if kind == 28 else "A", "blocked": blocked, "normal": normal}
+                                        results.append(row)
+                                        expected = 3 if phase in ("blocked", "revoked") else 0
+                                        if blocked[0] != expected or tracker[0] != (0 if phase == "paused" else 3) or normal[0] != 0 or (kind == 1 and not normal[1]):
+                                            raise RuntimeError(f"DNS behavior mismatch: {row}")
+                            finally:
+                                process.terminate()
+                                process.wait(timeout=10)
         finally:
             stop.set()
             thread.join(2)

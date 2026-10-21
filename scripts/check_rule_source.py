@@ -72,6 +72,19 @@ def backend_filter(raw_path, backend_source, directory):
     return parse_domains(sorted_path.read_text())
 
 
+def check_allow_scope(backend_source, directory):
+    source = backend_source.read_text()
+    start = source.index("\t\tlet sed_content = '';", source.index('// Remove allowed domains'))
+    end = source.index('\n\t\tif (sed_content)', start)
+    script = subprocess.run(ucode()+['-e', "let all_allowed = 'ads.example';\n"+source[start:end]+"\nprint(sed_content);"],
+                            text=True,capture_output=True,check=True).stdout
+    path=directory/'allow.sed';path.write_text(script)
+    sample='ads.example\nlogin.ads.example\nnotads.example\nother.example\n'
+    result=subprocess.run(['sed','-E','-f',str(path)],input=sample,text=True,capture_output=True,check=True)
+    if result.stdout != 'notads.example\nother.example\n':
+        raise ValueError('Pinned backend allow scope differs from the shared policy')
+
+
 def main():
     ucode()  # Fail before network activity if the required parser is absent.
     cache = ROOT / "artifacts/upstream"
@@ -92,12 +105,14 @@ def main():
             raise ValueError("Unexpectedly small default Light list")
         if backend_filter(raw_path, backend, path) != domains:
             raise ValueError("Backend filtering changed the accepted domain set")
+        check_allow_scope(backend,path)
         report = {
             "checked_at": datetime.now(timezone.utc).isoformat(), "url": url,
             "download": "passed", "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
             "domains": len(domains), "production_domain_parser": "passed",
             "backend": "adblock-fast 1.2.4-r4", "backend_source_sha256": BACKEND_SHA256,
             "backend_filter_sort": "passed", "source_sha256": source_hash(ROOT / "luci-app-adzero"),
+            "backend_allow_subtree": "passed (actual pinned ucode expression and sed)",
             "scope": "HTTPS download and isolated rule filtering only; no services, UCI, router or LAN execution",
         }
     output = ROOT / "artifacts/runtime/default-rule-source-result.json"

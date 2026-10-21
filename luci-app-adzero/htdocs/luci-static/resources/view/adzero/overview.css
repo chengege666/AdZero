@@ -195,6 +195,32 @@
 @media (prefers-reduced-motion: reduce) {
   .az-root *, .az-root *::before, .az-root *::after { animation: none !important; transition: none !important; }
 }
+.az-root .az-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.az-root .az-pause-bar, .az-root .az-action-row, .az-root .az-domain-form { display: flex; align-items: center; gap: 12px; }
+.az-root .az-pause-bar { justify-content: space-between; flex-wrap: wrap; color: var(--az-muted); font-size: 13px; padding: 12px 4px 0; }
+.az-root .az-action-row { flex-shrink: 0; }
+.az-root .az-domain-card { padding: 24px; margin-top: 18px; }
+.az-root .az-domain-form { margin-top: 18px; align-items: stretch; }
+.az-root .az-domain-form input { flex: 1; min-width: 0; width: 100%; max-width: none; border: 1px solid var(--az-line); border-radius: 9px; padding: 12px 14px; font-size: 15px; box-shadow: none; background: var(--az-card); color: var(--az-text); }
+.az-root .az-action-row select { min-width: 92px; width: auto; min-height: 44px; margin: 0; border: 1px solid var(--az-line); border-radius: 8px; background: var(--az-card); color: var(--az-text); }
+.az-root .az-domain-form input:focus-visible, .az-root select:focus-visible { outline: 2px solid var(--az-focus); outline-offset: 2px; }
+.az-root .az-lookup-result { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px; margin-top: 16px; background: var(--az-soft); border-radius: 10px; }
+.az-root .az-lookup-result p { margin: 6px 0 0; font-size: 13px; color: var(--az-muted); overflow-wrap: anywhere; }
+.az-root .az-lookup-result .az-scope-note { margin-top: 10px; color: var(--az-text); }
+.az-root .az-lookup-result .az-button { flex-shrink: 0; }
+.az-root .az-allow-list { border-top: 1px solid var(--az-line); margin-top: 18px; }
+.az-root .az-allow-list summary { padding: 16px 0; color: var(--az-text); cursor: pointer; display: list-item; list-style-position: inside; font-size: 14px; }
+.az-root .az-allow-list ul { list-style: none; padding: 0; margin: 0; }
+.az-root .az-allow-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--az-line); }
+.az-root .az-allow-list strong { overflow-wrap: anywhere; }
+.az-root .az-allow-list small { display: block; color: var(--az-muted); font-size: 12px; margin-top: 3px; }
+@media (max-width: 760px) {
+  .az-root .az-domain-card { padding: 20px; margin-top: 14px; }
+  .az-root .az-lookup-result { align-items: stretch; flex-direction: column; gap: 14px; }
+  .az-root .az-domain-form { flex-wrap: wrap; }
+  .az-root .az-domain-form input { flex-basis: 100%; }
+  .az-root .az-domain-form .az-button { width: 100%; }
+}
 @media (prefers-color-scheme: dark) {
   .az-root {
     --az-bg: #18241e; --az-card: #223029; --az-soft: #293f33; --az-text: #e2ede6;

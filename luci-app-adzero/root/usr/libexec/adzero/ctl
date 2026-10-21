@@ -30,6 +30,7 @@ PROBE=${ADZERO_PROBE:-$(dirname "$0")/probe}
 RULES_LIBRARY=${ADZERO_RULES_LIBRARY:-$(dirname "$0")/rules.sh}
 ADAPTER=${ADZERO_ADAPTER:-$(dirname "$0")/adapter}
 BACKEND_CHECK=${ADZERO_BACKEND_CHECK:-$(dirname "$0")/backend}
+POLICY=${ADZERO_POLICY:-$(dirname "$0")/policy}
 [ -r "$RULES_LIBRARY" ] || { echo 'AdZero: missing rules library' >&2; exit 1; }
 . "$RULES_LIBRARY"
 
@@ -130,6 +131,10 @@ resolver_mode() {
 			printf '%s\n' unknown ;;
 	esac
 }
+policy_clean() {
+	policy_rc=0; "$POLICY" pending >/dev/null 2>&1 || policy_rc=$?
+	[ "$policy_rc" = 1 ] && "$POLICY" validate >/dev/null 2>&1
+}
 json_bool() {
 	if [ "$1" = 1 ]; then printf true; else printf false; fi
 }
@@ -184,12 +189,23 @@ print_status() {
 		case "$adapter_status" in null|*recovery_required*|*preparing*|*restarting*|*restoring*) state=inconsistent ;; esac
 		[ "$backend_ready" = 1 ] || state=inconsistent
 	fi
-	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":false,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s}\n' \
+	policy_status=$("$POLICY" status 2>/dev/null) || policy_status=null
+	if [ -f "$STATE_DIR/pause.json" ]; then
+		state=inconsistent
+		if [ "$owner" = 1 ] && [ "$configured" = 1 ] && [ "$actual" = 0 ] && \
+		   [ "$force_status" = off ] && [ "$tls_status" = strict ] && [ -f "$FORCE_BACKUP" ] && [ -f "$TLS_BACKUP" ] && \
+		   "$POLICY" is-paused && "$BACKEND_CHECK" stopped >/dev/null 2>&1; then
+			case "$adapter_status" in *'"stage": "inactive"'*|*'"stage":"inactive"'*) state=paused ;; esac
+		fi
+	fi
+	policy_clean || state=inconsistent
+	[ "$policy_status" != null ] || state=inconsistent
+	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":false,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s,"policy":%s}\n' \
 		"$state" "$(json_bool "$owner")" "$(json_bool "$configured")" \
 		"$(json_bool "$actual")" "$(resolver_mode)" "$(json_bool "$nailink")" \
 		"$(json_bool "$nailink_active")" "$(json_bool "$nailink_enabled")" \
 		"$(json_bool "$agh")" "$(json_bool "$safe_mode")" "$(json_bool "$dns_review")" \
-		"$port_hint" "$force_status" "$tls_status" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status"
+		"$port_hint" "$force_status" "$tls_status" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status" "$policy_status"
 }
 release_lock() {
 	# Never remove a lock whose owner record was replaced by another operation.
@@ -265,6 +281,7 @@ restore_force_dns() {
 rollback_enable() {
 	old_enabled=$1
 	"$ADAPTER" remove || return 1
+	"$POLICY" restore || return 1
 	write_uci adblock-fast.config.enabled "$old_enabled" adblock-fast || return 1
 	restore_default_rule || return 1
 	restore_force_dns || return 1
@@ -297,7 +314,9 @@ verify_policy_values() {
 	reject_insecure_custom_fetch_flags
 }
 enable_protection() {
+	[ ! -e "$STATE_DIR/pause.json" ] || { resume_protection; return; }
 	verify_supported
+	policy_clean || error '上次放行操作尚未恢复，请先关闭并恢复。'
 	"$ADAPTER" check >/dev/null || error '代理 DNS 适配前置检查失败，请查看诊断。'
 	previous=$(get_uci adblock-fast.config.enabled)
 	[ "$previous" = 1 ] || previous=0
@@ -338,7 +357,13 @@ enable_protection() {
 		rollback_enable "$previous" && error '默认规则初始化失败，原配置已恢复。'
 		error '默认规则初始化失败，回滚未确认，请检查状态。'
 	fi
-	if ! backend_restart; then
+	if ! "$POLICY" apply; then
+		rollback_enable "$previous" && error '个人放行配置应用失败，原配置已恢复。'
+		error '个人放行配置未能恢复，请检查恢复记录。'
+	fi
+	start_method=start
+	"$POLICY" has-allowed && start_method=dl
+	if ! backend_restart "$start_method"; then
 		rule_failure_hint
 		rollback_enable "$previous" && error '后端启动失败，原配置已恢复。'
 		error '后端启动失败，回滚未确认，请检查状态。'
@@ -358,6 +383,8 @@ disable_protection() {
 	[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero stop
 	"$ADAPTER" remove || error '代理 DNS 恢复失败，恢复记录已保留。'
 	if [ ! -f "$MANAGED_MARKER" ]; then
+		"$POLICY" restore || error '放行恢复记录尚未处理。'
+		"$POLICY" pause-clear || error '无法清除暂停记录。'
 		if [ "$(get_uci adzero.main.enabled)" != 0 ]; then
 			write_uci adzero.main.enabled 0 adzero || error '状态保存失败。'
 		fi
@@ -379,6 +406,7 @@ disable_protection() {
 			error '停止后端失败；已尝试回到原来的启用状态。'
 		fi
 	fi
+	"$POLICY" restore || error '后端放行配置恢复失败，所有权记录已保留。'
 	if ! write_uci adzero.main.enabled 0 adzero; then
 		if [ "$previous" = 1 ]; then
 			write_uci adblock-fast.config.enabled 1 adblock-fast >/dev/null 2>&1 || :
@@ -395,9 +423,12 @@ disable_protection() {
 	fi
 	restore_default_rule || error '后端已停用，但恢复默认规则配置失败；请重试关闭。'
 	rm -f "$MANAGED_MARKER" "$FORCE_BACKUP" "$TLS_BACKUP" || error '已停用后端，但清理所有权状态失败。'
+	"$POLICY" pause-clear || error '已关闭过滤，但暂停记录未能清理。'
 	printf 'disabled (restored previous force_dns when unchanged)\n'
 }
 refresh_blocklists() {
+	[ ! -e "$STATE_DIR/pause.json" ] || error '请先恢复保护，再更新规则。'
+	policy_clean || error '放行恢复尚未完成，请先关闭并恢复。'
 	verify_supported
 	[ -f "$MANAGED_MARKER" ] || error '后端非 AdZero 管理，拒绝更新规则。'
 	[ "$(get_uci adzero.main.enabled)" = 1 ] || error 'AdZero 未启用。'
@@ -413,14 +444,78 @@ refresh_blocklists() {
 	printf 'blocklist refresh requested\n'
 }
 
+require_active() {
+	verify_supported
+	[ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ] && \
+	[ "$(get_uci adblock-fast.config.enabled)" = 1 ] && [ ! -e "$STATE_DIR/pause.json" ] || error '请先开启或恢复 AdZero。'
+	[ "$(force_dns_state)" = off ] && [ "$(tls_download_state)" = strict ] || error '过滤配置已被外部修改。'
+	policy_clean || error '上次放行操作尚未恢复，请先关闭并恢复。'
+	backend_confirm ready || error '当前规则未就绪，请重新检测。'
+}
+change_allow() {
+	require_active
+	# Journal intent before UCI writes; both backend and adapter must succeed.
+	if "$POLICY" "begin-$1" "$2" "$3" && backend_restart dl && "$ADAPTER" apply; then
+		"$POLICY" finish || error '放行已同步，完成记录清理失败。'
+		printf 'personal allow policy synchronized\n'
+		return 0
+	fi
+	if "$POLICY" pending; then
+		if "$POLICY" rollback && backend_restart dl && "$ADAPTER" apply; then
+			"$POLICY" finish || error '已恢复旧名单，完成记录清理失败。'
+			error '放行操作未完成，已恢复原名单。'
+		fi
+		error '放行操作未完成，恢复记录已保留；请关闭并恢复。'
+	fi
+	error '放行未应用，请重新查询并确认范围。'
+}
+pause_protection() {
+	case "$1" in 300|900|1800) ;; *) error '暂停时长仅支持 5、15、30 分钟。' ;; esac
+	require_active
+	"$POLICY" pause-begin "$1" || error '未能记录暂停计划。'
+	"$ADAPTER" remove || error '代理规则未恢复，暂停未完成；请关闭并恢复。'
+	write_uci adblock-fast.config.enabled 0 adblock-fast && backend_restart || error '后端未能停止，暂停未完成；请关闭并恢复。'
+	"$POLICY" pause-stage paused || error '暂停完成记录失败；请重新检测。'
+	printf 'paused; owned proxy rules removed, automatic resume scheduled\n'
+}
+resume_protection() {
+	"$POLICY" is-paused || error '没有可以恢复的暂停计划。'
+	[ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ] && \
+	[ "$(get_uci adblock-fast.config.enabled)" = 0 ] || error '暂停期间配置已被修改，拒绝自动接管。'
+	if ! (verify_supported; [ "$(force_dns_state)" = off ] && [ "$(tls_download_state)" = strict ] &&
+		! adguardhome_running && "$ADAPTER" check >/dev/null && policy_clean); then
+		"$POLICY" pause-stage paused resume_failed
+		error '恢复前检查未通过，继续保持暂停，请检查当前代理后重试。'
+	fi
+	"$POLICY" pause-stage resuming || error '无法记录恢复操作。'
+	if write_uci adblock-fast.config.enabled 1 adblock-fast && backend_restart && "$ADAPTER" apply; then
+		"$POLICY" pause-clear || error '保护已恢复，暂停记录未能清理。'
+		printf 'resumed\n'; return 0
+	fi
+	if "$ADAPTER" remove && write_uci adblock-fast.config.enabled 0 adblock-fast && backend_restart; then
+		"$POLICY" pause-stage paused resume_failed
+		error '恢复未完成，已回到暂停状态；可稍后重试。'
+	fi
+	"$POLICY" pause-stage recovery_required
+	error '恢复未确认，恢复记录已保留，请关闭并恢复。'
+}
+
 case "$1" in
 	status) print_status ;;
 	enable) acquire_lock enable; enable_protection ;;
 	disable) acquire_lock disable; disable_protection ;;
 	refresh) acquire_lock refresh; refresh_blocklists ;;
+	lookup) acquire_lock lookup; require_active; "$POLICY" lookup "$2" ;;
+	allow|revoke) acquire_lock "$1"; change_allow "$1" "$2" "$3" ;;
+	pause) acquire_lock pause; pause_protection "$2" ;;
+	resume) acquire_lock resume; resume_protection ;;
 	reconcile)
 		if acquire_lock reconcile && [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ]; then
-			backend_confirm ready && "$ADAPTER" apply
+			if [ -e "$STATE_DIR/pause.json" ]; then
+				if "$POLICY" pause-due; then resume_protection; fi
+			else
+				policy_clean && backend_confirm ready && "$ADAPTER" apply
+			fi
 		fi ;;
-	*) error '用法: ctl {status|enable|disable|refresh}' ;;
+	*) error '用法: ctl {status|enable|disable|refresh|lookup DOMAIN|allow DOMAIN SCOPE|revoke DOMAIN SCOPE|pause SECONDS|resume}' ;;
 esac

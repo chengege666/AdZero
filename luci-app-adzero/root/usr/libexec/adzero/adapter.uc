@@ -115,6 +115,14 @@ function yaml(path, engine) {
 	return value;
 }
 function graphql(query, variables) {
+	// Isolated API transaction fixture; unavailable on an unprefixed router.
+	let fixture = getenv('ADZERO_NAILINK_API_FIXTURE');
+	if (root && fixture) {
+		let request = state_dir + '/fixture-request.json';
+		atomic(request,sprintf('%J',{query,variables:variables ?? {}}));
+		try { let data = json(capture([fixture,request])); fs.unlink(request); return data; }
+		catch(e) { fs.unlink(request); die(e); }
+	}
 	// Use NaiLink's LuCI CGI gateway. No passwords, private JWT keys or SQLite edits.
 	let bus = connect(), session;
 	if (!bus) die('NaiLink requires rpcd/ubus');

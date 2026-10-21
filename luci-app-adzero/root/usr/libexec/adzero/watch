@@ -1,7 +1,14 @@
 #!/bin/sh
 # Reconcile rule updates and switching proxy plugins, including after reboot.
 # ctl serializes mutations. Unchanged content does not restart a proxy.
+ticks=12
 while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
-	/usr/libexec/adzero/ctl reconcile >/dev/null || logger -t adzero 'DNS adapter synchronization failed; check AdZero diagnostics and recovery journal'
-	sleep 60
+	if [ -e /etc/adzero/pause.json ] || [ "$ticks" -ge 12 ]; then
+		/usr/libexec/adzero/ctl reconcile >/dev/null || {
+			[ "$ticks" -lt 12 ] || logger -t adzero 'DNS synchronization/resume failed; check AdZero recovery state'
+		}
+		[ "$ticks" -lt 12 ] || ticks=0
+	fi
+	sleep 5
+	ticks=$((ticks+1))
 done

@@ -1,0 +1,30 @@
+{
+  "source_sha256": "8f1833b455a9e0a040cc1faa8e0e5f724f59a6f1a72e75da06254a0afbbed371",
+  "ui_assertions_per_package": 71,
+  "packages": [
+    {
+      "package": "luci-app-adzero_0.7.0-r1_all.ipk",
+      "payload_files_checked": 21,
+      "runtime_source_and_modes": "passed",
+      "luci_delivered_js_syntax": "passed",
+      "luci_delivered_ui_regressions": "passed",
+      "scope": "extraction only, no package installation or lifecycle execution"
+    },
+    {
+      "package": "luci-app-adzero-0.7.0-r1.apk",
+      "payload_files_checked": 21,
+      "runtime_source_and_modes": "passed",
+      "luci_delivered_js_syntax": "passed",
+      "luci_delivered_ui_regressions": "passed",
+      "scope": "extraction only, no package installation or lifecycle execution"
+    },
+    {
+      "package": "luci-app-adzero-0.7.0-r1.apk",
+      "payload_files_checked": 21,
+      "runtime_source_and_modes": "passed",
+      "luci_delivered_js_syntax": "passed",
+      "luci_delivered_ui_regressions": "passed",
+      "scope": "extraction only, no package installation or lifecycle execution"
+    }
+  ]
+}

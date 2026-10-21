@@ -21,7 +21,7 @@ from build_sdk import source_hash
 ROOT = Path(__file__).resolve().parents[1]
 URL = "https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/openwrt-24.10.8-x86-64-rootfs.tar.gz"
 SHA256 = "6c94190246a54088e3984fc0c4cbbb518972abb2b10a28e30a0c41554eea8b9d"
-FILES = {"./bin/busybox": "busybox", "./lib/libc.so": "libc.so", "./lib/libgcc_s.so.1": "libgcc_s.so.1"}
+FILES = {"./bin/busybox": "busybox", "./sbin/uci": "uci", "./lib/libc.so": "libc.so", "./lib/libgcc_s.so.1": "libgcc_s.so.1"}
 # Use the actual OpenWrt applets, not GNU lookalikes on the development host.
 APPLETS = ("sh", "awk", "sed", "grep", "tr", "cut", "sort", "mkdir", "rmdir", "cat", "rm", "dirname")
 
@@ -77,9 +77,10 @@ def main():
     env = {**os.environ, "PATH": str(wrappers) + os.pathsep + os.environ["PATH"],
            "ADZERO_TEST_SHELL": shlex.join(command + ["ash"]),
            "ADZERO_UCODE": shlex.join([str(runtime / "libc.so"), "--library-path", str(runtime), str(runtime / "ucode"), "-L", str(runtime)])}
-    for program in ('adapter', 'probe'):
+    for program in ('adapter', 'probe', 'policy'):
         subprocess.run(shlex.split(env['ADZERO_UCODE']) + ['-c', '-o', str(runtime / (program + '.ucb')),
                        str(ROOT / ('luci-app-adzero/root/usr/libexec/adzero/' + program + '.uc'))], check=True)
+    subprocess.run(shlex.split(env["ADZERO_UCODE"]) + ["-c", "-o", str(runtime / "rpc.ucb"), str(ROOT / "luci-app-adzero/root/usr/share/rpcd/ucode/adzero")], check=True)
     result = subprocess.run(command + ["ash", "scripts/check.sh"], cwd=ROOT, env=env, text=True, capture_output=True)
     log = result.stdout + result.stderr
     (cache / "openwrt-24.10.8-check.log").write_text(log)

@@ -32,6 +32,7 @@ jobs:
           echo '8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f  /tmp/yq' | sha256sum -c -
           sudo install -m 755 /tmp/yq /usr/local/bin/yq
           python3 scripts/check_openwrt_runtime.py
+          sudo python3 scripts/check_rpc.py
           export ADZERO_UCODE="$PWD/.sdk/runtime-24.10.8/libc.so --library-path $PWD/.sdk/runtime-24.10.8 $PWD/.sdk/runtime-24.10.8/ucode -L $PWD/.sdk/runtime-24.10.8"
           python3 scripts/check_dns_core.py
           python3 scripts/check_dae.py

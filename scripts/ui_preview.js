@@ -14,7 +14,7 @@ function fallbackE(tag, attrs = {}, children = []) {
   return el;
 }
 const baseline = {
-  state: 'configured_unverified', managed: true, configured: true, backend_enabled: true,
+  policy: {allowed:[],pause:null}, state: 'configured_unverified', managed: true, configured: true, backend_enabled: true,
   resolver: 'dnsmasq.servers', dns_mode_safe: true, force_dns: 'off', tls_download: 'strict', dnsmasq_port_hint: 'default', client_dns_verified: false,
   backend: { state: 'ready', domains: 66425, errors: 0, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified', domains: 66425 },
   compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', declared_arch: 'aarch64_generic', package_arch: 'aarch64', package_manager: 'apk' },
@@ -28,6 +28,23 @@ const api = { exec: async (_program, args) => {
   if (document.getElementById('fail').checked) return { code: 1, stderr: '模拟错误：规则下载失败，原配置已恢复。' };
   state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified'; return { code: 0, stdout: 'ok' };
 } };
+const rpc = {declare: spec => async (...args) => {
+  await new Promise(r => setTimeout(r,700));
+  if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
+  if (spec.method === 'lookup') {
+    const domain = args[0].replace(/^https?:\/\//,'').split('/')[0].toLowerCase();
+    if (!/^[a-z0-9.-]+\.[a-z]+$/.test(domain)) return {ok:false,message:'请输入有效域名。'};
+    const allowed = state.policy.allowed.some(d => domain===d || domain.endsWith('.'+d));
+    const hit = domain==='ads.example' || domain.endsWith('.ads.example');
+    return {ok:true,data:{available:true,domain,match:allowed?'allowed':hit?'parent':'none',rule:hit?'ads.example':null,scope:hit?'ads.example':null}};
+  }
+  if (spec.method==='allow') state.policy.allowed.push(args[1]);
+  if (spec.method==='revoke') state.policy.allowed=state.policy.allowed.filter(x=>x!==args[1]);
+  state.state=spec.method==='pause'?'paused':'configured_unverified';
+  state.policy.pause=spec.method==='pause'?{remaining:args[0],stage:'paused'}:null;
+  return {ok:true};
+}};
+const poll = {add:fn=>{setInterval(fn,5000);},remove:()=>{}};
 function mount() { app.busy = app.notice = null; app.lastChecked = new Date(); document.getElementById('preview').replaceChildren(app.render(state)); }
 async function initialMount(delay) {
   statusDelay = delay; app.busy = app.notice = app.lastChecked = null;
@@ -53,6 +70,6 @@ document.getElementById('host-frame').addEventListener('change', ev => {
   host.classList.toggle('main-right', ev.target.checked); host.querySelector('header').hidden = !ev.target.checked;
 });
 fetch('/luci-static/resources/view/adzero/overview.js').then(r => r.text()).then(source => {
-  app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', source)({ extend: x => x }, api,
-    window.previewDom || { content: (el, content) => el.replaceChildren(content) }, x => x, window.E || fallbackE, document, { resource: x => '/luci-static/resources/' + x }); initialMount(700);
+  app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', source)({ extend: x => x }, api,
+    window.previewDom || { content: (el, content) => el.replaceChildren(content) }, x => x, window.E || fallbackE, document, { resource: x => '/luci-static/resources/' + x }, rpc, poll); initialMount(700);
 });

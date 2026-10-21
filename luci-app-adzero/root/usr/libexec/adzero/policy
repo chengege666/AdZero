@@ -1,0 +1,4 @@
+#!/bin/sh
+umask 077
+[ -z "$ADZERO_UCODE" ] || { set -f; exec $ADZERO_UCODE -S "$(dirname "$0")/policy.uc" -- "$@"; }
+exec ucode -S "$(dirname "$0")/policy.uc" -- "$@"

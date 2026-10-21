@@ -117,10 +117,20 @@ class AdZeroTest(unittest.TestCase):
         self.adapter = base / "mock_adapter"
         self.adapter.write_text('#!/bin/sh\nif [ "$1" = status ]; then echo \'{"plugin":"none","stage":"inactive","domains":0}\'; fi\nexit 0\n')
         self.adapter.chmod(0o700)
+        policy = base / 'mock_policy'
+        policy.write_text('''#!/bin/sh
+case "$1" in
+ status) echo '{"allowed":[],"pending":false,"pause":null}' ;;
+ pending|is-paused|pause-due|has-allowed) exit 1 ;;
+esac
+exit 0
+''')
+        policy.chmod(0o700)
         self.env = {
             **os.environ,
             "ADZERO_UCI": str(self.uci),
             "ADZERO_ADAPTER": str(self.adapter),
+            "ADZERO_POLICY": str(policy),
             "ADZERO_BACKEND_INIT": str(self.backend),
             "ADZERO_BACKEND_CHECK": str(self.backend_check),
             "ADZERO_STATE_DIR": str(self.state),

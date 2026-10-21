@@ -1,0 +1,33 @@
+'use strict';
+// Typed methods, no command or environment arguments exposed to the browser.
+import { connect } from 'ubus';
+import { hostname } from '../../../libexec/adzero/policy-lib.uc';
+const bus = connect();
+function invoke(request, action, args, output) {
+	// Nested asynchronous exec keeps rpcd free to serve NaiLink's local session.
+	return bus.defer('file','exec',{command:'/usr/libexec/adzero/ctl',params:[action,...args]},function(code,result) {
+		let reply = {ok:code == 0 && result?.code == 0};
+		if (reply.ok && output) {
+			try { reply.data = json(result.stdout); } catch(e) { reply.ok = false; }
+		}
+		if (!reply.ok) reply.message = output ? '查询未完成，请确认保护已开启且规则就绪。' : '操作未完成，已保留恢复记录。请重新检测；必要时关闭并恢复。';
+		request.reply(reply);
+	});
+}
+function domain(request, action, scope) {
+	try {
+		let name = hostname(request.args.domain), args = [name];
+		if (scope) push(args,hostname(request.args.scope));
+		return invoke(request,action,args,!scope);
+	} catch(e) { return {ok:false,message:e.message}; }
+}
+return {adzero:{
+	lookup:{args:{domain:''},call:r => domain(r,'lookup',false)},
+	allow:{args:{domain:'',scope:''},call:r => domain(r,'allow',true)},
+	revoke:{args:{domain:'',scope:''},call:r => domain(r,'revoke',true)},
+	pause:{args:{seconds:0},call:function(r) {
+		if (index([300,900,1800],r.args.seconds) < 0) return {ok:false,message:'请选择 5、15、30 分钟。'};
+		return invoke(r,'pause',[''+r.args.seconds],false);
+	}},
+	resume:{call:r => invoke(r,'resume',[],false)}
+}};

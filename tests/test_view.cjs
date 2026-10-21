@@ -37,15 +37,28 @@ const api = { exec: async (program, args) => {
   if (!staleResult) state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified';
   return { code: 0, stdout: 'ok' };
 } };
-const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', source)(
-  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x });
+let rpcFailure = false, rpcStale = false, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
+const rpc = { declare: spec => async (...args) => {
+  assert.equal(spec.object,'adzero'); commands.push(spec.method);
+  if (rpcFailure) return {ok:false,message:'typed failure'};
+  if (spec.method === 'lookup') return {ok:true,data:lookup};
+  if (!rpcStale) {
+    if (spec.method === 'allow') state.policy.allowed.push(args[1]);
+    if (spec.method === 'revoke') state.policy.allowed = state.policy.allowed.filter(x => x !== args[1]);
+    state.state = spec.method === 'pause' ? 'paused' : 'configured_unverified';
+    state.policy.pause = spec.method === 'pause' ? {stage:'paused',remaining:args[0]} : null;
+  }
+  return {ok:true};
+} };
+const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', source)(
+  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}});
 function reset(overrides = {}) {
   state = { state: 'disabled', managed: false, dns_mode_safe: true, resolver: 'dnsmasq.servers', client_dns_verified: false,
-    force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
+    policy:{allowed:[],pause:null}, force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
     compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
-  failAction = failStatus = pending = staleResult = statusPending = false; commands.length = 0;
-  app.busy = app.notice = null; root = app.render(state); active = body;
+  failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = false; commands.length = 0;
+  app.busy = app.notice = app.domainResult = null; app.domainInput = ''; root = app.render(state); active = body;
 }
 const find = id => doc.getElementById(id);
 function check(value, label) { assert.ok(value, label); assertions++; }
@@ -113,5 +126,28 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(root).includes('过滤后端报告错误') && !find('az-toggle').disabled, 'essential backend warning and recovery survive simplification');
   reset({ state: 'error', error: '<img src=x onerror=alert(1)>' });
   check(!nodes(root, n => n.scalarHtml).length, 'untrusted data cannot reach innerHTML');
+  reset(); check(find('az-domain').disabled && find('az-lookup').disabled,'query unavailable when off');
+  await app.lookupDomain(); check(!commands.length,'no query while off');
+  reset({state:'configured_unverified'}); app.domainInput='login.ads.example';
+  await app.lookupDomain();
+  check(text(root).includes('ads.example') && text(root).includes('及其所有子域'),'actual subtree scope visible before mutation');
+  check(!commands.includes('allow'),'query does not write');
+  await app.runPolicy('allow',['login.ads.example','ads.example']);
+  check(state.policy.allowed.includes('ads.example') && app.notice.kind === 'success','typed allow then canonical status');
+  check(text(root).includes('撤销放行'),'personal list has undo');
+  await app.runPolicy('revoke',['ads.example','ads.example']);
+  check(!state.policy.allowed.length && app.notice.kind === 'success','revoke status verified');
+  await app.runPolicy('pause',[900]);
+  check(state.state === 'paused' && text(root).includes('15 分钟后'),'pause deadline visible');
+  check(find('az-domain').disabled && find('az-update').disabled && !find('az-resume').disabled,'paused controls guarded');
+  check(find('az-toggle').attrs['data-action'] === 'resume','paused switch resumes');
+  await app.runPolicy('resume',[]); check(state.state === 'configured_unverified','resume supported');
+  rpcStale=true; await app.runPolicy('allow',['ads.example','ads.example']); check(app.notice.kind==='error','stale RPC success rejected');
+  rpcStale=false; rpcFailure=true; await app.runPolicy('pause',[300]); check(app.notice.kind==='error' && state.state!=='paused','RPC failure is not optimistic pause');
+  reset({state:'configured_unverified'}); app.domainInput=''; await app.lookupDomain(); check(!commands.length && text(root).includes('请输入'),'empty query validation');
+  app.domainInput='ads.example'; rpcFailure=true; await app.lookupDomain(); check(text(root).includes('typed failure') && !find('az-allow'),'query failure cannot enable allow');
+  reset({state:'paused',policy:{allowed:['ads.example'],pause:{remaining:0,error:'resume_failed'}}});
+  check(text(root).includes('自动恢复未完成') && !find('az-resume').disabled,'failed automatic resume remains actionable');
+  await app.runAction('disable'); check(state.state==='disabled','manual close cancels pause via canonical controller');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });
