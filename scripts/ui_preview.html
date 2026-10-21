@@ -7,12 +7,12 @@ body { margin:0; background:#eef1f4; font-family:system-ui,sans-serif; }
 .preview-tools label { display:flex; align-items:center; gap:7px; margin:0; }
 .preview-tools select { padding:5px 8px; width:auto; height:auto; font-size:12px; }
 .preview-tools input { margin:0; }
-.preview-main { max-width:1260px; padding:28px 24px; margin:0 auto; }
-.with-sidebar .preview-main { max-width:1260px; margin-left:260px; }
+.preview-main { max-width:1400px; padding:20px 24px; margin:0 auto; }
+.with-sidebar .preview-main { max-width:1400px; margin-left:260px; }
 [data-theme=dark] body { background:#101b15; }
 @media(max-width:760px) { .preview-main { padding:12px 8px; } .preview-tools { padding:10px 12px; gap:8px; } }
 </style></head><body><div class="preview-tools"><strong>本地交互预览 · 模拟操作，不连接路由器</strong>
 <label>场景 <select id="scenario"><option value="on">已开启 / NaiLink</option><option value="off">未开启</option><option value="multi">多个代理冲突</option><option value="recovery">需要恢复</option><option value="error">连接中断</option></select></label>
 <label>外观 <select id="appearance"><option value="light">浅色</option><option value="dark">深色</option></select></label>
-<label><input id="fail" type="checkbox">模拟操作失败</label><label><input id="sidebar" type="checkbox">模拟侧栏占位</label><span id="calls" role="status">操作次数：0</span></div>
-<main class="preview-main" id="preview"></main><script src="/ui_preview.js"></script></body></html>
+<label><input id="fail" type="checkbox">模拟操作失败</label><label><input id="sidebar" type="checkbox">模拟侧栏占位</label><button id="reload">模拟慢速首次读取（5 秒）</button><span id="timing" role="status"></span><span id="calls" role="status">操作次数：0</span></div>
+<main class="preview-main" id="preview"></main><script src="/native-dom.js"></script><script src="/ui_preview.js"></script></body></html>

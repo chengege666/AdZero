@@ -2,7 +2,7 @@
 # AdZero release installer. Only exact SDK-verified matrix rows are installable.
 set -eu
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.6.1}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.6.2}
 LOCAL_DIR=
 ENABLE=1
 UPGRADE=0

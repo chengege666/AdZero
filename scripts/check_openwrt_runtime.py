@@ -77,8 +77,9 @@ def main():
     env = {**os.environ, "PATH": str(wrappers) + os.pathsep + os.environ["PATH"],
            "ADZERO_TEST_SHELL": shlex.join(command + ["ash"]),
            "ADZERO_UCODE": shlex.join([str(runtime / "libc.so"), "--library-path", str(runtime), str(runtime / "ucode"), "-L", str(runtime)])}
-    subprocess.run(shlex.split(env['ADZERO_UCODE']) + ['-c', '-o', str(runtime / 'adapter.ucb'),
-                   str(ROOT / 'luci-app-adzero/root/usr/libexec/adzero/adapter.uc')], check=True)
+    for program in ('adapter', 'probe'):
+        subprocess.run(shlex.split(env['ADZERO_UCODE']) + ['-c', '-o', str(runtime / (program + '.ucb')),
+                       str(ROOT / ('luci-app-adzero/root/usr/libexec/adzero/' + program + '.uc'))], check=True)
     result = subprocess.run(command + ["ash", "scripts/check.sh"], cwd=ROOT, env=env, text=True, capture_output=True)
     log = result.stdout + result.stderr
     (cache / "openwrt-24.10.8-check.log").write_text(log)

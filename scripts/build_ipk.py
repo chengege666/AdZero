@@ -74,6 +74,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "etc/config/adzero",
         "usr/libexec/adzero/ctl",
         "usr/libexec/adzero/probe",
+        "usr/libexec/adzero/probe.uc",
         "usr/libexec/adzero/rules.sh",
         "usr/libexec/adzero/adapter",
         "usr/libexec/adzero/adapter.uc",

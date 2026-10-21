@@ -9,9 +9,9 @@
   color-scheme: light; min-width: 0;
 }
 .az-root *, .az-root *::before, .az-root *::after { box-sizing: border-box; }
-.az-root .az-app { max-width: 1200px; margin: 0 auto; padding: 28px; background: var(--az-bg); border-radius: 22px; }
+.az-root .az-app { max-width: 1360px; margin: 0 auto; padding: 20px 12px; background: transparent; border-radius: 0; }
 .az-root h2, .az-root h3, .az-root p, .az-root ol, .az-root dl, .az-root dt, .az-root dd { margin: 0; padding: 0; color: inherit; }
-.az-root h2, .az-root h3 { border: 0; background: none; box-shadow: none; font-weight: 650; line-height: 1.35; text-transform: none; }
+.az-root h2, .az-root h3 { width: auto; border: 0; background: none; box-shadow: none; font-weight: 650; line-height: 1.35; text-transform: none; }
 .az-root h2 { font-size: 25px; letter-spacing: -.7px; }
 .az-root h3 { font-size: 15px; }
 .az-root button, .az-root summary { -webkit-tap-highlight-color: transparent; }
@@ -21,7 +21,7 @@
 .az-root .az-header, .az-root .az-brand, .az-root .az-hero-top, .az-root .az-switch-control,
 .az-root .az-section-heading, .az-root .az-rules, .az-root .az-rules-copy, .az-root .az-summary-title,
 .az-root .az-summary-end, .az-root .az-plugin-row { display: flex; align-items: center; }
-.az-root .az-header { justify-content: space-between; gap: 16px; margin: 0 0 25px; padding: 0; position: static; color: var(--az-text); background: transparent; width: auto; height: auto; }
+.az-root .az-header { justify-content: space-between; gap: 16px; margin: 0 0 22px; padding: 0; position: static; color: var(--az-text); background: transparent; width: auto; height: auto; }
 .az-root .az-header::before, .az-root .az-header::after { content: none; display: none; }
 .az-root .az-brand { gap: 13px; }
 .az-root .az-brand p { color: var(--az-muted); font-size: 12px; margin-top: 1px; }
@@ -38,8 +38,9 @@
 .az-root .az-overview-grid { display: flex; flex-wrap: wrap; gap: 18px; }
 .az-root .az-overview-grid > .az-hero { flex: 1.6 1 380px; }
 .az-root .az-overview-grid > .az-progress { flex: 1 1 275px; }
-.az-root .az-card { border: 1px solid var(--az-line); border-radius: 17px; background: var(--az-card); min-width: 0; overflow-wrap: anywhere; box-shadow: 0 2px 4px #142d201a; }
-.az-root .az-hero { padding: 25px 28px 19px; }
+.az-root .az-card { border: 1px solid var(--az-line); border-radius: 14px; background: var(--az-card); min-width: 0; overflow-wrap: anywhere; box-shadow: 0 1px 3px #142d200a; }
+.az-root .az-hero { padding: 23px 26px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.az-root .az-hero > div:first-child { flex: 1; min-width: 0; }
 .az-root .az-hero.is-on { background: var(--az-soft); }
 .az-root .az-hero-top { justify-content: space-between; gap: 12px; margin-bottom: 25px; }
 .az-root .az-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 7px; font-size: 11px; font-weight: 550; line-height: 1.5; white-space: nowrap; color: var(--az-muted); background: var(--az-bg); }
@@ -52,7 +53,7 @@
 .az-root .az-toggle-thumb { display: block; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px #0003; transition: transform .18s ease; }
 .az-root .az-toggle.is-on .az-toggle-track { background: var(--az-accent); }
 .az-root .az-toggle.is-on .az-toggle-thumb { transform: translateX(22px); }
-.az-root .az-hero-title { font-size: clamp(23px, 2.3vw, 29px); letter-spacing: -.7px; }
+.az-root .az-hero-title { font-size: clamp(21px, 2vw, 26px); letter-spacing: -.6px; }
 .az-root .az-hero-copy { font-size: 13px; color: var(--az-muted); margin-top: 9px; }
 .az-root .az-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 28px 0 23px; }
 .az-root .az-metrics > div + div { border-left: 1px solid var(--az-line); padding-left: 24px; }
@@ -62,19 +63,19 @@
 .az-root .az-number { font-size: 36px; white-space: nowrap; }
 .az-root .az-proxy-name { font-size: 20px; letter-spacing: -.5px; min-height: 45px; display: flex; align-items: center; }
 .az-root .az-operation-note { padding-top: 14px; border-top: 1px solid var(--az-line); color: var(--az-muted); font-size: 11px; line-height: 1.8; }
-.az-root .az-progress { padding: 25px 24px 20px; }
+.az-root .az-progress { padding: 22px 24px; }
 .az-root .az-section-heading { justify-content: space-between; gap: 10px; }
-.az-root .az-steps { list-style: none; margin-top: 24px; }
-.az-root .az-step { display: flex; gap: 12px; position: relative; padding-bottom: 23px; }
+.az-root .az-steps { list-style: none; margin-top: 23px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.az-root .az-step { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; position: relative; padding: 0; }
 .az-root .az-step:last-child { padding-bottom: 0; }
-.az-root .az-step:not(:last-child)::after { content: ""; width: 1px; background: var(--az-line); position: absolute; left: 13px; top: 32px; bottom: 5px; }
-.az-root .az-step-mark { flex: 0 0 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--az-line); border-radius: 50%; color: var(--az-muted); font-size: 12px; }
+.az-root .az-step:not(:last-child)::after { content: ""; height: 1px; background: var(--az-line); position: absolute; left: 39px; right: 0; top: 14px; }
+.az-root .az-step-mark { flex: 0 0 28px; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--az-line); border-radius: 50%; color: var(--az-muted); font-size: 12px; }
 .az-root .az-step-mark .az-icon { width: 15px; height: 15px; }
 .az-root .is-done .az-step-mark { background: var(--az-soft); border-color: transparent; color: var(--az-accent); }
 .az-root .az-step strong { display: block; font-size: 13px; font-weight: 550; }
 .az-root .az-step p { font-size: 11px; margin-top: 3px; color: var(--az-muted); }
 .az-root .az-progress-note { font-size: 11px; color: var(--az-muted); border-top: 1px solid var(--az-line); padding-top: 13px; margin-top: 20px; }
-.az-root .az-rules { justify-content: space-between; gap: 20px; padding: 20px 24px; margin-top: 18px; }
+.az-root .az-rules { display: block; padding: 22px 24px; margin: 0; }
 .az-root .az-rules-copy { gap: 14px; }
 .az-root .az-rules p, .az-root summary p { font-size: 12px; color: var(--az-muted); margin-top: 5px; }
 .az-root .az-tile-icon { display: grid; place-items: center; width: 43px; height: 43px; flex: 0 0 43px; border-radius: 12px; color: var(--az-accent); background: var(--az-soft); }
@@ -84,7 +85,7 @@
 .az-root .az-device-list, .az-root .az-diagnostic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 17px 22px; margin-top: 19px; }
 .az-root dt { font-size: 11px; color: var(--az-muted); }
 .az-root dd { font-size: 13px; margin-top: 3px; font-variant-numeric: tabular-nums; }
-.az-root summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; list-style: none; cursor: pointer; padding: 22px 24px; border-radius: 17px; min-height: 88px; }
+.az-root summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; list-style: none; cursor: pointer; padding: 20px 24px; border-radius: 14px; min-height: 84px; }
 .az-root summary::-webkit-details-marker { display: none; }
 .az-root summary::after { display: none; }
 .az-root summary::marker { content: ""; }
@@ -115,16 +116,37 @@
 .az-root .az-error-details summary { padding: 8px 0; min-height: 0; font-size: 12px; text-decoration: underline; justify-content: flex-start; }
 .az-root .az-error-details pre { color: inherit; background: transparent; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; }
 .az-root .az-load-error { margin-top: 14px; color: var(--az-error); }
+.az-root .az-header-actions, .az-root .az-hero-heading, .az-root .az-stat-heading, .az-root .az-rule-action { display: flex; align-items: center; }
+.az-root .az-header-actions { gap: 16px; }
+.az-root .az-last-checked { font-size: 12px; color: var(--az-muted); font-variant-numeric: tabular-nums; }
+.az-root .az-hero-heading { gap: 12px; flex-wrap: wrap; }
+.az-root .az-hero-heading > .az-icon { color: var(--az-accent); width: 24px; height: 24px; }
+.az-root .az-switch-control { flex: 0 0 auto; }
+.az-root .az-stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.az-root .az-stat { padding: 20px 24px; }
+.az-root .az-stat-heading { justify-content: space-between; color: var(--az-muted); font-size: 12px; }
+.az-root .az-stat-heading > .az-icon { width: 18px; height: 18px; opacity: .7; }
+.az-root .az-stat .az-number { font-size: 32px; line-height: 1.3; margin: 12px 0 5px; }
+.az-root .az-stat-value { display: flex; align-items: center; min-height: 42px; font-size: 21px; line-height: 1.3; margin: 12px 0 5px; font-weight: 600; letter-spacing: -.5px; }
+.az-root .az-stat > p, .az-root .az-card-copy, .az-root .az-rule-action > span { font-size: 12px; color: var(--az-muted); }
+.az-root .az-verification { color: var(--az-muted); }
+.az-root .az-work-grid { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px; }
+.az-root .az-work-grid > * { flex: 1 1 360px; }
+.az-root .az-card-copy { margin-top: 16px; }
+.az-root .az-rule-action { justify-content: space-between; gap: 16px; margin: 18px 0; }
+.az-root .az-progress-note { padding-top: 12px; margin-top: 17px; }
+.az-root .is-loading .az-hero-heading > .az-icon { opacity: .5; }
+.az-root .az-placeholder { opacity: .35; }
 @keyframes az-spin { to { transform: rotate(360deg); } }
 @media (max-width: 1000px) {
-  .az-root .az-app { padding: 20px; }
+  .az-root .az-app { padding: 18px 8px; }
   .az-root .az-hero { padding: 22px; }
   .az-root .az-progress { padding: 22px 20px; }
   .az-root .az-metrics { gap: 14px; }
   .az-root .az-metrics > div + div { padding-left: 16px; }
 }
 @media (max-width: 760px) {
-  .az-root .az-app { padding: 18px 14px; border-radius: 16px; }
+  .az-root .az-app { padding: 14px 4px; border-radius: 0; }
   .az-root .az-overview-grid, .az-root .az-bottom-grid { gap: 14px; }
   .az-root .az-overview-grid > *, .az-root .az-bottom-grid > * { flex-basis: 100%; }
   .az-root .az-header { margin-bottom: 20px; gap: 8px; }
@@ -133,10 +155,23 @@
   .az-root .az-brand-mark { width: 42px; height: 42px; border-radius: 12px; }
   .az-root .az-button-quiet { padding: 8px; font-size: 12px; gap: 5px; }
   .az-root .az-hero, .az-root .az-progress, .az-root .az-device { padding: 20px; }
+  .az-root .az-hero { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .az-root .az-switch-control { width: 100%; justify-content: space-between; border-top: 1px solid var(--az-line); padding-top: 10px; }
+  .az-root .az-hero-heading > .az-icon { display: none; }
+  .az-root .az-header-actions { gap: 0; }
+  .az-root .az-last-checked { display: none; }
+  .az-root .az-stats-grid { gap: 10px; }
+  .az-root .az-stat { padding: 15px 12px; }
+  .az-root .az-stat-heading > .az-icon { display: none; }
+  .az-root .az-stat .az-number { font-size: clamp(21px, 5vw, 28px); min-height: 43px; display: flex; align-items: center; letter-spacing: -.8px; }
+  .az-root .az-stat-value { font-size: 16px; min-height: 43px; margin-top: 12px; }
+  .az-root .az-stat > p { font-size: 11px; }
+  .az-root .az-work-grid { gap: 14px; margin-top: 14px; }
+  .az-root .az-rule-action { flex-direction: column; align-items: stretch; gap: 12px; }
   .az-root .az-hero-top { margin-bottom: 20px; }
   .az-root .az-number { font-size: clamp(24px, 7vw, 32px); }
   .az-root .az-proxy-name { font-size: 18px; min-height: 40px; }
-  .az-root .az-rules { align-items: stretch; flex-direction: column; gap: 16px; padding: 20px; margin-top: 14px; }
+  .az-root .az-rules { padding: 20px; margin: 0; }
   .az-root .az-rules-copy { gap: 12px; }
   .az-root .az-rules .az-button { width: 100%; }
   .az-root .az-bottom-grid, .az-root .az-diagnostics { margin-top: 14px; }
@@ -147,6 +182,12 @@
   .az-root .az-device-list, .az-root .az-diagnostic-grid { gap: 16px; }
   .az-root .az-working { flex-wrap: wrap; }
   .az-root .az-working > span:last-child { width: 100%; padding-left: 26px; }
+}
+@media (max-width: 520px) {
+  .az-root .az-stats-grid { grid-template-columns: 1fr; gap: 10px; }
+  .az-root .az-stat { display: grid; grid-template-columns: 1fr auto; column-gap: 16px; }
+  .az-root .az-stat > p { grid-column: 1; }
+  .az-root .az-stat .az-number, .az-root .az-stat-value { grid-column: 2; grid-row: 1 / 3; margin: 0; min-height: 42px; font-size: 23px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .az-root *, .az-root *::before, .az-root *::after { animation: none !important; transition: none !important; }

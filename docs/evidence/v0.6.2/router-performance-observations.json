@@ -1,0 +1,14 @@
+{
+  "source": "user-supplied read-only timing and status on 2026-10-21",
+  "firmware": "OpenWrt 25.12.5",
+  "target": "rockchip/armv8",
+  "before_seconds": {
+    "ctl_status": 0.69,
+    "probe": 0.37,
+    "adapter_status": 0.02,
+    "backend_ready": 0.02
+  },
+  "state_at_measurement": "disabled, unmanaged, backend stopped, resolver running; backend ready exit 1 is expected",
+  "scope": "disabled state only; enabled backend with 66425 rules was not timed",
+  "after_update": "not_measured"
+}

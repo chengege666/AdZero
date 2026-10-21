@@ -1,6 +1,6 @@
 /* Development fixture only: actual production view with native DOM and fake ctl. */
 'use strict';
-function E(tag, attrs = {}, children = []) {
+function fallbackE(tag, attrs = {}, children = []) {
   let el;
   if (tag.startsWith('<')) { const template = document.createElement('template'); template.innerHTML = tag; el = template.content.firstChild; }
   else el = document.createElement(tag);
@@ -8,7 +8,9 @@ function E(tag, attrs = {}, children = []) {
     if (value == null) continue;
     if (typeof value === 'function') el.addEventListener(key, value); else el.setAttribute(key, value);
   }
-  for (const child of [children].flat(Infinity)) if (child != null) el.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  if (Array.isArray(children)) for (const child of children) el.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  else if (children instanceof Node) el.append(children);
+  else if (children != null) el.innerHTML = String(children);
   return el;
 }
 const baseline = {
@@ -18,15 +20,24 @@ const baseline = {
   compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', declared_arch: 'aarch64_generic', package_arch: 'aarch64', package_manager: 'apk' },
     plugins: ['nailink', 'passwall', 'passwall2', 'openclash'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })), dns: { active_proxy_count: 1 } }
 };
-let state = structuredClone(baseline), app, calls = 0;
+let state = structuredClone(baseline), app, calls = 0, statusDelay = 700;
 const api = { exec: async (_program, args) => {
-  if (args[0] === 'status') { if (state.state === 'error') throw new Error('模拟：连接暂时中断'); return { code: 0, stdout: JSON.stringify(state) }; }
+  if (args[0] === 'status') { await new Promise(resolve => setTimeout(resolve, statusDelay)); if (state.state === 'error') throw new Error('模拟：连接暂时中断'); return { code: 0, stdout: JSON.stringify(state) }; }
   document.getElementById('calls').textContent = '操作次数：' + (++calls);
   await new Promise(resolve => setTimeout(resolve, 1600));
   if (document.getElementById('fail').checked) return { code: 1, stderr: '模拟错误：规则下载失败，原配置已恢复。' };
   state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified'; return { code: 0, stdout: 'ok' };
 } };
 function mount() { app.busy = app.notice = null; app.lastChecked = new Date(); document.getElementById('preview').replaceChildren(app.render(state)); }
+async function initialMount(delay) {
+  statusDelay = delay; app.busy = app.notice = app.lastChecked = null;
+  const start = performance.now();
+  document.getElementById('preview').replaceChildren(app.render(await app.load()));
+  requestAnimationFrame(() => { document.getElementById('timing').textContent = '界面已显示 · 状态读取中（模拟延迟 ' + delay + ' ms）'; });
+  await app.initialRequest;
+  document.getElementById('timing').textContent = '状态填入：' + Math.round(performance.now() - start) + ' ms（含模拟延迟）';
+}
+document.getElementById('reload').addEventListener('click', () => initialMount(5000));
 document.getElementById('scenario').addEventListener('change', ev => {
   state = structuredClone(baseline);
   if (ev.target.value === 'off') state.state = 'disabled';
@@ -39,5 +50,5 @@ document.getElementById('appearance').addEventListener('change', ev => { documen
 document.getElementById('sidebar').addEventListener('change', ev => { document.body.classList.toggle('with-sidebar', ev.target.checked); });
 fetch('/luci-static/resources/view/adzero/overview.js').then(r => r.text()).then(source => {
   app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', source)({ extend: x => x }, api,
-    { content: (el, content) => el.replaceChildren(content) }, x => x, E, document, { resource: x => '/luci-static/resources/' + x }); mount();
+    window.previewDom || { content: (el, content) => el.replaceChildren(content) }, x => x, window.E || fallbackE, document, { resource: x => '/luci-static/resources/' + x }); initialMount(700);
 });

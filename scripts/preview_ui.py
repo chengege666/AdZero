@@ -11,6 +11,7 @@ parser.add_argument('--port', type=int, default=8765)
 args = parser.parse_args()
 routes = {
     '/': ROOT / 'scripts/ui_preview.html', '/ui_preview.js': ROOT / 'scripts/ui_preview.js',
+    '/native-dom.js': ROOT / 'artifacts/ui-preview/native-dom.js',
     '/luci-static/resources/view/adzero/overview.js': ROOT / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.js',
     '/luci-static/resources/view/adzero/overview.css': ROOT / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.css',
 }
@@ -22,6 +23,12 @@ if theme.exists():
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         file = routes.get(self.path.split('?')[0])
+        if self.path == '/native-dom.js' and not file.exists():
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/javascript')
+            self.end_headers()
+            self.wfile.write(b'/* Optional SDK LuCI DOM was not supplied; use fallback. */')
+            return
         if file is None:
             if self.path == '/theme/css/cascade.css':
                 self.send_response(200)

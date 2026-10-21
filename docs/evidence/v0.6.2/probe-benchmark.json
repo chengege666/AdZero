@@ -1,0 +1,39 @@
+{
+  "scope": "WSL x86_64, pinned OpenWrt 24.10.8 userspace, isolated Rockchip-shaped metadata; not ARM router timing",
+  "schema_identical": true,
+  "samples_ms": {
+    "v0.6.1": [
+      236.46,
+      234.25,
+      235.67,
+      231.55,
+      230.47,
+      232.14,
+      231.06,
+      231.04,
+      232.16,
+      237.3
+    ],
+    "v0.6.2": [
+      42.03,
+      46.19,
+      43.31,
+      42.22,
+      42.69,
+      42.45,
+      41.84,
+      42.4,
+      41.77,
+      45.09
+    ]
+  },
+  "median_ms": {
+    "v0.6.1": 232.15,
+    "v0.6.2": 42.42
+  },
+  "router_before_seconds": {
+    "ctl_status": 0.69,
+    "probe": 0.37
+  },
+  "router_after": "not_measured"
+}

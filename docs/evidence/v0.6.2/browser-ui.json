@@ -1,0 +1,24 @@
+{
+  "scope": "Chrome local fixture, actual production JS/CSS, optional Argon 2.4.3 styles and actual SDK LuCI DOM; no router control",
+  "desktop_css_width": 2048,
+  "mobile_css_widths": [
+    320,
+    390
+  ],
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "checked": [
+    "initial view visible during 5-second pending status; actions disabled",
+    "native DOM arrays contain no null/undefined text",
+    "error retry remains enabled",
+    "failed update rereads status, unlocks action and restores focus",
+    "diagnostics disclosure opens",
+    "no horizontal overflow at mobile widths",
+    "host h3 width override no longer wraps desktop title"
+  ],
+  "ui_regression_assertions": 53,
+  "screenshot": "docs/images/adzero-v0.6.2-desktop.jpg",
+  "router_after_update": "not_tested"
+}

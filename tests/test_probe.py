@@ -6,22 +6,17 @@ import subprocess
 import shlex
 import tempfile
 import unittest
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "luci-app-adzero/root/usr/libexec/adzero/probe"
+UCODE = shlex.split(os.environ.get("ADZERO_UCODE", ""))
 COMMAND = r'''#!/usr/bin/env python3
 import json, os, pathlib, re, sys
 data = json.loads(pathlib.Path(os.environ['PROBE_FIXTURE']).read_text())
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
-if name == 'uci':
-    if args[:2] != ['-q', 'get']: raise SystemExit(91)
-    key = args[2]
-    if key not in data.get('uci', {}): raise SystemExit(1)
-    print(data['uci'][key])
-elif name == 'pidof':
-    raise SystemExit(0 if args[0] in data.get('running', []) else 1)
-elif name == 'uname':
+if name == 'uname':
     print(data.get('cpu', 'x86_64') if args == ['-m'] else '6.6.0-fixture')
 elif name == 'opkg':
     assert args == ['print-architecture']
@@ -29,22 +24,12 @@ elif name == 'opkg':
 elif name == 'apk':
     assert args == ['--print-arch']
     print(data.get('arch', 'x86_64'))
-elif name == 'ubus':
-    assert args[:4] == ['-S', 'call', 'service', 'list']
-    service = json.loads(args[4])['name']
-    values = data.get('services', {}).get(service)
-    print(json.dumps({service: {'instances': {'main': {'running': values}}}}) if values is not None else '{}')
-elif name == 'jsonfilter':
-    match = re.fullmatch(r'@\["([a-z0-9_-]+)"\]\.instances\.\*\.running', args[1])
-    assert args[0] == '-e' and match
-    service = json.load(sys.stdin).get(match[1], {})
-    for instance in service.get('instances', {}).values():
-        print(json.dumps(instance['running']))
 else:
     raise SystemExit(90)
 '''
 
 
+@unittest.skipUnless(UCODE, "requires real OpenWrt ucode/UCI")
 class ProbeTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -53,7 +38,7 @@ class ProbeTest(unittest.TestCase):
         self.fixture = self.root / "fixture.json"
         self.data = {"uci": {}, "running": []}
         self.env = {**os.environ, "ADZERO_PROBE_ROOT": str(self.root), "PROBE_FIXTURE": str(self.fixture)}
-        for name in ("uci", "pidof", "uname", "opkg", "apk", "ubus", "jsonfilter"):
+        for name in ("uname", "opkg", "apk"):
             path = self.root / "bin" / name
             path.parent.mkdir(exist_ok=True)
             path.write_text(COMMAND)
@@ -70,11 +55,37 @@ class ProbeTest(unittest.TestCase):
 
     def probe(self):
         self.fixture.write_text(json.dumps(self.data))
-        before = self.fixture.read_bytes()
-        shell = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "/bin/sh"))
-        result = subprocess.run(shell + [str(PROBE)], env=self.env, text=True, capture_output=True, timeout=15)
+        # Real libuci and /proc-shaped fixtures, not per-key command mocks.
+        configs = {}
+        for key, value in self.data.get('uci', {}).items():
+            parts = key.split('.', 2)
+            config, section = parts[:2]
+            anon = re.fullmatch(r'@([a-zA-Z0-9_]+)\[([0-9]+)\]', section)
+            record = configs.setdefault(config, {}).setdefault(section, {
+                'type': anon[1] if anon else 'fixture', 'name': None if anon else section, 'options': {}})
+            if len(parts) == 2:
+                record['type'] = value
+            else:
+                record['options'][parts[2]] = value
+        for config, sections in configs.items():
+            content = ''
+            for record in sections.values():
+                content += 'config ' + record['type'] + (' ' + json.dumps(record['name']) if record['name'] else '') + '\n'
+                for name, value in record['options'].items():
+                    content += ' option ' + name + ' ' + json.dumps(str(value)) + '\n'
+            self.write('etc/config/' + config, content)
+        for path in self.root.glob('proc/[0-9]*/comm'):
+            path.unlink()
+        for index, name in enumerate(self.data.get('running', [])):
+            self.write(f'proc/{index+1}/comm', name + '\n')
+        services = {name: {'instances': {'main': {'running': value}}} for name, value in self.data.get('services', {}).items()}
+        service_file = self.root / 'services.json'
+        service_file.write_text(self.data.get('services_raw', json.dumps(services)))
+        self.env['ADZERO_PROBE_SERVICE_FIXTURE'] = str(service_file)
+        before = {str(p): p.read_bytes() for p in (self.root / 'etc/config').glob('*')}
+        result = subprocess.run(UCODE + [str(PROBE.with_suffix('.uc'))], env=self.env, text=True, capture_output=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.fixture.read_bytes(), before, "probe must not mutate UCI")
+        self.assertEqual({str(p): p.read_bytes() for p in (self.root / 'etc/config').glob('*')}, before, "probe must not mutate UCI")
         return json.loads(result.stdout)
 
     def test_firmware_cpu_and_package_matrix(self):
@@ -171,3 +182,24 @@ class ProbeTest(unittest.TestCase):
         (self.root / "etc/openwrt_release").unlink()
         self.write("etc/os-release", 'NAME="ImmortalWrt"\nVERSION_ID="24.10.8"\n')
         self.assertEqual(self.probe()["platform"]["family"], "immortalwrt")
+
+    def test_native_luci_entry_point_is_detected(self):
+        (self.root / "www/luci-static/resources/view.js").unlink()
+        self.assertFalse(self.probe()["platform"]["modern_luci"])
+        self.write("www/luci-static/resources/luci.js", "native entry point")
+        self.assertTrue(self.probe()["platform"]["modern_luci"])
+
+    def test_unavailable_service_snapshot_stays_unknown(self):
+        self.write('etc/config/openclash')
+        for payload in ('{broken', 'null', '[]', '{"openclash":{"instances":false}}'):
+            with self.subTest(payload=payload):
+                self.data['services_raw'] = payload
+                plugins = {p['id']: p for p in self.probe()['plugins']}
+                self.assertEqual(plugins['openclash']['runtime'], 'unknown')
+
+    def test_large_dns_inventory_is_bounded(self):
+        self.data['uci'] = {f'dhcp.@dnsmasq[{n}]': 'dnsmasq' for n in range(70)}
+        status = self.probe()['dns']
+        self.assertEqual(status['dnsmasq_instances'], 64)
+        self.assertTrue(status['inventory_truncated'])
+        self.assertEqual(status['client_path'], 'unverified')

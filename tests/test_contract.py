@@ -13,6 +13,7 @@ class PackageContractTest(unittest.TestCase):
     def test_menu_and_view_path_match(self):
         menu = json.loads((PACKAGE / "root/usr/share/luci/menu.d/luci-app-adzero.json").read_text())
         entry = menu["admin/services/adzero"]
+        self.assertEqual(entry["title"], "AdZero")
         self.assertEqual(entry["action"], {"type": "view", "path": "adzero/overview"})
         self.assertEqual(entry["depends"]["acl"], ["luci-app-adzero"])
         self.assertTrue((PACKAGE / "htdocs/luci-static/resources/view/adzero/overview.js").exists())
@@ -39,7 +40,7 @@ class PackageContractTest(unittest.TestCase):
         config = (PACKAGE / "root/etc/config/adzero").read_text()
         makefile = (PACKAGE / "Makefile").read_text()
         self.assertIn("option enabled '0'", config)
-        self.assertIn("PKG_VERSION:=0.6.1", makefile)
+        self.assertIn("PKG_VERSION:=0.6.2", makefile)
         self.assertIn("+adblock-fast", makefile)
         self.assertIn("+rpcd-mod-file", makefile)
         self.assertIn("+ca-bundle", makefile)

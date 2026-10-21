@@ -13,7 +13,11 @@ function nodes(n, pred) {
 }
 function text(n) { return n == null ? '' : Array.isArray(n) ? n.map(text).join(' ') : typeof n === 'object' ? text(n.children) : String(n); }
 function E(tag, attrs = {}, children = []) {
-  const el = { tag, attrs: {}, events: {}, children, focus() { active = this; }, contains(x) { return nodes(this, n => n === x).length > 0; } };
+  // LuCI's array append stringifies null; scalar strings are HTML. The view
+  // must normalize all dynamic children into text arrays before reaching E.
+  const original = children;
+  children = Array.isArray(children) ? children.map(x => typeof x === 'object' && x !== null ? x : String(x)) : children == null ? [] : [children];
+  const el = { tag, attrs: {}, events: {}, children, scalarHtml: typeof original === 'string', focus() { active = this; }, contains(x) { return nodes(this, n => n === x).length > 0; } };
   for (const [k, v] of Object.entries(attrs)) {
     if (v == null) continue;
     if (typeof v === 'function') el.events[k] = v;
@@ -24,10 +28,10 @@ function E(tag, attrs = {}, children = []) {
 const body = E('body'); active = body;
 const doc = { body, get activeElement() { return active; }, getElementById(id) { return nodes(root, n => n.attrs.id === id)[0] || null; } };
 const commands = [];
-let state, failAction, failStatus, pending, resolveAction, staleResult;
+let state, failAction, failStatus, pending, resolveAction, staleResult, statusPending, resolveStatus;
 const api = { exec: async (program, args) => {
   assert.equal(program, '/usr/libexec/adzero/ctl'); commands.push(args[0]);
-  if (args[0] === 'status') { if (failStatus) throw new Error('status unreachable'); return { code: 0, stdout: JSON.stringify(state) }; }
+  if (args[0] === 'status') { if (statusPending) await new Promise(r => { resolveStatus = r; }); if (failStatus) throw new Error('status unreachable'); return { code: 0, stdout: JSON.stringify(state) }; }
   if (pending) await new Promise(r => { resolveAction = r; });
   if (failAction) return { code: 1, stderr: '<script>untrusted error</script>' };
   if (!staleResult) state.state = args[0] === 'disable' ? 'disabled' : 'configured_unverified';
@@ -40,7 +44,7 @@ function reset(overrides = {}) {
     force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
     compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
-  failAction = failStatus = pending = staleResult = false; commands.length = 0;
+  failAction = failStatus = pending = staleResult = statusPending = false; commands.length = 0;
   app.busy = app.notice = null; app.pluginsOpen = app.diagnosticsOpen = false; root = app.render(state); active = body;
 }
 const find = id => doc.getElementById(id);
@@ -48,6 +52,8 @@ function check(value, label) { assert.ok(value, label); assertions++; }
 (async () => {
   reset();
   check(!find('az-toggle').disabled, 'enable omits disabled attribute');
+  check(!text(root).includes('null') && !text(root).includes('undefined'), 'absent content is not rendered by native array append');
+  check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(find('az-update').disabled, 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
   check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v='), 'local versioned CSS');
@@ -88,6 +94,19 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   failStatus = false; await app.refreshStatus(); check(app.currentStatus.state === 'configured_unverified', 'retry recovers');
   reset(); active = E('input'); await app.runAction('enable'); check(active.tag === 'input', 'no focus steal outside panel');
   reset({ backend: { state: 'failed', domains: 99999 }, state: 'configured_unverified' }); check(!text(root).includes('99,999'), 'unhealthy count hidden');
-  reset(); failStatus = true; check((await app.load()).state === 'error', 'load failure handled');
+  reset();
+  const initial = await app.load();
+  check(initial.state === 'loading' && commands.length === 0, 'load does not wait for or start status RPC');
+  statusPending = true; root = app.render(initial);
+  check(typeof root.then !== 'function' && text(root).includes('正在读取运行状态'), 'view renders immediately while status is pending');
+  check(find('az-toggle').disabled && find('az-update').disabled, 'initial actions locked until fresh status');
+  check(commands.join(',') === 'status', 'exactly one initial request');
+  resolveStatus(); await app.initialRequest;
+  check(app.currentStatus.state === 'disabled' && !find('az-toggle').disabled, 'initial response hydrates view');
+  check(active === body, 'initial response does not steal focus');
+  reset(); failStatus = true; root = app.render(await app.load()); await app.initialRequest;
+  check(app.currentStatus.state === 'error' && !find('az-status').disabled, 'initial RPC failure keeps a working retry');
+  reset({ state: 'error', error: '<img src=x onerror=alert(1)>' });
+  check(!nodes(root, n => n.scalarHtml).length, 'untrusted data cannot reach innerHTML');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });
