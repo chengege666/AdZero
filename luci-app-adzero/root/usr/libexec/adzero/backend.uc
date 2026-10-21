@@ -15,7 +15,7 @@ const outputs = {
 	'smartdns.domainset': '/var/run/adblock-fast/smartdns.domainset',
 	'unbound.adb_list': '/var/lib/unbound/adb_list.adblock-fast'
 };
-let result = {state:'unknown', reason:'unavailable', status:'unknown', domains:0,
+let result = {state:'unknown', reason:'unavailable', status:'unknown', domains:0, rules_checked:false,
 	errors:0, warnings:0, download_errors:0, resolver_running:false};
 try {
 	let uci = cursor(root + '/etc/config');
@@ -53,7 +53,17 @@ try {
 	else if (uci.get('adblock-fast', 'config', 'enabled') == '1' && data?.status == 'statusSuccess' &&
 		type(errors) == 'array' && !length(errors) && data.dns == mode && data.outputFile == output &&
 		data.force_dns_active === false && int(data.entries) > 0 && file?.size > 0 && result.resolver_running) {
-		result.domains = length(domains(fs.readfile(root + output), mode));
+		// A page read needs live service/output metadata, not another complete
+		// import of up to 500k rules. Keep the expensive content validation for
+		// ready (mutation preconditions and post-start checks). Never imply that
+		// inspect verified the rule contents or the client's DNS path.
+		if (action == 'inspect') {
+			if (int(data.entries) > 500000) die('invalid_output_or_state');
+			result.domains = int(data.entries);
+		} else {
+			result.domains = length(domains(fs.readfile(root + output), mode));
+			result.rules_checked = true;
+		}
 		result.state = 'ready'; result.reason = 'none';
 	} else {
 		result.state = 'unconfirmed';
@@ -67,7 +77,7 @@ try {
 }
 print(sprintf('%J\n', result));
 if (action == 'status') exit(0);
-if (action == 'ready') exit(result.state == 'ready' ? 0 : 1);
+if (action == 'ready' || action == 'inspect') exit(result.state == 'ready' ? 0 : 1);
 if (action == 'stopped') exit(result.state == 'stopped' ? 0 : 1);
 if (action == 'download-error') exit(result.download_errors > 0 ? 0 : 1);
 exit(2);

@@ -135,6 +135,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(active === body, 'initial response does not steal focus');
   reset(); failStatus = true; root = app.render(await app.load()); await app.initialRequest;
   check(app.currentStatus.state === 'error' && !find('az-status').disabled, 'initial RPC failure keeps a working retry');
+  check(text(root).includes('查看状态读取错误') && text(root).includes('status unreachable'), 'initial read exposes actual error instead of assuming network disconnected');
   for (const [id, label] of [['passwall', 'PassWall'], ['openclash', 'OpenClash'], ['nikki', 'Nikki']]) {
     reset({ state: 'configured_unverified', adapter: { plugin: id, stage: 'configured_unverified' } });
     check(text(root).includes(label), 'active adapter name ' + id);

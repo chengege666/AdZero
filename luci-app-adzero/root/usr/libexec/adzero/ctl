@@ -204,7 +204,9 @@ print_status() {
 	adapter_status=$("$ADAPTER" status 2>/dev/null) || adapter_status=null
 	[ -n "$adapter_status" ] || adapter_status=null
 	backend_ready=0
-	backend_status=$("$BACKEND_CHECK" ready 2>/dev/null) && backend_ready=1
+	# Display uses live service metadata and output existence. Full rule
+	# validation remains in backend_confirm/require_active for every mutation.
+	backend_status=$("$BACKEND_CHECK" inspect 2>/dev/null) && backend_ready=1
 	[ -n "$backend_status" ] || backend_status=null
 	if [ "$state" = configured_unverified ]; then
 		case "$adapter_status" in null|*recovery_required*|*preparing*|*restarting*|*restoring*) state=inconsistent ;; esac

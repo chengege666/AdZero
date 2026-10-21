@@ -43,6 +43,26 @@ class BackendStateTest(unittest.TestCase):
     def test_success_with_recommended_warnings_is_ready(self):
         result = self.check()
         self.assertEqual((result['state'], result['domains'], result['warnings']), ('ready', 2, 1))
+        self.assertTrue(result['rules_checked'])
+
+    def test_inspect_reports_live_metadata_separately_from_full_verification(self):
+        result = self.check('inspect')
+        self.assertEqual((result['state'], result['domains']), ('ready', 2))
+        self.assertFalse(result['rules_checked'])
+        # Runtime status must still reject stale success and resolver failures.
+        self.output.unlink()
+        self.check('inspect', success=False)
+
+    def test_inspect_keeps_runtime_error_guards(self):
+        for key, value in (('status','statusFail'), ('force_dns_active',True), ('entries',500001), ('outputFile','/wrong/file')):
+            with self.subTest(key=key):
+                old=self.data[key];self.data[key]=value
+                self.check('inspect', success=False)
+                self.data[key]=old
+
+    def test_inspect_rejects_resolver_down(self):
+        self.service['dnsmasq']['instances']['cfg1']['running']=False
+        self.check('inspect', success=False)
 
     def test_failed_status_with_existing_rules_is_rejected(self):
         self.data['status'] = 'statusFail'

@@ -5,6 +5,7 @@ Run with root inside WSL. Uses the checksum-pinned runtime archive and a ctl
 fixture that itself calls rpcd, exercising asynchronous nested ubus handling.
 """
 import hashlib
+import base64
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,66 @@ import time
 import uuid as uuidlib
 
 from check_openwrt_runtime import ROOT, SHA256
+from build_sdk import source_hash
+
+
+def large_status_check(base, run, ctl):
+    """Real ctl/ucode/UCI over rpcd, with 206375 rules and a large journal.
+
+    Only procd's service inventory is a fixture. No adapter apply, filtering
+    service, network restart, LAN traffic or router is involved.
+    """
+    libexec=ROOT/'luci-app-adzero/root/usr/libexec/adzero'
+    for source in libexec.iterdir():
+        if source.is_file():
+            target=base/'usr/libexec/adzero'/source.name
+            shutil.copyfile(source,target);target.chmod(0o755)
+    # Environment injection is confined to this disposable chroot. The public
+    # file.exec call still invokes the exact executable and args used by LuCI.
+    ctl.rename(ctl.with_name('ctl.real'))
+    ctl.write_text('''#!/bin/sh
+export ADZERO_BACKEND_ROOT=/ ADZERO_BACKEND_SERVICE_FIXTURE=/tmp/services.json
+export ADZERO_PROBE_ROOT=/ ADZERO_PROBE_SERVICE_FIXTURE=/tmp/services.json
+exec /bin/sh /usr/libexec/adzero/ctl.real "$@"
+''');ctl.chmod(0o755)
+    (base/'etc/config/adzero').write_text("config adzero 'main'\n option enabled '1'\n")
+    init=base/'etc/init.d/adblock-fast'
+    init.write_text('#!/bin/sh\necho unexpected-service-operation >/tmp/service-was-called\nexit 77\n');init.chmod(0o755)
+    (base/'etc/config/adblock-fast').write_text("config adblock-fast 'config'\n option enabled '1'\n option dns 'dnsmasq.servers'\n option force_dns '0'\n option download_allow_insecure '0'\n list blocked_domain 'ads.example'\n")
+    output=base/'var/run/adblock-fast/dnsmasq.servers';output.parent.mkdir(parents=True,exist_ok=True)
+    raw=''.join(f'server=/ad{i:06d}.example/\n' for i in range(206375))
+    output.write_text(raw)
+    state=base/'etc/adzero'
+    for name,content in [('managed','1'),('force_dns.previous','1'),('download_allow_insecure.previous','1')]:
+        (state/name).write_text(content+'\n')
+    (state/'adapter.json').write_text(json.dumps({'schema':1,'plugin':'nailink','stage':'configured_unverified','count':206375,'flags':[],
+        'files':[{'path':'/etc/daed/adzero-geosite.dat','kind':'owned','before':None,'after':base64.b64encode(raw.encode()).decode()}]}))
+    services={'adblock-fast':{'data':{'status':'statusSuccess','errors':[],'warnings':[],'entries':206375,'dns':'dnsmasq.servers','force_dns_active':False,'outputFile':'/var/run/adblock-fast/dnsmasq.servers'}},'dnsmasq':{'instances':{'test':{'running':True}}}}
+    fixture=base/'tmp/services.json';fixture.write_text(json.dumps(services))
+    def read():
+        start=time.monotonic()
+        result=run('/bin/ubus','-s','/tmp/ubus.sock','call','file','exec',json.dumps({'command':'/usr/libexec/adzero/ctl','params':['status']}))
+        elapsed=time.monotonic()-start
+        assert result.returncode==0,result.stdout+result.stderr
+        reply=json.loads(result.stdout);assert reply['code']==0,reply
+        return json.loads(reply['stdout']),round(elapsed,4)
+    before={str(p):p.read_bytes() for p in [output,state/'adapter.json',base/'etc/config/adzero',base/'etc/config/adblock-fast']}
+    samples=[]
+    for _ in range(3):
+        value,elapsed=read();samples.append(elapsed)
+        assert value['state']=='configured_unverified',value
+        assert value['backend']['domains']==206375 and not value['backend']['rules_checked'],value
+        assert value['adapter']['domains']==206375,value
+    assert before=={p:Path(p).read_bytes() for p in before},'status changed configuration or rules'
+    assert not (base/'tmp/adzero.lock').exists(),'read acquired a mutation lock'
+    assert not (base/'tmp/service-was-called').exists(),'read invoked a network service'
+    # Stale backend success cannot enable controls after output disappearance.
+    output.unlink();value,_=read();assert value['state']=='inconsistent',value
+    output.write_text(raw);services['dnsmasq']['instances']['test']['running']=False;fixture.write_text(json.dumps(services))
+    value,_=read();assert value['state']=='inconsistent' and not value['backend']['resolver_running'],value
+    return {'rules':206375,'rule_bytes':len(raw),'journal_bytes':(state/'adapter.json').stat().st_size,
+            'rpcd_seconds':samples,'unchanged_files':True,'missing_output_and_stopped_resolver':'rejected',
+            'scope':'actual ctl/UCI/ucode/file.exec; procd service data fixture; no network services'}
 
 
 def main():
@@ -132,10 +193,12 @@ esac
             (base/'proc/self').mkdir()
             interrupted=call('job_status',{'job':lost.name})
             assert not interrupted['ok'] and interrupted['reason']=='interrupted',interrupted
+            large_status=large_status_check(base,run,ctl)
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
+                    'source_sha256':source_hash(ROOT/'luci-app-adzero'),
                     'checks':38,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
-                    'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','router':'not_touched'}
+                    'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')
             print(json.dumps(report,indent=2))
         finally:
