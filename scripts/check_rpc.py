@@ -85,6 +85,9 @@ def main():
     archive = ROOT/'artifacts/runtime/openwrt-24.10.8-x86-64-rootfs.tar.gz'
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == SHA256
     with tempfile.TemporaryDirectory(prefix='adzero-rpc-') as tmp:
+        # Development wrappers contain host paths and cannot be inherited by
+        # rpcd inside the disposable router filesystem.
+        child_env={key:value for key,value in os.environ.items() if key!='ADZERO_UCODE'}
         base = Path(tmp)
         with tarfile.open(archive) as tar:
             tar.extractall(base, filter='fully_trusted')  # verified official archive
@@ -117,14 +120,14 @@ pause) echo source_download > "$ADZERO_JOB_CONTEXT/reason"; exit 1;;
  *) echo 'private-backend-token-not-for-browser';;
 esac
 '''); ctl.chmod(0o755)
-        def run(*args): return subprocess.run(['chroot',tmp,*args],text=True,capture_output=True,timeout=12)
+        def run(*args): return subprocess.run(['chroot',tmp,*args],env=child_env,text=True,capture_output=True,timeout=12)
         procs=[]
         try:
             log=(ROOT/'artifacts/runtime/rpc-smoke.log').open('w+')
-            procs.append(subprocess.Popen(['chroot',tmp,'/sbin/ubusd','-s','/tmp/ubus.sock'],stdout=log,stderr=log))
+            procs.append(subprocess.Popen(['chroot',tmp,'/sbin/ubusd','-s','/tmp/ubus.sock'],env=child_env,stdout=log,stderr=log))
             time.sleep(.2)
             # Lower the real rpcd execution timer only in this disposable chroot.
-            procs.append(subprocess.Popen(['chroot',tmp,'/sbin/rpcd','-s','/tmp/ubus.sock','-t','1'],stdout=log,stderr=log))
+            procs.append(subprocess.Popen(['chroot',tmp,'/sbin/rpcd','-s','/tmp/ubus.sock','-t','1'],env=child_env,stdout=log,stderr=log))
             for _ in range(30):
                 r=run('/bin/ubus','-s','/tmp/ubus.sock','-v','list','adzero')
                 if 'lookup' in r.stdout: break
@@ -166,6 +169,8 @@ esac
             assert done.get('ok') and not done.get('pending'),done
             assert done['progress']['elapsed']>=0 and done['progress']['stage'] in ('queued','checking'),done
             context=base/'tmp/adzero-jobs'/started['job']
+            assert (context/'action').read_text().strip()=='source-add'
+            assert done['progress']['phase_elapsed']>=0,done
             (context/'stage').write_text('private-backend-token-not-for-browser')
             (context/'reason').write_text('private-backend-token-not-for-browser')
             (context/'result').write_text('1')

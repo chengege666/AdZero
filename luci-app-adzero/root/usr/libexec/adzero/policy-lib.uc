@@ -1,16 +1,19 @@
 'use strict';
 
+const http_re = /^https?:\/\//, path_re = /[\/?#]/, port_re = /:[0-9]+$/, dot_re = /\.$/;
+const numeric_re = /^[0-9.]+$/, domain_re = /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/;
+
 // Input is data. Never resolve or fetch a user-supplied URL.
 export function hostname(value) {
 	if (type(value) != 'string' || length(value) > 2048) die('请输入域名或 HTTP/HTTPS 网址。');
 	let name = lc(trim(value));
-	if (match(name, /^https?:\/\//)) {
-		name = split(substr(name, index(name, '://') + 3), /[\/?#]/)[0];
-		name = replace(name, /:[0-9]+$/, '');
+	if (match(name, http_re)) {
+		name = split(substr(name, index(name, '://') + 3), path_re)[0];
+		name = replace(name, port_re, '');
 	}
-	name = replace(name, /\.$/, '');
-	if (length(name) > 253 || index(name, '.') < 1 || match(name, /^[0-9.]+$/) ||
-		!match(name, /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/) || index(name, '..') >= 0)
+	name = replace(name, dot_re, '');
+	if (length(name) > 253 || index(name, '.') < 1 || match(name, numeric_re) ||
+		!match(name, domain_re) || index(name, '..') >= 0)
 		die('请输入有效域名；不支持 IP、通配符或带账号密码的网址。');
 	for (let label in split(name, '.')) if (length(label) > 63 || substr(label, 0, 1) == '-' || substr(label, -1) == '-')
 		die('域名标签无效。');

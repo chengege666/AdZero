@@ -72,6 +72,8 @@ return {adzero:{
 		let started=int(trim(fs.readfile(path+'/created')??''));
 		let elapsed=started>0?int(time())-started:0;
 		let metadata={stage:index(progress.stages,phase)>=0?phase:'checking',elapsed:elapsed>0?elapsed:0};
+		let phase_start=int(trim(fs.readfile(path+'/stage_started')??'')),phase_elapsed=int(time())-phase_start;
+		if(phase_start>0&&phase_elapsed>=0)metadata.phase_elapsed=phase_elapsed;
 		if (code == null) {
 			let worker=trim(fs.readfile(path+'/worker')??'');
 			// No process killing or lock cleanup. Detect an interrupted worker

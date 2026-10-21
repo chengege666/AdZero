@@ -23,7 +23,7 @@ URL = "https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/openwrt-24.
 SHA256 = "6c94190246a54088e3984fc0c4cbbb518972abb2b10a28e30a0c41554eea8b9d"
 FILES = {"./bin/busybox": "busybox", "./sbin/uci": "uci", "./lib/libc.so": "libc.so", "./lib/libgcc_s.so.1": "libgcc_s.so.1"}
 # Use the actual OpenWrt applets, not GNU lookalikes on the development host.
-APPLETS = ("sh", "awk", "sed", "grep", "tr", "cut", "sort", "mkdir", "rmdir", "cat", "rm", "dirname")
+APPLETS = ("sh", "awk", "sed", "grep", "tr", "cut", "sort", "mkdir", "rmdir", "cat", "rm", "dirname", "sha256sum", "date")
 
 
 def main():

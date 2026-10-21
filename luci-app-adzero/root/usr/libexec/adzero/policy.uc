@@ -3,7 +3,7 @@
 import * as fs from 'fs';
 import { cursor } from 'uci';
 import * as lib from './policy-lib.uc';
-import { domains } from './adapter-lib.uc';
+import * as rulecache from './rules-cache.uc';
 
 const root = getenv('ADZERO_POLICY_ROOT') ?? '';
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
@@ -103,7 +103,7 @@ function query(value) {
 	if (index(['dnsmasq.servers','dnsmasq.addnhosts','smartdns.domainset','unbound.adb_list'],mode) < 0) die('当前过滤模式无法查询。');
 	let raw = fs.readfile(root + output,25000001);
 	if (!length(raw)) return {domain:name,available:false,match:'unavailable',scope:null};
-	let rules = domains(raw,mode), adapter = read(dir + '/adapter.json');
+	let rules = rulecache.load(root + output,mode,root), adapter = read(dir + '/adapter.json');
 	let result = lib.lookup(name,rules,own(),mode != 'dnsmasq.addnhosts' || !!adapter);
 	return {...result,available:true,scope_includes_subdomains:true,source:'processed_rules'};
 }
@@ -131,7 +131,7 @@ try {
 			let result = query(domain);
 			if (!result.available || index(['exact','parent'],result.match) < 0 || result.scope != scope) die('命中规则已变化，请重新查询并确认放行范围。');
 			let mode = uci.get('adblock-fast','config','dns'), path = mode == 'unbound.adb_list' ? '/var/lib/unbound/adb_list.adblock-fast' : '/var/run/adblock-fast/' + mode;
-			if (!length(filter(domains(fs.readfile(root + path),mode),d => !lib.covers(scope,d)))) die('该范围覆盖全部过滤规则，请使用临时暂停。');
+			if (!length(filter(rulecache.load(root + path,mode,root),d => !lib.covers(scope,d)))) die('该范围覆盖全部过滤规则，请使用临时暂停。');
 			if (length(after) >= 100) die('个人放行名单最多 100 项。');
 			push(after,scope); after = lib.list(after);
 		} else {

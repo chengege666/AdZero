@@ -1,0 +1,45 @@
+{
+  "source_sha256": "explicit_old_libexec",
+  "rules": 206375,
+  "domestic_domains": 109795,
+  "domestic_cidrs": 10015,
+  "measurements": [
+    {
+      "action": "enable",
+      "seconds": 20.4594,
+      "proxy_reload_calls": 1
+    },
+    {
+      "action": "unchanged_reconcile",
+      "seconds": 20.569,
+      "proxy_reload_calls": 0
+    },
+    {
+      "action": "routing_on_cold",
+      "seconds": 20.3892,
+      "proxy_reload_calls": 1
+    },
+    {
+      "action": "routing_off",
+      "seconds": 13.8129,
+      "proxy_reload_calls": 1
+    },
+    {
+      "action": "routing_on_warm",
+      "seconds": 19.9299,
+      "proxy_reload_calls": 1
+    },
+    {
+      "action": "lookup",
+      "seconds": 18.076,
+      "proxy_reload_calls": 0
+    },
+    {
+      "action": "enable_extra_source",
+      "seconds": 52.1268,
+      "proxy_reload_calls": 1
+    }
+  ],
+  "precheck_downloads": 2,
+  "scope": "real ctl/UCI/ucode; synthetic large rules; backend/download/NaiLink API/reload fixtures; not router or network timings"
+}

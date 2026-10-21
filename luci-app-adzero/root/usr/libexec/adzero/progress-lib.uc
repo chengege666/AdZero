@@ -18,7 +18,13 @@ function write(name,value){
 	let file=fs.open(tmp,'w',0600);if(!file)return;
 	let written=file.write(value),closed=file.close();if(written==length(value)&&closed)fs.rename(tmp,path);else fs.unlink(tmp);
 }
-export function stage(value){if(index(stages,value)>=0)write('stage',value);};
+export function stage(value){
+	let dir=getenv('ADZERO_JOB_CONTEXT');if(index(stages,value)<0||!dir)return;
+	if(trim(fs.readfile(dir+'/stage')??'')==value)return;
+	let now=time();write('stage_started',''+now);write('stage',value+'\n');
+	if(fs.lstat(dir+'/timeline')?.type=='link')return;
+	let log=fs.open(dir+'/timeline','a',0600);if(log){log.write(''+now+' '+value+'\n');log.close();}
+};
 export function failure(value){
 	let dir=getenv('ADZERO_JOB_CONTEXT');if(!dir||messages[trim(fs.readfile(dir+'/reason')??'')])return;
 	if(messages[value])write('reason',value);

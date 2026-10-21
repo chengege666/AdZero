@@ -3,7 +3,7 @@
 import * as fs from 'fs';
 import { cursor } from 'uci';
 import { connect } from 'ubus';
-import { domains } from './adapter-lib.uc';
+import * as rulecache from './rules-cache.uc';
 
 const root = getenv('ADZERO_BACKEND_ROOT') ?? '';
 const fixture = getenv('ADZERO_BACKEND_SERVICE_FIXTURE');
@@ -61,7 +61,7 @@ try {
 			if (int(data.entries) > 500000) die('invalid_output_or_state');
 			result.domains = int(data.entries);
 		} else {
-			result.domains = length(domains(fs.readfile(root + output), mode));
+			result.domains = length(rulecache.load(root + output, mode, root));
 			result.rules_checked = true;
 		}
 		result.state = 'ready'; result.reason = 'none';

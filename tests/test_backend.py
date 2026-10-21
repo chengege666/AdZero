@@ -64,6 +64,35 @@ class BackendStateTest(unittest.TestCase):
         self.service['dnsmasq']['instances']['cfg1']['running']=False
         self.check('inspect', success=False)
 
+    def test_validated_cache_follows_content_not_file_time(self):
+        self.check();cache=self.root/'tmp/adzero-rules-cache'
+        proof=json.loads((cache/'proof.json').read_text())
+        stamp=self.output.stat().st_mtime_ns
+        self.output.write_text('server=/other.example/\nserver=/newer.example/\n')
+        os.utime(self.output,ns=(stamp,stamp))
+        self.assertEqual(self.check()['domains'],2)
+        self.assertNotEqual(json.loads((cache/'proof.json').read_text())['source'],proof['source'])
+        self.output.write_text('<html>not rules</html>\n')
+        self.check(success=False)
+
+    def test_corrupt_or_unavailable_cache_falls_back_to_strict_import(self):
+        self.check();cache=self.root/'tmp/adzero-rules-cache'
+        proof=json.loads((cache/'proof.json').read_text())
+        data=cache/(proof['source']+'-0.json')
+        data.write_text('["wrong.example"]')
+        self.assertEqual(self.check()['domains'],2)
+        (cache/'proof.json').write_text('{bad json')
+        self.assertEqual(self.check()['domains'],2)
+        cache.chmod(0o777)
+        self.assertEqual(self.check()['domains'],2)
+
+    def test_cache_is_bound_to_resolver_format(self):
+        self.check()
+        self.config.write_text(self.config.read_text().replace('dnsmasq.servers','smartdns.domainset'))
+        self.data['dns']='smartdns.domainset';self.data['outputFile']='/var/run/adblock-fast/smartdns.domainset'
+        other=self.output.with_name('smartdns.domainset');other.write_bytes(self.output.read_bytes())
+        self.check(success=False)
+
     def test_failed_status_with_existing_rules_is_rejected(self):
         self.data['status'] = 'statusFail'
         self.check(success=False)

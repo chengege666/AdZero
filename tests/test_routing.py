@@ -134,6 +134,13 @@ class RoutingAdapterTest(unittest.TestCase):
         self.run_adapter('apply',success=False)
         self.assertNotIn('remote_dns',(self.root/'etc/config/passwall').read_text())
 
+    def test_passwall_country_changes_invalidate_the_unchanged_fast_path(self):
+        self.run_adapter('apply')
+        country=self.root/'usr/share/passwall/rules/chnlist'
+        country.write_text(country.read_text()+'\nsub.ads.example\n')
+        self.run_adapter('apply')
+        self.assertIn('sub.ads.example',(self.root/'etc/passwall/rules/block_host').read_text())
+
     def test_stopped_passwall_restores_then_uses_domestic_dns_without_restarting_proxy(self):
         counter=self.root/'restarts'
         self.write('etc/init.d/passwall','#!/bin/sh\necho restart >> '+shlex.quote(str(counter))+'\n')
@@ -212,6 +219,20 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.assertEqual((self.root/'etc/adzero/adapter.json').read_bytes(),journal)
         self.assertFalse((self.root/'etc/daed/adzero-cn-geosite.dat').exists())
 
+    def test_nailink_reuses_verified_country_files_and_checks_external_edits(self):
+        self.nailink_fixture();self.run_adapter('apply')
+        self.env['ADZERO_ROUTING_DATA_PROGRAM']=str(self.root/'must-not-run')
+        self.run_adapter('apply')
+        # Cached country files remain usable after routing off/on, with a
+        # fresh source-policy comparison and actual owned-file verification.
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")
+        self.run_adapter('reconfigure-nailink')
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '1'\n")
+        self.run_adapter('reconfigure-nailink')
+        data=self.root/'etc/daed/adzero-cn-geosite.dat';data.write_bytes(b'external-edit')
+        self.run_adapter('apply',success=False)
+        self.assertEqual(data.read_bytes(),b'external-edit')
+
     @unittest.skipUnless(shutil.which('yq'),'real yq required')
     def test_nikki_split_is_idempotent_and_preserves_custom_exceptions(self):
         self.select('nikki')
@@ -230,6 +251,16 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.run_adapter('apply');self.assertEqual(counter.read_text().splitlines(),['restart'])
         self.run_adapter('remove');self.assertEqual(mixin.read_bytes(),before)
         self.assertIn("option dns_nameserver '1'",(self.root/'etc/config/nikki').read_text())
+
+    @unittest.skipUnless(shutil.which('yq'),'real yq required')
+    def test_nikki_core_only_change_is_not_hidden_by_the_fast_path(self):
+        controls.ControlsTest.select(self,'nikki')
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")
+        p=self.root/'etc/config/nikki';p.write_text(p.read_text().replace("option enabled '1'","option enabled '1'\n option core_only '0'"))
+        self.run_adapter('apply')
+        p.write_text(p.read_text().replace("option core_only '0'","option core_only '1'"))
+        self.run_adapter('apply',success=False)
+        self.assertIn("option core_only '1'",p.read_text())
 
     @unittest.skipUnless(shutil.which('ruby'),'real Ruby required')
     def test_openclash_generated_config_contains_dns_and_connection_rules(self):

@@ -33,6 +33,7 @@ jobs:
           sudo install -m 755 /tmp/yq /usr/local/bin/yq
           python3 scripts/check_openwrt_runtime.py
           sudo python3 scripts/check_rpc.py
+          python3 scripts/check_large_rules.py
           export ADZERO_UCODE="$PWD/.sdk/runtime-24.10.8/libc.so --library-path $PWD/.sdk/runtime-24.10.8 $PWD/.sdk/runtime-24.10.8/ucode -L $PWD/.sdk/runtime-24.10.8"
           python3 scripts/check_dns_core.py
           python3 scripts/check_dae.py

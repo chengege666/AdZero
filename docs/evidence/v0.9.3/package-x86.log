@@ -1,0 +1,10 @@
+Extracting /mnt/c/Users/slobys/Documents/ChatGPT/AdZero/dist/v0.9.3/25-x86-final/luci-app-adzero-0.9.3-r1.apk...
+AdZero LuCI: 115 UI regression assertions passed.
+{
+  "package": "luci-app-adzero-0.9.3-r1.apk",
+  "payload_files_checked": 30,
+  "runtime_source_and_modes": "passed",
+  "luci_delivered_js_syntax": "passed",
+  "luci_delivered_ui_regressions": "passed",
+  "scope": "extraction only, no package installation or lifecycle execution"
+}

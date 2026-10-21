@@ -3,26 +3,30 @@
 export function domains(raw, mode) {
 	if (length(raw) > 25000000) die('Processed blocklist exceeds the adapter size limit');
 	let values = {}, allowed = [];
+	// ucode compiles a regex literal when its expression executes. Compile
+	// once per import, rather than several times for every domain/label.
+	let server_re = /^server=\/([^/]+)\/(#?)$/, hosts_re = /^(127\.0\.0\.1|0\.0\.0\.0|::)[[:space:]]+([^ ]+)$/;
+	let unbound_re = /^local-zone:[[:space:]]*"([^"]+)\."[[:space:]]+always_nxdomain$/, domain_re = /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/;
 	for (let line in split(raw, '\n')) {
 		line = trim(line);
 		if (!length(line) || substr(line, 0, 1) == '#') continue;
 		let m;
 		if (mode == 'dnsmasq.servers') {
-			m = match(line, /^server=\/([^/]+)\/(#?)$/);
+			m = match(line, server_re);
 			if (!m) die('Unexpected dnsmasq.servers record');
 			if (m[2] == '#') { push(allowed, lc(m[1])); continue; }
 			line = m[1];
 		} else if (mode == 'dnsmasq.addnhosts') {
-			m = match(line, /^(127\.0\.0\.1|0\.0\.0\.0|::)[[:space:]]+([^ ]+)$/);
+			m = match(line, hosts_re);
 			if (!m) die('Unexpected hosts record');
 			line = m[2];
 		} else if (mode == 'unbound.adb_list') {
-			m = match(line, /^local-zone:[[:space:]]*"([^"]+)\."[[:space:]]+always_nxdomain$/);
+			m = match(line, unbound_re);
 			if (!m) die('Unexpected Unbound record');
 			line = m[1];
 		} else if (mode != 'smartdns.domainset') die('Unsupported rule export mode');
 		line = lc(line);
-		if (length(line) > 253 || !match(line, /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/) || index(line, '.') < 1 || index(line, '..') >= 0)
+		if (length(line) > 253 || !match(line, domain_re) || index(line, '.') < 1 || index(line, '..') >= 0)
 			die('Invalid processed domain');
 		for (let label in split(line, '.')) if (length(label) > 63 || substr(label, 0, 1) == '-' || substr(label, -1) == '-') die('Invalid domain label');
 		values[line] = true;

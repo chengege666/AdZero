@@ -44,14 +44,15 @@ function list() {
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0], valid=true;
 		try { lib.url(s.url); } catch(e) { valid=false; }
 		push(items,{id:s['.name'],name:s.name ?? builtin?.name ?? '已有规则',url:s.url,enabled:s.enabled != '0',
-			format:s.adzero_format ?? builtin?.format ?? 'unknown',catalog_id:builtin?.id ?? null,https:valid,
+			format:s.adzero_format ?? builtin?.format ?? s.adzero_detected_format ?? 'unknown',catalog_id:builtin?.id ?? null,https:valid,
+			validation:s.adzero_validation ?? (s.adzero_domains?'validated':'unchecked'),
 			domains: s.adzero_domains ? int(s.adzero_domains) : null,updated:s.adzero_updated ? int(s.adzero_updated) : null});
 	}
 	return {catalog:lib.catalog,items,pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
 function download(address,kind) {
 	progress.stage('downloading');
-	lib.url(address);lib.format(kind);
+	lib.url(address);if(kind!='auto')lib.format(kind);
 	let path=root+'/tmp/adzero-source-check';
 	if (root && !fs.stat(root+'/tmp')) fs.mkdir(root+'/tmp',0700);
 	if (fs.lstat(path)) die('规则校验临时文件已存在，请检查未完成操作。');
@@ -64,21 +65,26 @@ function download(address,kind) {
 		if (system(join(' ',map(argv,quote))+' >/dev/null 2>&1',65000) != 0) {progress.failure('source_download');die('规则下载失败，请检查 HTTPS 地址和网络。');}
 		progress.stage('validating');
 		let raw=fs.readfile(path,25000001),result;
-		try{result=lib.parse(raw,kind);}catch(e){progress.failure('source_format');die(e);}
+		try{result=kind=='auto'?lib.detect(raw):{format:kind,names:lib.parse(raw,kind)};}catch(e){progress.failure('source_format');die(e);}
 		fs.unlink(path);return result;
 	} catch(e) { fs.unlink(path);die(e); }
 }
-function validate_sources() {
+function validate_sources(only) {
 	let union={}, count=0;
 	for (let s in selected()) if (s.enabled != '0') {
-		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format;
-		// Existing backend-only formats retain their current behavior; do not
-		// silently reinterpret a pre-existing configuration as a new import.
-		if (!kind) continue;
-		let names=download(s.url,kind);
+		if(only && s['.name']!=only)continue;
+		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
+		let checked=download(s.url,kind);
+		if(!checked){
+			uci.delete('adblock-fast',s['.name'],'adzero_domains');uci.delete('adblock-fast',s['.name'],'adzero_detected_format');
+			if(!uci.set('adblock-fast',s['.name'],'adzero_validation','backend_only')||!uci.set('adblock-fast',s['.name'],'adzero_updated',''+time()))die('无法保存规则检查记录。');
+			continue;
+		}
+		let names=checked.names;
 		for (let name in names) union[name]=true;
 		if (length(union) > 500000) die('所选规则合计超过 50 万个域名，请减少列表。');
 		if (!uci.set('adblock-fast',s['.name'],'adzero_domains',''+length(names)) || !uci.set('adblock-fast',s['.name'],'adzero_updated',''+time())) die('无法保存规则校验结果。');
+		if(!uci.set('adblock-fast',s['.name'],'adzero_validation','validated')||(kind=='auto'&&!uci.set('adblock-fast',s['.name'],'adzero_detected_format',checked.format)))die('无法保存规则格式记录。');
 		count++;
 	}
 	return count;
@@ -119,7 +125,10 @@ function begin(action,args) {
 	if (uci.get('adblock-fast','config','enabled') == '1' && !length(filter(selected(),s=>s.enabled != '0')) && !length(uci.get('adblock-fast','config','blocked_domain') ?? [])) die('至少保留一项启用的规则；需要暂停全部过滤时请使用临时暂停或关闭保护。');
 	// Removing a source cannot increase the union. Do not re-download every
 	// unchanged list for prevalidation; the backend still rebuilds the result.
-	if(!removing)validate_sources(); // No committed config/service changes yet.
+	// An add/enable checks the changed subscription only. The final processed
+	// union is still strictly verified (including its size cap) before apply.
+	// Explicit refresh rechecks every source; removal cannot enlarge the union.
+	if(!removing)validate_sources(action=='refresh'?null:id);
 	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode & 0777,action};
 	atomic(journal,sprintf('%J',pending));
 	if (!uci.commit('adblock-fast')) die('规则保存失败，恢复记录已保留。');

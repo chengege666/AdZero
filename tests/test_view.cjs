@@ -52,6 +52,7 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
     if (!rpcStale && spec.method==='source_add') ruleData.items.push({id:'new1',catalog_id:args[0]||null,name:args[1]||'Library rule',url:args[2]||'https://library.example/list',https:true,enabled:true,domains:42});
     if (!rpcStale && spec.method==='source_toggle') ruleData.items.find(i=>i.id===args[0]).enabled=args[2];
     if (!rpcStale && spec.method==='source_remove') ruleData.items=ruleData.items.filter(i=>i.id!==args[0]);
+    if (!rpcStale && spec.method==='source_refresh') ruleData.items.filter(i=>i.format==='unknown').forEach(i=>Object.assign(i,{domains:27,format:'domains',validation:'validated',updated:1700000000}));
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }
   if (spec.method === 'lookup') return {ok:true,data:lookup};
@@ -212,6 +213,11 @@ function check(value, label) { assert.ok(value, label); assertions++; }
     check(!storage.has('adzero.v0.8.'+sessionID+'.job'),'receipt cleared after '+action+' confirmation');
   }
   reset({state:'paused'});await app.openRules();check(find('az-source-add').disabled,'paused sources cannot be edited');
+  reset({state:'configured_unverified'});
+  ruleData.items=[{id:'legacy',name:'Existing list',url:'https://legacy.example/list',https:true,enabled:true,format:'unknown',validation:'unchecked',domains:null,updated:null}];
+  await app.openRules();check(text(root).includes('待校验')&&text(root).includes('更新时自动校验'),'legacy rules explain missing validation');
+  await app.runSource('source_refresh',[]);
+  check(app.notice.kind==='success'&&text(root).includes('27')&&!text(root).includes('待校验'),'refresh renders validated count for legacy rules');
   reset();jobSteps=[new Error('connection reset'),new Error('network reloading'),{ok:true,pending:false}];
   await app.runAction('enable');
   check(app.notice.kind==='success' && commands.filter(x=>x==='enable').length===1,'network reload retries receipt without resubmitting mutation');
@@ -222,8 +228,9 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   await app.refreshStatus();
   check(app.notice.kind==='success' && commands.filter(x=>x==='routing_on').length===1 && !app.jobUncertain,'retry checks original routing task and canonical state only');
   reset({state:'configured_unverified'});
-  jobSteps=[{ok:true,pending:true,progress:{stage:'downloading',elapsed:20}},()=>{
+  jobSteps=[{ok:true,pending:true,progress:{stage:'downloading',elapsed:20,phase_elapsed:3}},()=>{
     check(text(root).includes('正在下载规则') && text(root).includes('20'),'server stage and elapsed time are visible during operation');
+    check(text(root).includes('本阶段 3 秒'),'total task time is distinct from current stage time');
     return {ok:false,pending:false,message:'国内分类库校验失败'};
   }];
   await app.runPolicy('routing_on',[]);

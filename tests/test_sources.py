@@ -47,6 +47,21 @@ class SourcesTest(unittest.TestCase):
         self.run_source('begin','remove',item['id'],item['url']);self.run_source('finish')
         self.assertEqual(self.data()['items'],[])
 
+    def test_add_and_enable_precheck_only_the_changed_source(self):
+        fetch=self.fixture.write('bin/fetch','#!/bin/sh\necho "$1" >> "$ADZERO_SOURCES_ROOT/fetches"\ncp "$ADZERO_SOURCES_ROOT/source-body" "$2"\n',True)
+        self.env['ADZERO_SOURCE_FETCH_FIXTURE']=str(fetch)
+        self.add();self.run_source('finish')
+        self.add(url='https://second.example/list');self.run_source('finish')
+        log=self.root/'fetches'
+        self.assertEqual(log.read_text().splitlines(),['https://rules.example/list.txt','https://second.example/list'])
+        item=self.data()['items'][1]
+        self.run_source('begin','toggle',item['id'],item['url'],'0');self.run_source('finish')
+        self.run_source('begin','toggle',item['id'],item['url'],'1');self.run_source('finish')
+        self.assertEqual(log.read_text().splitlines()[-1],item['url'])
+        self.assertEqual(len(log.read_text().splitlines()),3)
+        self.run_source('begin','refresh');self.run_source('finish')
+        self.assertEqual(len(log.read_text().splitlines()),5)
+
     def test_toggle_and_remove_restore_original_exact_config(self):
         original=(self.root/'etc/config/adblock-fast').read_bytes()
         self.add();self.run_source('rollback');self.run_source('rollback');self.run_source('discard')
@@ -81,6 +96,36 @@ class SourcesTest(unittest.TestCase):
         self.run_source('begin','add','hagezi-light','ignored','https://wrong.example/','hosts');self.run_source('finish')
         self.assertEqual(self.data()['items'][0]['catalog_id'],'hagezi-light')
         self.assertEqual(self.data()['items'][0]['format'],'domains')
+
+    def test_legacy_source_refresh_detects_formats_without_rewriting_native_settings(self):
+        p=self.root/'etc/config/adblock-fast'
+        p.write_text(p.read_text()+"\nconfig file_url 'legacy'\n option enabled '1'\n option url 'https://legacy.example/list'\n")
+        self.run_source('begin','refresh');self.run_source('finish')
+        item=self.data()['items'][0]
+        self.assertEqual((item['domains'],item['format'],item['validation']),(2,'domains','validated'))
+        self.assertGreater(item['updated'],0)
+        self.assertNotIn('option adzero_format',p.read_text())
+        self.body.write_text('0.0.0.0 ads.example\n')
+        self.run_source('begin','refresh');self.run_source('finish')
+        self.assertEqual(self.data()['items'][0]['format'],'hosts')
+
+    def test_legacy_backend_only_format_is_not_misreported_as_validated(self):
+        p=self.root/'etc/config/adblock-fast'
+        p.write_text(p.read_text()+"\nconfig file_url 'legacy'\n option enabled '1'\n option url 'https://legacy.example/list'\n")
+        self.body.write_text('||ads.example^$third-party\n')
+        self.run_source('begin','refresh');self.run_source('finish')
+        item=self.data()['items'][0]
+        self.assertEqual(item['validation'],'backend_only');self.assertIsNone(item['domains'])
+        self.assertEqual(item['format'],'unknown')
+
+    def test_legacy_source_full_refresh_keeps_protection_and_populates_metadata(self):
+        self.fixture.ctl('enable')
+        p=self.root/'etc/config/adblock-fast'
+        p.write_text(p.read_text()+"\nconfig file_url 'legacy'\n option enabled '1'\n option url 'https://legacy.example/list'\n")
+        self.fixture.ctl('source-refresh')
+        self.assertEqual(self.fixture.status()['state'],'configured_unverified')
+        self.assertEqual(self.data()['items'][0]['domains'],2)
+        self.assertFalse(self.data()['pending'])
 
     def test_anonymous_sources_restore_and_reject_shifted_ids(self):
         p=self.root/'etc/config/adblock-fast'

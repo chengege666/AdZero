@@ -194,7 +194,7 @@ return view.extend({
 				self.notice.detail ? el('details', { 'class': 'az-error-details' }, [ el('summary', {}, _('查看错误信息')), el('pre', {}, self.notice.detail) ]) : null ]) ]));
 		if (s.state === 'error' && s.error) nodes.push(el('details', { 'class': 'az-error-details az-load-error' }, [ el('summary', {}, _('查看状态读取错误')), el('pre', {}, s.error) ]));
 		if (busy && !loading && !(s.stale && busy === 'status')) nodes.push(el('div', { 'class': 'az-working', role: 'status', 'aria-live': 'polite' }, [ el('span', { 'class': 'az-spinner', 'aria-hidden': 'true' }),
-			self.jobProgress && phaseText[self.jobProgress.stage] ? phaseText[self.jobProgress.stage] + (self.jobProgress.elapsed>=10 ? _(' · 已用 ') + self.jobProgress.elapsed + _(' 秒') : '') : busy === 'routing_on' ? _('正在开启自动分流…') : busy === 'routing_off' ? _('正在关闭自动分流…') : busy === 'rules' ? _('正在下载、校验并应用规则；离开页面后任务仍会继续。') : busy === 'enable' ? _('正在开启过滤…') : busy === 'disable' ? _('正在关闭并恢复…') : busy === 'refresh' ? _('正在更新并同步规则…') : busy === 'lookup' ? _('正在查询当前规则…') : busy === 'allow' || busy === 'revoke' ? _('正在应用放行名单并同步代理…') : busy === 'pause' ? _('正在暂停保护…') : busy === 'resume' ? _('正在恢复保护…') : _('正在检测状态…') ]));
+			self.jobProgress && phaseText[self.jobProgress.stage] ? phaseText[self.jobProgress.stage] + (self.jobProgress.elapsed>=10 ? _(' · 总计 ') + self.jobProgress.elapsed + _(' 秒') + (typeof self.jobProgress.phase_elapsed==='number' ? _(' · 本阶段 ') + self.jobProgress.phase_elapsed + _(' 秒') : '') : '') : busy === 'routing_on' ? _('正在开启自动分流…') : busy === 'routing_off' ? _('正在关闭自动分流…') : busy === 'rules' ? _('正在下载、校验并应用规则；离开页面后任务仍会继续。') : busy === 'enable' ? _('正在开启过滤…') : busy === 'disable' ? _('正在关闭并恢复…') : busy === 'refresh' ? _('正在更新并同步规则…') : busy === 'lookup' ? _('正在查询当前规则…') : busy === 'allow' || busy === 'revoke' ? _('正在应用放行名单并同步代理…') : busy === 'pause' ? _('正在暂停保护…') : busy === 'resume' ? _('正在恢复保护…') : _('正在检测状态…') ]));
 		if (self.rulesOpen) { nodes.push(self.renderRules(s)); return el('div',{'class':'az-app'},nodes); }
 		nodes.push(el('section', { 'class': 'az-card az-hero' + (f.enabled ? ' is-on' : '') + (loading ? ' is-loading' : ''), 'aria-busy': loading ? 'true' : 'false' }, [
 			el('div', { 'class': 'az-hero-main' }, [ el('div', { 'class': 'az-hero-heading' }, [ icon('shield'),
@@ -266,15 +266,15 @@ return view.extend({
 		return el('div',{'class':'az-rules-page'},[
 			el('section',{'class':'az-card az-source-header'},[
 				el('div',{},[el('h3',{},_('我的过滤规则')),el('p',{'class':'az-card-copy'},_('按需添加订阅，选择要启用的列表。添加和开关会保留，保护总开关不变。'))]),
-				el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-primary',disabled:!editable || !items.length ? true:null,click:function(){return self.runSource('source_refresh',[]);}},[icon('refresh'),_('更新已启用规则')]) ]),
+				el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-primary',disabled:!editable || !items.length ? true:null,click:function(){return self.runSource('source_refresh',[]);}},[icon('refresh'),_('校验并更新已启用规则')]) ]),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
 			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
 			el('section',{'class':'az-card az-source-list'},items.length ? [
-				el('div',{'class':'az-source-table-heading','aria-hidden':'true'},[el('span',{},_('规则名称 / 地址')),el('span',{},_('校验数量 / 最近更新')),el('span',{},_('操作'))]),
+				el('div',{'class':'az-source-table-heading','aria-hidden':'true'},[el('span',{},_('规则名称 / 地址')),el('span',{},_('校验数量 / 最近检查')),el('span',{},_('操作'))]),
 				items.map(function(item) { return el('div',{'class':'az-source-row'},[
 					el('div',{'class':'az-source-identity'},[el('strong',{},item.name),el('span',{'class':'az-source-url',translate:'no'},item.url),el('small',{},item.format==='unknown'?_('后端已有格式'):item.format)]),
-					el('div',{'class':'az-source-metadata'},[el('strong',{},number(item.domains)),el('span',{},date(item.updated))]),
+					el('div',{'class':'az-source-metadata'},[el('strong',{},typeof item.domains==='number'?number(item.domains):item.validation==='backend_only'?_('未独立计数'):_('待校验')),el('span',{},item.updated?date(item.updated):item.enabled?_('更新时自动校验'):_('启用后校验'))]),
 					el('div',{'class':'az-source-actions'},[
 						el('button',{type:'button','class':'az-toggle'+(item.enabled?' is-on':''),role:'switch','aria-checked':item.enabled?'true':'false','aria-label':_('启用规则 ')+item.name,disabled:!editable || !item.https && !item.enabled?true:null,
 							click:function(){return self.runSource('source_toggle',[item.id,item.url,!item.enabled]);}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))),
@@ -435,7 +435,7 @@ return view.extend({
 		var self = this;
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.9.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.9.3' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {

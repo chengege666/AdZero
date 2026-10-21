@@ -14,6 +14,8 @@ case "$1" in
 	printf '%s\n' "$id" | grep -Eq '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' || exit 1
 	mkdir "$jobs/$id" || exit 1
 	date +%s > "$jobs/$id/created"
+	cat "$jobs/$id/created" > "$jobs/$id/stage_started"
+	printf '%s\n' "$1" > "$jobs/$id/action"
 	printf '%s\n' queued > "$jobs/$id/stage"
 	"$0" run "$id" "$@" </dev/null >"$jobs/$id/log" 2>&1 &
 	printf '{"job":"%s"}\n' "$id"

@@ -3,6 +3,8 @@
 
 export const domestic = ['223.5.5.5', '119.29.29.29'];
 export const foreign = '1.1.1.1';
+const country_record_re=/^server=\/([a-z0-9.-]+)\/[0-9.]+$/, country_name_re=/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/, number_re=/^[0-9.]+$/;
+const octet_re=/^(0|[1-9][0-9]{0,2})$/, ipv6_re=/^[a-f0-9:]+$/, word_re=/^[a-f0-9]{1,4}$/;
 export const sources = [
 	{name:'domains',url:'https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/c79474a5445e7ebbde7275648b1078a0582510ab/accelerated-domains.china.conf',sha256:'d5ff2f2fe2a0ed4c4380455351259e32d8635a3d60e513268ab0fec41110339d'},
 	{name:'cidrs',url:'https://raw.githubusercontent.com/Loyalsoldier/geoip/bf01519a9e21f366266bd48c6afae430ec8febfe/text/cn.txt',sha256:'95e593f9422de0c5ab719dad70a5f209517a74b74df7372f53335eb903085d20'}
@@ -13,10 +15,10 @@ export function domain_list(raw) {
 	for (let line in split(raw, '\n')) {
 		line = trim(line);
 		if (!length(line) || substr(line,0,1) == '#') continue;
-		let record = match(line, /^server=\/([a-z0-9.-]+)\/[0-9.]+$/);
+		let record = match(line, country_record_re);
 		if (!record) die('国内域名库格式异常。');
 		let name = record[1];
-		if (length(name) > 253 || !match(name,/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/) || index(name,'..') >= 0 || match(name,/^[0-9.]+$/)) die('国内域名库含无效域名。');
+		if (length(name) > 253 || !match(name,country_name_re) || index(name,'..') >= 0 || match(name,number_re)) die('国内域名库含无效域名。');
 		for (let label in split(name,'.')) if (length(label)>63 || substr(label,0,1)=='-' || substr(label,-1)=='-') die('国内域名库标签无效。');
 		result[name] = true;
 	}
@@ -30,12 +32,12 @@ function ip_bytes(value) {
 		if (length(parts)!=4) die('Invalid IPv4 CIDR');
 		let result='';
 		for (let p in parts) {
-			if (!match(p,/^(0|[1-9][0-9]{0,2})$/) || int(p)>255) die('Invalid IPv4 octet');
+			if (!match(p,octet_re) || int(p)>255) die('Invalid IPv4 octet');
 			result += chr(int(p));
 		}
 		return result;
 	}
-	if (!match(value,/^[a-f0-9:]+$/)) die('Invalid IPv6 CIDR');
+	if (!match(value,ipv6_re)) die('Invalid IPv6 CIDR');
 	let halves=split(value,'::'), parts=[];
 	if (length(halves)>2) die('Invalid IPv6 contraction');
 	let left=length(halves[0])?split(halves[0],':'):[], right=length(halves)==2 && length(halves[1])?split(halves[1],':'):[];
@@ -48,7 +50,7 @@ function ip_bytes(value) {
 	if (length(parts)!=8) die('Invalid IPv6 length');
 	let result='';
 	for (let p in parts) {
-		if (!match(p,/^[a-f0-9]{1,4}$/)) die('Invalid IPv6 word');
+		if (!match(p,word_re)) die('Invalid IPv6 word');
 		let n=int(p,16);result+=chr(int(n/256))+chr(n%256);
 	}
 	return result;
@@ -59,7 +61,7 @@ export function cidr_list(raw) {
 	for (let line in split(raw,'\n')) {
 		line=trim(line);if(!length(line)||substr(line,0,1)=='#')continue;
 		let parts=split(line,'/');
-		if(length(parts)!=2 || !match(parts[1],/^(0|[1-9][0-9]{0,2})$/))die('Invalid CIDR prefix');
+		if(length(parts)!=2 || !match(parts[1],octet_re))die('Invalid CIDR prefix');
 		let bytes=ip_bytes(parts[0]),prefix=int(parts[1]);
 		if(prefix>length(bytes)*8 || prefix==0)die('Unsafe CIDR prefix');
 		// Network addresses only, rather than silently broadening a host entry.

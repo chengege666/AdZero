@@ -6,6 +6,7 @@ import { connect } from 'ubus';
 import * as lib from './adapter-lib.uc';
 import * as route from './routing-lib.uc';
 import * as progress from './progress-lib.uc';
+import * as rulecache from './rules-cache.uc';
 
 const root = getenv('ADZERO_ADAPTER_ROOT') ?? '';
 const state_dir = root + '/etc/adzero';
@@ -95,12 +96,12 @@ function rules() {
 	if (index(['dnsmasq.servers','dnsmasq.addnhosts','smartdns.domainset','unbound.adb_list'], mode) < 0) die('Unsupported processed rules mode');
 	let data;
 	for (let attempt = 0; attempt < 30; attempt++) {
-		data = fs.readfile(root + path, 25000001);
-		if (length(data)) break;
+		data = fs.stat(root + path)?.size;
+		if (data > 0) break;
 		sleep(1000);
 	}
-	if (!length(data)) die('Backend has not produced a non-empty blocklist');
-	return lib.domains(data, mode);
+	if (!(data > 0)) die('Backend has not produced a non-empty blocklist');
+	return rulecache.load(root + path, mode, root);
 }
 function yaml(path, engine) {
 	let text = fs.readfile(path);
@@ -304,8 +305,18 @@ function apply_plugin(plugin, list) {
 		if (after != current.dns.string) { update_dns(current.id, after); changed = true; }
 	}
 }
+function country_cached(plugin) {
+	if(!same(journal?.country_sources,route.sources))return false;
+	let suffixes=plugin=='nailink'?['adzero-cn-geosite.dat','adzero-cn-geoip.dat']:['adzero-cn-domains.txt','adzero-cn-ips.txt'];
+	for(let suffix in suffixes){
+		let entries=filter(journal.files,f=>substr(f.path,-length(suffix)-1)=='/'+suffix);
+		if(length(entries)!=1||entries[0].kind!='owned'||b64enc(fs.readfile(entries[0].path))!=entries[0].after)return false;
+	}
+	return true;
+}
 function country_files(plugin) {
 	let prefix=plugin=='nailink'?'/etc/daed/':plugin=='nikki'?'/etc/nikki/run/providers/rule/':'/etc/openclash/rule_provider/';
+	if(country_cached(plugin))return {domains:prefix+'adzero-cn-domains.txt',ips:prefix+'adzero-cn-ips.txt'};
 	if(plugin=='nailink'){
 		tracked(root+prefix+'adzero-cn-geosite.dat',lib.geosite(routing_data.domains),'owned',0644);
 		tracked(root+prefix+'adzero-cn-geoip.dat',route.geoip(routing_data.cidrs),'owned',0644);
@@ -313,6 +324,7 @@ function country_files(plugin) {
 		tracked(root+prefix+'adzero-cn-domains.txt',join('\n',map(routing_data.domains,d=>'+.'+d))+'\n','owned',0644);
 		tracked(root+prefix+'adzero-cn-ips.txt',join('\n',routing_data.cidrs)+'\n','owned',0644);
 	}
+	journal.country_sources=route.sources;save();
 	return {domains:prefix+'adzero-cn-domains.txt',ips:prefix+'adzero-cn-ips.txt'};
 }
 function apply_split(plugin) {
@@ -460,9 +472,28 @@ function routing_check(wanted) {
 	}
 	return 'nailink';
 }
+function rules_signature(plugin) {
+	let mode=uci.get('adblock-fast','config','dns');
+	let path=mode=='unbound.adb_list'?'/var/lib/unbound/adb_list.adblock-fast':'/var/run/adblock-fast/'+mode;
+	let sha256=rulecache.fingerprint(root+path);if(!sha256)return null;
+	let configs=['adzero','adblock-fast',plugin=='nailink'?'daed':plugin=='none'?'dhcp':plugin];
+	let dependencies={};
+	let paths=map(configs,c=>'/etc/config/'+c);
+	if(plugin=='passwall')paths=[...paths,'/usr/share/passwall/app.sh','/usr/share/passwall/rules/chnlist','/usr/share/passwall/rules/chnroute','/usr/share/passwall/rules/gfwlist','/etc/passwall/rules/direct_host','/etc/passwall/rules/proxy_host'];
+	if(plugin=='nikki')push(paths,'/etc/nikki/run/config.yaml');
+	for(let c in configs)if(length(uci.changes(c)?.[c]??[]))return null;
+	for(let name in paths){
+		let stat=fs.lstat(root+name);
+		if(!stat){dependencies[name]='missing';continue;}
+		if(stat.type!='file')return null;
+		if(!stat.size){dependencies[name]='empty';continue;}
+		let hash=rulecache.fingerprint(root+name);if(!hash)return null;dependencies[name]=hash;
+	}
+	return {schema:2,mode,sha256,dependencies};
+}
 function reconfigure_nailink() {
 	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');
-	if(split_enabled)routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
+	if(split_enabled&&!country_cached('nailink'))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
 	let previous=sprintf('%J',journal);transaction_previous=previous;
 	try{
 		progress.stage('adapting');
@@ -483,12 +514,25 @@ function reconfigure_nailink() {
 		if(dns.dns.string!=after)update_dns(dns.id,after);
 		if(traffic&&traffic.text!=next)update_traffic(traffic.id,next);
 		journal.stage='restarting';save();restart('nailink');
-		journal.stage='configured_unverified';save();fs.unlink(state_dir+'/adapter.previous.json');
+		journal.stage='configured_unverified';
+		let source=rules_signature('nailink');
+		if(source&&source.sha256==journal.rules_source?.sha256)journal.rules_source=source;else delete journal.rules_source;
+		save();fs.unlink(state_dir+'/adapter.previous.json');
 	}catch(e){
 		progress.failure('adapter');
 		try{rollback_update(previous);}catch(recovery){journal.stage='recovery_required';save();die('快速切换恢复未完成，请保留恢复记录。');}
 		die(e);
 	}
+}
+
+function unchanged(plugin,signature) {
+	if(!journal||journal.stage!='configured_unverified'||journal.plugin!=plugin||!signature||!same(journal.rules_source,signature)||!!journal.split!=split_enabled)return false;
+	if(split_enabled&&index(['nailink','nikki','openclash'],plugin)>=0&&!country_cached(plugin))return false;
+	for(let f in journal.files){let raw=fs.readfile(f.path);if((f.kind=='owned'?b64enc(raw):raw)!=f.after)return false;}
+	for(let f in journal.flags)if(length(uci.changes(f.config)?.[f.config]??[])||!same(uci.get(f.config,f.section,f.option),f.after))return false;
+	if(journal.dns){let current=selected_dns();if(current.id!=journal.dns.id||current.dns.string!=journal.dns.after)return false;}
+	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id||current.text!=journal.traffic.after)return false;}
+	return true;
 }
 
 try {
@@ -520,10 +564,12 @@ try {
 	} else if (action == 'apply') {
 		progress.stage('adapting');
 		if (journal && journal.stage != 'configured_unverified') die('Adapter recovery is pending; disable protection first');
-		let plugin = active_plugin(), list = rules();
+		let plugin = active_plugin(), signature=rules_signature(plugin);
+		if(unchanged(plugin,signature)){fs.unlink(state_dir+'/adapter.previous.json');exit(0);}
+		let list = rules();
 		if (journal && journal.plugin != plugin) restore();
 		if (plugin == 'none' && !split_enabled) exit(0);
-		if(split_enabled && plugin!='none' && plugin!='passwall')routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
+		if(split_enabled && plugin!='none' && plugin!='passwall'&&!country_cached(plugin))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
 		let previous = journal ? sprintf('%J', journal) : null;
 		transaction_previous = previous;
 		journal ??= {schema:1, plugin, files:[], flags:[], stage:'preparing'};
@@ -532,10 +578,15 @@ try {
 			if(split_enabled)journal.split??={mode:plugin=='none'?'direct':'proxy',traffic_verified:false};
 			apply_plugin(plugin, list);
 			apply_split(plugin);
-			if (!changed && journal.stage == 'configured_unverified') { fs.unlink(state_dir + '/adapter.previous.json'); exit(0); }
+			let signature_after=rules_signature(plugin);
+			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;
+			if (!changed && journal.stage == 'configured_unverified') { journal.count=length(list);save();fs.unlink(state_dir + '/adapter.previous.json'); exit(0); }
 			journal.count = length(list); journal.stage = 'restarting'; journal.generation = time(); save();
 			restart(plugin);
-			journal.stage = 'configured_unverified'; save();
+			journal.stage = 'configured_unverified';
+			signature_after=rules_signature(plugin);
+			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;
+			save();
 			fs.unlink(state_dir + '/adapter.previous.json');
 		} catch (e) {
 			if (previous == null) {
