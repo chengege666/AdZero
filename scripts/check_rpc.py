@@ -32,7 +32,7 @@ def main():
         os.mknod(base/'dev/null',0o666 | 0o20000,os.makedev(1,3))
         os.mknod(base/'dev/urandom',0o666 | 0o20000,os.makedev(1,9))
         (base/'var/run/ubus/ubus.sock').symlink_to('/tmp/ubus.sock')
-        for relative in ('usr/share/rpcd/ucode/adzero','usr/libexec/adzero/policy-lib.uc','usr/libexec/adzero/source-lib.uc','usr/libexec/adzero/job','usr/share/rpcd/acl.d/luci-app-adzero.json'):
+        for relative in ('usr/share/rpcd/ucode/adzero','usr/libexec/adzero/policy-lib.uc','usr/libexec/adzero/source-lib.uc','usr/libexec/adzero/progress-lib.uc','usr/libexec/adzero/job','usr/share/rpcd/acl.d/luci-app-adzero.json'):
             target=base/relative; target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(ROOT/'luci-app-adzero/root'/relative,target)
             if relative.endswith('/job'): target.chmod(0o755)
@@ -44,7 +44,7 @@ def main():
 ubus -s /tmp/ubus.sock call session create '{"timeout":2}' >/tmp/nested.json || exit 1
 case "$1" in
  lookup) printf '{"available":true,"domain":"%s","match":"none"}\\n' "$2";;
- pause) exit 1;;
+pause) echo source_download > "$ADZERO_JOB_CONTEXT/reason"; exit 1;;
  enable|disable|refresh|routing-on|routing-off)
    mkdir /tmp/long-operation.lock || exit 1
    trap 'rmdir /tmp/long-operation.lock' EXIT
@@ -89,7 +89,8 @@ esac
             assert (base/'tmp/nested.json').exists()
             assert not call('lookup',{'domain':'x.example;id'})['ok']
             assert not call('pause',{'seconds':1})['ok']
-            assert not finished(call('pause',{'seconds':300}))['ok']
+            failed=finished(call('pause',{'seconds':300}))
+            assert not failed['ok'] and failed['reason']=='source_download' and 'HTTPS' in failed['message'],failed
             result=call('allow',{'domain':'ads.example','scope':'ads.example'})
             assert result['ok'] and 'private-backend' not in json.dumps(result),result
             assert finished(result)['ok']
@@ -102,6 +103,13 @@ esac
             assert time.monotonic()-start < 1.5,'launcher waited for worker'
             done=finished(started)
             assert done.get('ok') and not done.get('pending'),done
+            assert done['progress']['elapsed']>=0 and done['progress']['stage'] in ('queued','checking'),done
+            context=base/'tmp/adzero-jobs'/started['job']
+            (context/'stage').write_text('private-backend-token-not-for-browser')
+            (context/'reason').write_text('private-backend-token-not-for-browser')
+            (context/'result').write_text('1')
+            safe=call('job_status',{'job':started['job']})
+            assert 'private-backend' not in json.dumps(safe) and safe['reason']=='unknown',safe
             assert 'private-backend' not in json.dumps(done)
             assert run('/bin/ubus','-s','/tmp/ubus.sock','call','adzero','exec','{}').returncode != 0
             # Old direct file.exec kills ctl with SIGKILL before the EXIT trap.
@@ -118,10 +126,16 @@ esac
                 assert not (base/'tmp/long-operation.lock').exists(),'detached worker did not release lock'
                 private=(base/'tmp/adzero-jobs'/receipt['job']/'log').read_text()
                 assert 'private-backend-token' in private and 'private-backend' not in json.dumps(receipt)
+            # Interrupted record detection uses a process with the exact job id.
+            lost=base/'tmp/adzero-jobs'/str(uuidlib.uuid4());lost.mkdir()
+            (lost/'worker').write_text('999999')
+            (base/'proc/self').mkdir()
+            interrupted=call('job_status',{'job':lost.name})
+            assert not interrupted['ok'] and interrupted['reason']=='interrupted',interrupted
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
-                    'checks':34,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced',
+                    'checks':38,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
-                    'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','router':'not_touched'}
+                    'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')
             print(json.dumps(report,indent=2))
         finally:

@@ -65,7 +65,9 @@ if sys.argv[1] != 'stop':
  output.parent.mkdir(parents=True,exist_ok=True)
  output.write_text(''.join('server=/'+d+'/\\n' for d in rules)+''.join('server=/'+d+'/#\\n' for d in values))
  service['adblock-fast']={'data':{'status':'statusSuccess','errors':[],'warnings':[],'entries':len(rules),'dns':'dnsmasq.servers','force_dns_active':False,'outputFile':'/var/run/adblock-fast/dnsmasq.servers'}}
-else: output.unlink(missing_ok=True)
+else:
+ if output.exists():
+  cache=output.with_name(output.name+'.cache'); cache.write_bytes(output.read_bytes()); output.unlink()
 (r/'service.json').write_text(json.dumps(service))
 ''', True)
         self.env['ADZERO_BACKEND_INIT'] = str(backend)

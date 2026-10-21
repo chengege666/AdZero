@@ -39,6 +39,14 @@ class SourcesTest(unittest.TestCase):
         self.run_source('begin','remove',item['id'],'https://changed.example/list',ok=False)
         self.assertEqual(len(self.data()['items']),1)
 
+    def test_disabling_or_removing_a_source_does_not_redownload_unchanged_sources_for_precheck(self):
+        self.add();self.run_source('finish');item=self.data()['items'][0]
+        self.fixture.write('fetch-fail','1')
+        self.run_source('begin','toggle',item['id'],item['url'],'0');self.run_source('finish')
+        self.assertFalse(self.data()['items'][0]['enabled'])
+        self.run_source('begin','remove',item['id'],item['url']);self.run_source('finish')
+        self.assertEqual(self.data()['items'],[])
+
     def test_toggle_and_remove_restore_original_exact_config(self):
         original=(self.root/'etc/config/adblock-fast').read_bytes()
         self.add();self.run_source('rollback');self.run_source('rollback');self.run_source('discard')
@@ -124,6 +132,18 @@ class SourcesTest(unittest.TestCase):
         self.fixture.ctl('source-add','','Fresh','https://rules.example/list','domains')
         self.fixture.ctl('enable')
         self.assertEqual((self.root/'last-start-method').read_text(),'dl')
+
+    def test_reenable_uses_only_a_config_and_content_verified_backend_cache(self):
+        f=self.fixture;f.ctl('source-add','','Fresh','https://rules.example/list','domains')
+        f.ctl('enable');f.ctl('disable');f.ctl('enable')
+        self.assertEqual((self.root/'last-start-method').read_text(),'start')
+        f.ctl('disable')
+        cache=self.root/'var/run/adblock-fast/dnsmasq.servers.cache'
+        cache.write_text('server=/stale.example/\n')
+        f.ctl('enable');self.assertEqual((self.root/'last-start-method').read_text(),'dl')
+        f.ctl('disable')
+        p=self.root/'etc/config/adblock-fast';p.write_text(p.read_text().replace('https://rules.example/list','https://changed.example/list'))
+        f.ctl('enable');self.assertEqual((self.root/'last-start-method').read_text(),'dl')
 
     def subscription_cycle(self, plugin):
         self.fixture.select(plugin)

@@ -25,12 +25,20 @@ const api = { exec: async (_program, args) => {
   if (args[0] === 'status') { await new Promise(resolve => setTimeout(resolve, statusDelay)); if (state.state === 'error') throw new Error('模拟：连接暂时中断'); return { code: 0, stdout: JSON.stringify(state) }; }
   throw Error('Only status uses file.exec');
 } };
-let sourceData={items:[],catalog:[]};
+let sourceData={items:[],catalog:[]},jobTick=0;
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
   if (spec.method === 'source_list') return {ok:true,data:structuredClone(sourceData)};
-  if (spec.method === 'job_status') return {ok:true,pending:false};
+  if (spec.method === 'job_status') {
+    if(document.getElementById('slow-job').checked){
+      jobTick++;
+      if(jobTick===3)throw Error('模拟：代理重载造成连接重置');
+      if(jobTick<5)return {ok:true,pending:true,progress:{stage:jobTick===1?'checking':jobTick===2?'validating':'restarting',elapsed:jobTick*6}};
+    }
+    return {ok:true,pending:false};
+  }
+  jobTick=0;
   document.getElementById('calls').textContent = '操作次数：' + (++calls);
   if (['enable','disable','refresh'].includes(spec.method)) {
     state.state = spec.method === 'disable' ? 'disabled' : 'configured_unverified';

@@ -22,12 +22,12 @@ with tempfile.TemporaryDirectory(prefix='adzero-routing-dae-') as tmp:
     (home/'adzero-geosite.dat').write_bytes(base64.b64decode(transform('geosite',['ads.example'],ad=True)))
     (home/'adzero-cn-geosite.dat').write_bytes(base64.b64decode(transform('geosite',['cn.example'],ad=True)))
     (home/'adzero-cn-geoip.dat').write_bytes(base64.b64decode(transform('geoip',['223.5.5.0/24','2400:3200::/32'])))
-    dns='upstream { original: "udp://223.5.5.5:53" }\nrouting { request { fallback: original } response { fallback: accept } }'
-    dns=transform('dae_dns',transform('dae_dns',dns,ad=True))
-    routing=transform('dae_routing','domain(full: keep.example) -> direct\nfallback: proxy\n','proxy')
-    config=home/'config.dae';config.write_text('global { log_level: info }\nnode { mynode: "socks5://127.0.0.1:9" }\ngroup { proxy { filter: name(mynode)\npolicy: fixed(0) } }\ndns { '+dns+' }\nrouting { '+routing+' }\n');config.chmod(0o600)
-    (root/'artifacts/routing-dae-config.dae').write_text(config.read_text())
-    p=subprocess.run([str(binary),'validate','-c',str(config)],text=True,capture_output=True)
-    assert p.returncode==0,p.stdout+p.stderr
-    report={'status':'passed','source_sha256':source_hash(root/'luci-app-adzero'),'asset_sha256':SHA256,'core':'dae v2.1.1','scope':'real DNS/traffic config parser and v4/v6 GeoIP DAT; no eBPF, router or LAN execution'}
+    for response in (True,False):
+        dns='upstream { original: "udp://223.5.5.5:53" }\nrouting { request { fallback: original }'+(' response { fallback: accept }' if response else '')+' }'
+        dns=transform('dae_dns',transform('dae_dns',dns,ad=True))
+        routing=transform('dae_routing','domain(full: keep.example) -> direct\nfallback: proxy\n','proxy')
+        config=home/'config.dae';config.write_text('global { log_level: info }\nnode { mynode: "socks5://127.0.0.1:9" }\ngroup { proxy { filter: name(mynode)\npolicy: fixed(0) } }\ndns { '+dns+' }\nrouting { '+routing+' }\n');config.chmod(0o600)
+        p=subprocess.run([str(binary),'validate','-c',str(config)],text=True,capture_output=True)
+        assert p.returncode==0,p.stdout+p.stderr
+    report={'status':'passed','source_sha256':source_hash(root/'luci-app-adzero'),'asset_sha256':SHA256,'core':'dae v2.1.1','profiles':['explicit_response','request_only'],'scope':'real DNS/traffic config parser and v4/v6 GeoIP DAT; no eBPF, router or LAN execution'}
     (root/'artifacts/runtime/routing-dae-result.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))

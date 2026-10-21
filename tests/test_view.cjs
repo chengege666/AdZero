@@ -34,7 +34,7 @@ const api = { exec: async (program, args) => {
   assert.equal(args[0], 'status', 'only short reads may use file.exec');
   if (args[0] === 'status') { if (statusPending) await new Promise(r => { resolveStatus = r; }); if (failStatus) throw new Error('status unreachable'); return { code: 0, stdout: JSON.stringify(state) }; }
 } };
-let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked = false, sessionID = 'b'.repeat(32), ruleData, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
+let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked = false, sessionID = 'b'.repeat(32), jobSteps=[], ruleData, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
 const storage = new Map();
 const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
@@ -47,7 +47,7 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }
   if (spec.method === 'source_list') return rpcListFailure ? {ok:false,message:'list unavailable'} : {ok:true,data:structuredClone(ruleData)};
-  if (spec.method === 'job_status') return {ok:true,pending:false};
+  if (spec.method === 'job_status') {let next=jobSteps.shift();if(next instanceof Error)throw next;return typeof next==='function'?next():next || {ok:true,pending:false};}
   if (spec.method.startsWith('source_')) {
     if (!rpcStale && spec.method==='source_add') ruleData.items.push({id:'new1',catalog_id:args[0]||null,name:args[1]||'Library rule',url:args[2]||'https://library.example/list',https:true,enabled:true,domains:42});
     if (!rpcStale && spec.method==='source_toggle') ruleData.items.find(i=>i.id===args[0]).enabled=args[2];
@@ -64,8 +64,8 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   }
   return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
 } };
-const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', 'sessionStorage', source)(
-  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}},session);
+const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', 'sessionStorage', 'setTimeout', source)(
+  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}},session,fn=>queueMicrotask(fn));
 function reset(overrides = {}) {
   state = { state: 'disabled', managed: false, dns_mode_safe: true, resolver: 'dnsmasq.servers', client_dns_verified: false,
     policy:{allowed:[],pause:null,routing_enabled:false}, force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
@@ -74,6 +74,7 @@ function reset(overrides = {}) {
   failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = rpcListFailure = storageBlocked = false; sessionID='b'.repeat(32); commands.length = 0;
   storage.clear();ruleData={items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
   app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
+  jobSteps=[];app.currentJob=null;app.jobUncertain=false;app.jobProgress=null;
   app.busy = app.notice = app.domainResult = null; app.domainInput = ''; root = app.render(state); active = body;
 }
 const find = id => doc.getElementById(id);
@@ -210,5 +211,21 @@ function check(value, label) { assert.ok(value, label); assertions++; }
     check(!storage.has('adzero.v0.8.'+sessionID+'.job'),'receipt cleared after '+action+' confirmation');
   }
   reset({state:'paused'});await app.openRules();check(find('az-source-add').disabled,'paused sources cannot be edited');
+  reset();jobSteps=[new Error('connection reset'),new Error('network reloading'),{ok:true,pending:false}];
+  await app.runAction('enable');
+  check(app.notice.kind==='success' && commands.filter(x=>x==='enable').length===1,'network reload retries receipt without resubmitting mutation');
+  reset({state:'configured_unverified'});jobSteps=Array.from({length:16},()=>new Error('network unreachable'));
+  await app.runPolicy('routing_on',[]);
+  check(app.jobUncertain && storage.has('adzero.v0.8.'+sessionID+'.job'),'prolonged transport failure retains original task receipt');
+  check(app.currentStatus.stale && find('az-toggle').disabled && find('az-routing').disabled && !find('az-status').disabled,'uncertain task blocks new writes but permits reconnect');
+  await app.refreshStatus();
+  check(app.notice.kind==='success' && commands.filter(x=>x==='routing_on').length===1 && !app.jobUncertain,'retry checks original routing task and canonical state only');
+  reset({state:'configured_unverified'});
+  jobSteps=[{ok:true,pending:true,progress:{stage:'downloading',elapsed:20}},()=>{
+    check(text(root).includes('正在下载规则') && text(root).includes('20'),'server stage and elapsed time are visible during operation');
+    return {ok:false,pending:false,message:'国内分类库校验失败'};
+  }];
+  await app.runPolicy('routing_on',[]);
+  check(app.notice.kind==='error' && text(root).includes('国内分类库校验失败') && !storage.has('adzero.v0.8.'+sessionID+'.job'),'confirmed failure is distinct from temporary disconnection');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

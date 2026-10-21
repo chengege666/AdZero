@@ -1,6 +1,7 @@
 'use strict';
 import * as fs from 'fs';
 import * as lib from './routing-lib.uc';
+import * as progress from './progress-lib.uc';
 const root=getenv('ADZERO_ADAPTER_ROOT')??'',dir=root+'/etc/adzero/routing-data';
 let action=shift(ARGV);if(action=='--')action=shift(ARGV);
 function quote(s){return "'"+replace(s,/'/g,"'\\''")+"'";}
@@ -30,6 +31,7 @@ try{
 		if(fs.lstat(path)?.type=='link')die('Refusing routing source symlink');
 		if(fs.stat(path)?.type=='file')valid=split(command(['sha256sum',path]),' ')[0]==source.sha256;
 		if(!valid){
+			progress.stage('downloading');
 			let tmp=path+'.download';clear_temporary(tmp);
 			try{
 				command(['curl','--fail','--location','--proto','=https','--proto-redir','=https','--connect-timeout','10','--max-time','90','--max-filesize','5000000','--output',tmp,source.url]);
@@ -38,9 +40,10 @@ try{
 			}catch(e){fs.unlink(tmp);die(e);}
 		}
 		let raw=fs.readfile(path,5000001);
+		progress.stage('validating');
 		data[source.name]=source.name=='domains'?lib.domain_list(raw):lib.cidr_list(raw);
 	}
 	let text=sprintf('%J',data);
 	if(fs.readfile(dir+'/snapshot.json')!=text)atomic(dir+'/snapshot.json',text);
 	print(text);
-}catch(e){fs.stderr.write('AdZero routing data: '+e.message+'\n');exit(1);}
+}catch(e){progress.failure('country_data');fs.stderr.write('AdZero routing data: '+e.message+'\n');exit(1);}

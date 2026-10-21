@@ -107,8 +107,13 @@ function sections(text) {
 function owned(name,text) {return '# ADZERO SPLIT '+name+' BEGIN v1\n'+text+'\n# ADZERO SPLIT '+name+' END v1\n';}
 export function dae_dns(raw) {
 	if(index(raw,'# ADZERO SPLIT ')>=0)return raw; // journal equality is checked by caller
-	let blocks=sections(raw),edits=[],paths=['upstream','routing.request','routing.response'];
+	let blocks=sections(raw),edits=[],paths=['upstream','routing','routing.request'];
 	for(let path in paths){let hit=filter(blocks,b=>b.path==path);if(length(hit)!=1)die('Expected one dae DNS '+path);}
+	let responses=filter(blocks,b=>b.path=='routing.response');
+	if(length(responses)>1)die('Expected at most one dae DNS routing.response');
+	// dae's official default profile omits response; its default is accept.
+	// Add no new response policy when none existed. Only protect our upstreams
+	// from an existing response retry chain when the user actually has one.
 	for(let block in blocks){
 		if(block.path=='upstream')push(edits,{at:block.close,text:'\n'+owned('UPSTREAM','adzero_cn: "udp://'+domestic[0]+':53"\nadzero_global: "tcp://'+foreign+':53"')});
 		if(block.path=='routing.request')push(edits,{at:block.close,text:'\n'+owned('REQUEST','qname(ext:"adzero-cn-geosite.dat:adzero") -> adzero_cn\nqname(regex: ".*") -> adzero_global')});

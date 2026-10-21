@@ -1,8 +1,10 @@
 # AdZero
 
+当前测试版 **v0.9.1** 修复 NaiLink request-only DNS 配置无法开启分流、网络短暂断线丢失任务回执的问题；NaiLink 分流正常切换减少到一次重载，增加阶段与用时反馈，并在配置与缓存内容均核验一致时复用缓存。详见 [开关响应修复记录](docs/INTERACTION_FIXES.md)。
+
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
-**v0.9.0 是公开测试版。** 新增「自动分流」开关：有运行中的受支持代理时协调国内 DNS/直连与国外 DNS/当前代理；无代理时只使用国内 DNS 与本地直连。默认关闭，需先开启保护；临时暂停会同时暂停过滤和分流，保留选择。 本版修复 LuCI 长操作可能被 RPC 超时中断的问题：开启、关闭、更新、放行、暂停及恢复统一使用后台任务，返回菜单只核对回执，不重复提交。 新增可选规则库、自定义 HTTPS 订阅及逐项开关/删除；返回菜单时先保留最近概览，再后台核对真实状态。保留域名查询、误杀放行、临时暂停及 NaiLink、PassWall、OpenClash、Nikki 的原生接入。安装矩阵为 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）、25.12.5 rockchip/armv8（APK）**，使用对应官方 SDK；真机和 LAN 验收仍需分别完成。
+保留「自动分流」、规则库、自定义 HTTPS 订阅、域名查询、误杀放行和临时暂停。有运行中的受支持代理时协调国内 DNS/直连与国外 DNS/当前代理；无代理时使用国内 DNS 与本地直连。分流默认关闭，需先开启保护。NaiLink、PassWall、OpenClash、Nikki 使用各自原生入口；安装矩阵为 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）、25.12.5 rockchip/armv8（APK）**，使用对应官方 SDK；真机和 LAN 验收仍需分别完成。
 
 菜单名称为 **AdZero**。首屏异步读取当前状态，提供保护开关、临时暂停、域名查询和个人放行名单；不显示固件/CPU/未启用代理等诊断面板，也不虚构拦截次数。支持手机、深色外观、键盘操作和失败重试。
 
@@ -36,10 +38,10 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.9.0)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.9.1)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -48,14 +50,14 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本可使用 --upgrade：先校验安装包、备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
 
 旧版短暂占锁时，升级器最多等待 30 秒重试；只重试旧版明确的“另一项操作正在进行”提示，其他恢复失败立即停止。锁持续占用则停止安装并保留配置、锁和恢复记录。请先提供 `ls -la /tmp/adzero.lock` 与 `ps w | grep -E '[a]dzero/(ctl|watch|adapter|backend)'` 的只读结果，不要直接删除锁。升级备份中的 state.tar.gz 可能含原有 DNS 配置，请仅保留在路由器本地。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.9.0 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.9.1 地址。
 
 v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修正旧默认规则源；v0.6.0 已解决 LuCI 将 disabled=false 写为实际禁用属性的问题。缺少 gawk、GNU grep/sed、coreutils-sort 仍为后端推荐提示，本版未因此新增依赖。
 

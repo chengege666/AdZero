@@ -5,6 +5,7 @@ import { cursor } from 'uci';
 import { connect } from 'ubus';
 import * as lib from './adapter-lib.uc';
 import * as route from './routing-lib.uc';
+import * as progress from './progress-lib.uc';
 
 const root = getenv('ADZERO_ADAPTER_ROOT') ?? '';
 const state_dir = root + '/etc/adzero';
@@ -193,12 +194,13 @@ function update_traffic(id,text) {
 	graphql('mutation($id:ID!,$routing:String!){updateRouting(id:$id,routing:$routing){id}}',{id,routing:text});
 }
 function restart(plugin) {
+	progress.stage('restarting');
 	if (plugin == 'none') {
 		if (journal?.split && system(['/bin/sh',root+'/etc/init.d/dnsmasq','restart'],30000)!=0)die('国内 DNS 配置未能重新加载。');
 		return;
 	}
 	if (plugin == 'nailink') {
-		if(journal?.split && graphql('{general{dae{running}}}').general?.dae?.running !== true){
+		if((journal?.split||journal?.traffic) && graphql('{general{dae{running}}}').general?.dae?.running !== true){
 			if(journal.stage=='restarting')die('NaiLink 内核在应用期间已停止。');
 			return; // restoring profiles must not start a core the user stopped
 		}
@@ -372,6 +374,7 @@ function apply_split(plugin) {
 }
 function restore() {
 	if (!journal) return;
+	progress.stage('restoring');
 	journal.stage = 'restoring'; save();
 	// Restore configuration first, restart, then remove provider files.
 	for (let file in journal.files) {
@@ -411,6 +414,7 @@ function restore() {
 	journal = null;
 }
 function rollback_update(previous) {
+	progress.stage('restoring');
 	let old = json(previous);
 	journal.stage='rolling_back';
 	for (let file in journal.files) {
@@ -441,12 +445,60 @@ function rollback_update(previous) {
 	journal = old;
 }
 
+function routing_check(wanted) {
+	if(index(['0','1'],wanted)<0)die('自动分流目标无效。');
+	let plugin=active_plugin();
+	if(plugin!='nailink'||journal?.plugin!='nailink'||journal.stage!='configured_unverified')return 'full';
+	let dns=selected_dns();
+	if(dns.id!=journal.dns?.id||dns.dns.string!=journal.dns.after)die('NaiLink DNS profile changed externally');
+	// Check syntax and selected target before any restore, download or reload.
+	if(wanted=='1'){
+		route.dae_dns(lib.dae_dns(journal.dns.before));
+		let traffic=selected_traffic();
+		if(journal.traffic&&(traffic.id!=journal.traffic.id||traffic.text!=journal.traffic.after))die('NaiLink 流量路由已被外部修改。');
+		route.dae_routing(journal.traffic?.before??traffic.text,traffic.target);
+	}
+	return 'nailink';
+}
+function reconfigure_nailink() {
+	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');
+	if(split_enabled)routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
+	let previous=sprintf('%J',journal);transaction_previous=previous;
+	try{
+		progress.stage('adapting');
+		let dns=selected_dns(),after=lib.dae_dns(journal.dns.before),traffic=null,next=null;
+		if(split_enabled){
+			country_files('nailink');after=route.dae_dns(after);traffic=selected_traffic();
+			journal.traffic??={id:traffic.id,before:traffic.text,after:traffic.text};
+			next=route.dae_routing(journal.traffic.before,traffic.target);
+			journal.split={mode:'proxy',target:traffic.target,traffic_verified:false};
+		}else{
+			delete journal.split;
+			if(journal.traffic){traffic=selected_traffic();next=journal.traffic.before;}
+		}
+		if(traffic&&(traffic.id!=journal.traffic.id||traffic.text!=journal.traffic.after))die('NaiLink 流量路由存在并发修改。');
+		if(selected_dns().dns.string!=dns.dns.string)die('NaiLink DNS 存在并发修改。');
+		journal.dns.after=after;if(traffic)journal.traffic.after=next;
+		journal.stage='preparing';save(); // one durable intent covers both profiles
+		if(dns.dns.string!=after)update_dns(dns.id,after);
+		if(traffic&&traffic.text!=next)update_traffic(traffic.id,next);
+		journal.stage='restarting';save();restart('nailink');
+		journal.stage='configured_unverified';save();fs.unlink(state_dir+'/adapter.previous.json');
+	}catch(e){
+		progress.failure('adapter');
+		try{rollback_update(previous);}catch(recovery){journal.stage='recovery_required';save();die('快速切换恢复未完成，请保留恢复记录。');}
+		die(e);
+	}
+}
+
 try {
 	journal = read_journal();
 	if (action == 'status') {
 		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
 			client_dns_verified:false, router_dns_verified:false,routing:{enabled:split_enabled,mode:journal?.split?.mode??'inactive',traffic_verified:false}}));
 	} else if (action == 'remove') restore();
+	else if(action=='routing-check')print(routing_check(shift(ARGV))+'\n');
+	else if(action=='reconfigure-nailink')reconfigure_nailink();
 	else if (action == 'check') { print(active_plugin() + '\n'); }
 	else if (action == 'hook-openclash') {
 		let path = shift(ARGV);
@@ -466,6 +518,7 @@ try {
 		if (!fs.rename(temporary, root + path)) die('Cannot commit generated OpenClash configuration');
 		atomic(state_dir + '/openclash-hook.json', '' + journal.generation);
 	} else if (action == 'apply') {
+		progress.stage('adapting');
 		if (journal && journal.stage != 'configured_unverified') die('Adapter recovery is pending; disable protection first');
 		let plugin = active_plugin(), list = rules();
 		if (journal && journal.plugin != plugin) restore();
@@ -494,6 +547,7 @@ try {
 		}
 	} else die('Usage: adapter {check|apply|remove|status|hook-openclash PATH}');
 } catch (e) {
+	progress.failure('adapter');
 	if (action == 'hook-openclash' && journal) { journal.stage = 'recovery_required'; save(); }
 	fs.stderr.write('AdZero DNS adapter: ' + e.message + '\n');
 	exit(1);

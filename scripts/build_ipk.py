@@ -74,6 +74,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/libexec/adzero/policy",
         "usr/libexec/adzero/policy.uc",
         "usr/libexec/adzero/policy-lib.uc",
+        "usr/libexec/adzero/progress-lib.uc",
         "usr/libexec/adzero/sources",
         "usr/libexec/adzero/sources.uc",
         "usr/libexec/adzero/source-lib.uc",

@@ -4,6 +4,7 @@ import { connect } from 'ubus';
 import { hostname } from '../../../libexec/adzero/policy-lib.uc';
 import * as fs from 'fs';
 import * as sources from '../../../libexec/adzero/source-lib.uc';
+import * as progress from '../../../libexec/adzero/progress-lib.uc';
 const bus = connect();
 function invoke(request, action, args, output) {
 	// Nested asynchronous exec keeps rpcd free to serve NaiLink's local session.
@@ -67,8 +68,27 @@ return {adzero:{
 		let path='/tmp/adzero-jobs/'+id;
 		if (!fs.stat(path)) return {ok:false,message:'任务记录不存在，设备可能已重启。请重新检测。'};
 		let code=fs.readfile(path+'/result');
-		if (code == null) return {ok:true,pending:true};
-		return int(trim(code)) == 0 ? {ok:true,pending:false} : {ok:false,pending:false,message:'操作未确认完成。请重新检测当前状态；必要时关闭并恢复。'};
+		let phase=trim(fs.readfile(path+'/stage')??'queued');
+		let started=int(trim(fs.readfile(path+'/created')??''));
+		let elapsed=started>0?int(time())-started:0;
+		let metadata={stage:index(progress.stages,phase)>=0?phase:'checking',elapsed:elapsed>0?elapsed:0};
+		if (code == null) {
+			let worker=trim(fs.readfile(path+'/worker')??'');
+			// No process killing or lock cleanup. Detect an interrupted worker
+			// by its exact job argument, rather than merely trusting a reused PID.
+			if(match(worker,/^[1-9][0-9]*$/)&&fs.stat('/proc/self')){
+				let args=split(fs.readfile('/proc/'+worker+'/cmdline')??'','\x00');
+				if(index(args,id)<0){
+					// The worker may have committed its result between our first
+					// read and /proc inspection. Re-read before calling it lost.
+					code=fs.readfile(path+'/result');
+					if(code==null)return {ok:false,pending:false,reason:'interrupted',message:progress.messages.interrupted,progress:metadata};
+				}
+			}
+			if(code==null)return {ok:true,pending:true,progress:metadata};
+		}
+		let reason=trim(fs.readfile(path+'/reason')??'');
+		return int(trim(code)) == 0 ? {ok:true,pending:false,progress:metadata} : {ok:false,pending:false,reason:progress.messages[reason]?reason:'unknown',message:progress.messages[reason]??'操作未确认完成，原始日志仅保留在路由器。请重新检测；必要时关闭并恢复。',progress:metadata};
 	}},
 	lookup:{args:{domain:''},call:r => domain(r,'lookup',false)},
 	allow:{args:{domain:'',scope:''},call:r => domain(r,'allow',true)},

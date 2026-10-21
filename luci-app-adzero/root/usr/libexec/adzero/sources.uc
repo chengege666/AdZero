@@ -3,6 +3,7 @@
 import * as fs from 'fs';
 import { cursor } from 'uci';
 import * as lib from './source-lib.uc';
+import * as progress from './progress-lib.uc';
 const root = getenv('ADZERO_SOURCES_ROOT') ?? '';
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
 const uci = cursor(root + '/etc/config');
@@ -49,6 +50,7 @@ function list() {
 	return {catalog:lib.catalog,items,pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
 function download(address,kind) {
+	progress.stage('downloading');
 	lib.url(address);lib.format(kind);
 	let path=root+'/tmp/adzero-source-check';
 	if (root && !fs.stat(root+'/tmp')) fs.mkdir(root+'/tmp',0700);
@@ -59,8 +61,10 @@ function download(address,kind) {
 		let argv = root && fixture ? [fixture,address,path] : ['curl','--fail','--location','--silent','--show-error','--proto','=https','--proto-redir','=https','--connect-timeout','10','--max-time','60','--max-filesize','25000000','--output',path,address];
 		// Quiet output: a custom subscription URL may contain a private token.
 		let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
-		if (system(join(' ',map(argv,quote))+' >/dev/null 2>&1',65000) != 0) die('规则下载失败，请检查 HTTPS 地址和网络。');
-		let raw=fs.readfile(path,25000001), result=lib.parse(raw,kind);
+		if (system(join(' ',map(argv,quote))+' >/dev/null 2>&1',65000) != 0) {progress.failure('source_download');die('规则下载失败，请检查 HTTPS 地址和网络。');}
+		progress.stage('validating');
+		let raw=fs.readfile(path,25000001),result;
+		try{result=lib.parse(raw,kind);}catch(e){progress.failure('source_format');die(e);}
 		fs.unlink(path);return result;
 	} catch(e) { fs.unlink(path);die(e); }
 }
@@ -84,7 +88,7 @@ function begin(action,args) {
 	clean_uci();
 	let before=fs.readfile(config), prior=model();
 	if (before == null) die('无法读取现有规则配置。');
-	let id=shift(args), address;
+	let id=shift(args), address,removing=false;
 	if (action == 'add') {
 		let name=shift(args);address=shift(args);let kind=shift(args);
 		if (id) {
@@ -104,15 +108,18 @@ function begin(action,args) {
 		if (!match(id ?? '',/^[A-Za-z0-9_]+$/)) die('规则标识无效。');
 		let entry=filter(selected(),s=>s['.name'] == id)[0];
 		if (!entry || entry.url != address) die('规则已被其他操作修改，请重新读取列表。');
-		if (action == 'remove') { if (!uci.delete('adblock-fast',id)) die('无法删除规则。'); }
+		if (action == 'remove') { removing=true;if (!uci.delete('adblock-fast',id)) die('无法删除规则。'); }
 		else {
 			let enabled=shift(args);if (index(['0','1'],enabled) < 0) die('规则开关无效。');
+			removing=enabled=='0';
 			if (enabled == '1') lib.url(address);
 			if (!uci.set('adblock-fast',id,'enabled',enabled)) die('无法保存规则开关。');
 		}
 	} else if (action != 'refresh') die('未知规则变更。');
 	if (uci.get('adblock-fast','config','enabled') == '1' && !length(filter(selected(),s=>s.enabled != '0')) && !length(uci.get('adblock-fast','config','blocked_domain') ?? [])) die('至少保留一项启用的规则；需要暂停全部过滤时请使用临时暂停或关闭保护。');
-	validate_sources(); // No committed config or running service changes yet.
+	// Removing a source cannot increase the union. Do not re-download every
+	// unchanged list for prevalidation; the backend still rebuilds the result.
+	if(!removing)validate_sources(); // No committed config/service changes yet.
 	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode & 0777,action};
 	atomic(journal,sprintf('%J',pending));
 	if (!uci.commit('adblock-fast')) die('规则保存失败，恢复记录已保留。');
@@ -122,6 +129,29 @@ function rollback() {
 	clean_uci();
 	if (pending.schema != 1 || type(pending.before) != 'string' || (!same(model(),pending.after) && !same(model(),pending.prior))) die('配置出现并发变化，已保留规则恢复记录。');
 	atomic(config,pending.before,pending.mode ?? 0600);
+}
+function cache_path(){
+	let mode=uci.get('adblock-fast','config','dns');
+	return index(['dnsmasq.servers','dnsmasq.addnhosts'],mode)>=0?root+'/var/run/adblock-fast/'+mode:null;
+}
+function checksum(path){
+	if(fs.lstat(path)?.type!='file'||!(fs.stat(path)?.size>0)||fs.stat(path).size>25000000)return null;
+	let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
+	let proc=fs.popen('sha256sum '+quote(path)+' 2>/dev/null','r');if(!proc)return null;
+	let output=proc.read('all'),code=proc.close(),digest=split(output??'',' ')[0];
+	return code==0&&match(digest,/^[a-f0-9]{64}$/)?digest:null;
+}
+function cache_save(){
+	let path=cache_path();if(!path)return;
+	let digest=checksum(path);if(!digest)return;
+	atomic(dir+'/backend-cache.json',sprintf('%J',{schema:1,config:model(),sha256:digest}));
+}
+function cache_check(){
+	let state=read(dir+'/backend-cache.json'),path=cache_path();
+	if(!path||state?.schema!=1||!match(state.sha256??'',/^[a-f0-9]{64}$/)||!same(model(),state.config))return false;
+	// Upstream moves the processed file to .cache on stop. Hash the exact
+	// cache that start will restore; never trust config flags or timestamps.
+	return checksum(path+'.cache')==state.sha256;
 }
 let action=shift(ARGV);if (action == '--') action=shift(ARGV);
 try {
@@ -135,5 +165,7 @@ try {
 		if (!fs.unlink(journal)) die('规则已应用，但恢复记录清理失败。');
 	} else if (action == 'discard') { if (fs.stat(journal) && !fs.unlink(journal)) die('无法清理规则恢复记录。'); }
 	else if (action == 'pending') exit(read(journal) ? 0 : 1);
+	else if(action=='cache-save')cache_save();
+	else if(action=='cache-check')exit(cache_check()?0:1);
 	else die('未知规则操作。');
 } catch(e) { fs.stderr.write('AdZero: '+e.message+'\n');exit(action == 'pending' ? 2 : 1); }

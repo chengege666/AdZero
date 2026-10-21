@@ -39,6 +39,17 @@ error() {
 	printf 'AdZero: %s\n' "$*" >&2
 	exit 1
 }
+progress() {
+	[ -n "$ADZERO_JOB_CONTEXT" ] && [ -d "$ADZERO_JOB_CONTEXT" ] || return 0
+	case "$1" in waiting_lock|checking|processing|adapting|restoring|verifying) ;; *) return 0 ;; esac
+	[ ! -L "$ADZERO_JOB_CONTEXT/stage" ] && [ ! -L "$ADZERO_JOB_CONTEXT/stage.new" ] || return 0
+	printf '%s' "$1" > "$ADZERO_JOB_CONTEXT/stage.new" && mv "$ADZERO_JOB_CONTEXT/stage.new" "$ADZERO_JOB_CONTEXT/stage" || :
+}
+public_failure() {
+	[ -n "$ADZERO_JOB_CONTEXT" ] && [ -d "$ADZERO_JOB_CONTEXT" ] || return 0
+	[ ! -e "$ADZERO_JOB_CONTEXT/reason" ] || return 0
+	case "$1" in lock_busy|backend) printf '%s' "$1" > "$ADZERO_JOB_CONTEXT/reason" ;; esac
+}
 get_uci() {
 	"$UCI_BIN" -q get "$1" 2>/dev/null || :
 }
@@ -85,6 +96,7 @@ backend_available() {
 	[ -x "$BACKEND_INIT" ] && [ -x "$BACKEND_CHECK" ] && command -v "$UCI_BIN" >/dev/null 2>&1
 }
 backend_confirm() {
+	progress verifying
 	# Resolver restarts may be acknowledged by procd before the process is up.
 	attempt=0
 	backend_result=
@@ -104,13 +116,17 @@ backend_stop() {
 	case "$backend_rc" in 0|1) backend_confirm stopped ;; *) return 1 ;; esac
 }
 backend_restart() {
+	progress processing
 	# Clear and confirm old state first: an old statusSuccess and rule file
 	# must not disguise an invocation that failed before producing new state.
-	backend_stop || return 1
+	backend_stop || { public_failure backend; return 1; }
 	[ "$(get_uci adblock-fast.config.enabled)" = 1 ] || return 0
+	progress processing
 	backend_rc=0
 	"$BACKEND_INIT" "${1:-start}" || backend_rc=$?
-	case "$backend_rc" in 0|1) backend_confirm ready ;; *) return 1 ;; esac
+	case "$backend_rc" in 0|1) backend_confirm ready || { public_failure backend; return 1; } ;; *) public_failure backend; return 1 ;; esac
+	# Optional optimization only. Missing/corrupt proof falls back to download.
+	"$SOURCES" cache-save >/dev/null 2>&1 || :
 }
 adguardhome_running() {
 	command -v "$PIDOF_BIN" >/dev/null 2>&1 && "$PIDOF_BIN" AdGuardHome >/dev/null 2>&1
@@ -220,6 +236,7 @@ release_lock() {
 	rm -f "$LOCK_DIR/owner" && rmdir "$LOCK_DIR" 2>/dev/null || :
 }
 acquire_lock() {
+	progress waiting_lock
 	lock_action=$1
 	lock_wait=${ADZERO_LOCK_WAIT_SECONDS:-30}
 	case "$lock_wait" in ''|*[!0-9]*) error '操作锁等待时间无效。' ;; esac
@@ -230,6 +247,7 @@ acquire_lock() {
 		# A scheduled sync is optional; don't compete with a user's operation.
 		[ "$lock_action" != reconcile ] || return 1
 		if [ "$lock_elapsed" -ge "$lock_wait" ]; then
+			public_failure lock_busy
 			error '等待操作锁超时；可能仍有操作或遗留锁。请检查进程后重试，勿直接删除锁。'
 		fi
 		[ "$lock_elapsed" != 0 ] || printf 'AdZero: 正在等待当前操作完成（最多 %s 秒）…\n' "$lock_wait" >&2
@@ -244,6 +262,7 @@ acquire_lock() {
 	fi
 	trap 'release_lock' 0
 	trap 'exit 130' 1 2 3 15
+	progress checking
 }
 # Store prior force_dns before changing anything. An unset value inherits the
 # upstream default (currently 1); restore absence rather than hard-coding "1".
@@ -369,6 +388,7 @@ enable_protection() {
 	start_method=start
 	"$POLICY" has-allowed && start_method=dl
 	[ ! -f "$STATE_DIR/sources-selected" ] || start_method=dl
+	"$SOURCES" cache-check >/dev/null 2>&1 && start_method=start
 	if ! backend_restart "$start_method"; then
 		rule_failure_hint
 		rollback_enable "$previous" && error '后端启动失败，原配置已恢复。'
@@ -483,7 +503,19 @@ change_routing() {
 	case "$1" in 0|1) ;; *) error '自动分流开关无效。' ;; esac
 	require_active
 	[ "$(get_uci adzero.main.routing_enabled)" != "$1" ] || { printf 'routing preference already applied\n'; return 0; }
+	routing_method=$("$ADAPTER" routing-check "$1") || error '当前代理配置未通过分流预检，原接入保持不变。'
 	"$POLICY" routing-begin "$1" || error '未能准备自动分流切换。'
+	if [ "$routing_method" = nailink ]; then
+		if "$POLICY" routing-save && "$ADAPTER" reconfigure-nailink; then
+			"$POLICY" routing-finish || error '分流已应用，但完成记录未能清理。'
+			printf 'routing preference synchronized with one proxy reload\n'; return 0
+		fi
+		if "$POLICY" routing-rollback && "$ADAPTER" apply; then
+			"$POLICY" routing-finish || error '原配置已恢复，但切换记录未清理。'
+			error '自动分流切换未完成，已恢复原配置。'
+		fi
+		error '自动分流切换与恢复未确认，请关闭并恢复；记录已保留。'
+	fi
 	if "$ADAPTER" remove && "$POLICY" routing-save && "$ADAPTER" apply; then
 		"$POLICY" routing-finish || error '分流已应用，但完成记录未能清理。'
 		printf 'routing preference synchronized\n'; return 0

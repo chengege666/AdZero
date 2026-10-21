@@ -61,6 +61,14 @@ class RoutingCompilerTest(unittest.TestCase):
             if target=='DIRECT':continue
             self.compile('dae_routing',raw,target,ok=False)
 
+    def test_dae_dns_accepts_official_request_only_profile(self):
+        raw='upstream { local: "udp://223.5.5.5:53" }\nrouting { request { fallback: local } }'
+        result=self.compile('dae_dns',raw)
+        self.assertIn('adzero_global',result)
+        self.assertNotIn('response {',result)
+        self.assertEqual(self.compile('dae_dns',result),result)
+        self.compile('dae_dns',raw[:-1]+'response { fallback: accept } response { fallback: accept } }',ok=False)
+
     def test_mihomo_policy_and_actual_connection_rules_share_the_target(self):
         original={'mode':'global','dns':{'enable':True,'nameserver':['8.8.8.8'],'fallback':['9.9.9.9'],'nameserver-policy':{'+.user.example':['192.168.1.1']},'fake-ip-filter':['+.lan']},'proxy-groups':[{'name':'My Proxy','type':'select','proxies':['node']}],'rules':['DOMAIN,user.example,DIRECT','MATCH,My Proxy']}
         result=self.compile('mihomo',original,'/tmp/cn-domains.txt','/tmp/cn-ips.txt')
@@ -145,9 +153,9 @@ class RoutingAdapterTest(unittest.TestCase):
         self.run_adapter('remove')
         self.assertIn("option chn_list 'proxy'",path.read_text())
 
-    def test_nailink_updates_both_profiles_and_restores_without_starting_stopped_core(self):
+    def nailink_fixture(self):
         self.select('nailink')
-        p=self.write('profiles.json',json.dumps({'dns':{'id':'dns','dns':{'string':'upstream { local: "udp://223.5.5.5:53" }\nrouting { request { fallback: local } response { fallback: accept } }'}},'traffic':{'id':'route','routing':{'string':'domain(full: user.example) -> direct\nfallback: proxy\n','fallback':{'val':'proxy'}}},'running':True,'runs':0}))
+        p=self.write('profiles.json',json.dumps({'dns':{'id':'dns','dns':{'string':'upstream { local: "udp://223.5.5.5:53" }\nrouting { request { fallback: local } }'}},'traffic':{'id':'route','routing':{'string':'domain(full: user.example) -> direct\nfallback: proxy\n','fallback':{'val':'proxy'}}},'running':True,'runs':0}))
         api=self.write('bin/api','''#!/usr/bin/env python3
 import json,sys
 from pathlib import Path
@@ -156,11 +164,18 @@ if 'general{' in q:out={'general':{'dae':{'running':data['running']}}}
 elif 'routings(' in q:out={'routings':[data['traffic']],'groups':[{'name':'proxy'}]}
 elif 'dnss(' in q:out={'dnss':[data['dns']]}
 elif 'updateDns' in q:data['dns']['dns']['string']=v['dns'];out={'updateDns':{'id':'dns'}}
-elif 'updateRouting' in q:data['traffic']['routing']['string']=v['routing'];out={'updateRouting':{'id':'route'}}
+elif 'updateRouting' in q:
+ flag=p.parent/'fail-route-once'
+ if flag.exists():flag.unlink();sys.exit(1)
+ data['traffic']['routing']['string']=v['routing'];out={'updateRouting':{'id':'route'}}
 elif 'run(dry:false)' in q:data['running']=True;data['runs']+=1;out={'run':0}
 else:out={}
 p.write_text(json.dumps(data));print(json.dumps(out))
 ''');api.chmod(0o755);self.env['ADZERO_NAILINK_API_FIXTURE']=str(api)
+        return p
+
+    def test_nailink_updates_both_profiles_and_restores_without_starting_stopped_core(self):
+        p=self.nailink_fixture()
         before=json.loads(p.read_text());self.run_adapter('apply');after=json.loads(p.read_text())
         self.assertIn('adzero_global',after['dns']['dns']['string']);self.assertIn('adzero-cn-geoip.dat',after['traffic']['routing']['string'])
         self.run_adapter('apply');self.assertEqual(json.loads(p.read_text())['runs'],after['runs'])
@@ -168,6 +183,34 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.run_adapter('apply');restored=json.loads(p.read_text())
         self.assertFalse(restored['running']);self.assertEqual(restored['dns'],before['dns']);self.assertEqual(restored['traffic'],before['traffic'])
         self.assertEqual(json.loads(self.run_adapter('status').stdout)['routing']['mode'],'direct')
+
+    def test_nailink_fast_toggle_reloads_once_per_direction_and_keeps_filtering(self):
+        p=self.nailink_fixture()
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")
+        self.run_adapter('apply');original=json.loads(p.read_text());runs=original['runs']
+        self.assertEqual(self.run_adapter('routing-check','1').stdout.strip(),'nailink')
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '1'\n")
+        self.run_adapter('reconfigure-nailink');enabled=json.loads(p.read_text())
+        self.assertEqual(enabled['runs'],runs+1);self.assertIn('adzero_global',enabled['dns']['dns']['string'])
+        self.assertIn('adzero-geosite.dat',enabled['dns']['dns']['string'])
+        self.assertEqual(self.run_adapter('routing-check','0').stdout.strip(),'nailink')
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")
+        self.env['ADZERO_ROUTING_DATA_FIXTURE']=str(self.root/'must-not-download')
+        self.run_adapter('reconfigure-nailink');disabled=json.loads(p.read_text())
+        self.assertEqual(disabled['runs'],runs+2)
+        self.assertEqual(disabled['dns'],original['dns']);self.assertEqual(disabled['traffic'],original['traffic'])
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['routing']['mode'],'inactive')
+        self.run_adapter('remove');self.assertNotIn('ADZERO',p.read_text())
+
+    def test_nailink_preflight_failure_does_not_reload_or_download(self):
+        p=self.nailink_fixture()
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")
+        self.run_adapter('apply');before=json.loads(p.read_text());before['traffic']['routing']['fallback']['val']='missing'
+        p.write_text(json.dumps(before));journal=(self.root/'etc/adzero/adapter.json').read_bytes()
+        self.run_adapter('routing-check','1',success=False)
+        self.assertEqual(json.loads(p.read_text()),before)
+        self.assertEqual((self.root/'etc/adzero/adapter.json').read_bytes(),journal)
+        self.assertFalse((self.root/'etc/daed/adzero-cn-geosite.dat').exists())
 
     @unittest.skipUnless(shutil.which('yq'),'real yq required')
     def test_nikki_split_is_idempotent_and_preserves_custom_exceptions(self):
@@ -209,6 +252,27 @@ class RoutingControllerTest(unittest.TestCase):
         self.fixture.write('inventory.json',json.dumps({'plugins':[],'dns':{'active_proxy_count':0}}))
         self.fixture.write('etc/config/dhcp',"config dnsmasq 'main'\n list server '8.8.8.8'\n")
         self.fixture.write('etc/init.d/dnsmasq','#!/bin/sh\nexit 0\n',True)
+
+    def nailink(self):
+        f=self.fixture;p=RoutingAdapterTest.nailink_fixture(f)
+        data=f.write('routing-fixture.json',json.dumps({'domain_raw':'server=/cn.example/114.114.114.114\n','cidr_raw':'223.5.5.0/24\n'}))
+        f.env.update(ADZERO_ROUTING_DATA_FIXTURE=str(data),ADZERO_ROUTING_DATA_PROGRAM=str(ROOT/'luci-app-adzero/root/usr/libexec/adzero/routing-data'),ADZERO_UCODE=shlex.join(UCODE))
+        return p
+
+    def test_nailink_controller_switches_once_and_keeps_the_backend_running(self):
+        p=self.nailink();f=self.fixture;f.ctl('enable');before=json.loads(p.read_text())
+        f.ctl('routing-on');on=json.loads(p.read_text());self.assertEqual(on['runs'],before['runs']+1)
+        self.assertEqual(f.status()['adapter']['routing']['mode'],'proxy')
+        f.ctl('routing-off');off=json.loads(p.read_text());self.assertEqual(off['runs'],before['runs']+2)
+        self.assertEqual(off['dns'],before['dns']);self.assertEqual(off['traffic'],before['traffic'])
+        self.assertEqual(f.status()['state'],'configured_unverified');self.assertEqual(f.query('ads.example')['match'],'exact')
+
+    def test_nailink_partial_update_failure_restores_both_profiles_and_preference(self):
+        p=self.nailink();f=self.fixture;f.ctl('enable');before=json.loads(p.read_text())
+        f.write('fail-route-once','1');f.ctl('routing-on',ok=False);after=json.loads(p.read_text())
+        self.assertEqual(after['dns'],before['dns']);self.assertEqual(after['traffic'],before['traffic'])
+        self.assertFalse(f.status()['policy']['routing_enabled']);self.assertEqual(f.status()['state'],'configured_unverified')
+        self.assertFalse((self.root/'etc/adzero/routing-pending.json').exists())
 
     def test_routing_toggle_preserves_filtering_and_restores_original_dns(self):
         f=self.fixture;f.ctl('enable');f.ctl('routing-on')

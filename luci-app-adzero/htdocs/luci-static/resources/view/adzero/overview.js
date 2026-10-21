@@ -37,25 +37,67 @@ function readSnapshot() {
 	if (!saved || typeof saved.at !== 'number' || Date.now()-saved.at < 0 || Date.now()-saved.at > 300000 || !saved.status || typeof saved.status.state !== 'string') return null;
 	return Object.assign({},saved.status,{stale:true,cached_at:saved.at});
 }
-function waitJob(reply) {
-	if (!reply || !reply.ok) return Promise.reject(new Error(reply && reply.message || _('操作未完成，请重新检测。')));
-	if (!reply.job) return Promise.resolve();
-	var attempts=0;
-	function check() {
-		return sourceCalls.job_status(reply.job).then(function(result) {
-			if (!result || !result.ok) throw new Error(result && result.message || _('任务结果未知，请重新检测。'));
-			if (!result.pending) return;
-			if (++attempts > 1200) throw new Error(_('后台任务仍可能执行，请重新检测后查看结果。'));
-			return new Promise(function(resolve) { setTimeout(resolve,2000); }).then(check);
-		});
-	}
-	return check();
+var phaseText = {
+ queued:_('任务已提交…'), waiting_lock:_('正在等待上一项操作完成…'), checking:_('正在检查配置…'),
+ downloading:_('正在下载规则，首次下载可能较慢…'), validating:_('正在校验规则…'),
+ processing:_('正在处理规则并重载 DNS…'), adapting:_('正在配置当前代理接入…'),
+ restarting:_('正在重载代理，连接可能短暂中断…'), restoring:_('正在恢复原有配置…'),
+ verifying:_('正在核对运行状态…'), reconnecting:_('连接暂时中断，正在继续追踪原任务…')
+};
+function delay(ms) { return new Promise(function(resolve) { setTimeout(resolve,ms); }); }
+function showProgress(self, value) {
+ if (!self || !self.busy) return;
+ var old=self.jobProgress || {};
+ self.jobProgress=value;
+ if (old.stage!==value.stage || Math.floor((old.elapsed || 0)/10)!==Math.floor((value.elapsed || 0)/10)) self.paint();
 }
-function trackJob(reply,kind,action) {
-	// Never persist domain scopes, custom URLs or private arguments in receipts.
-	if (reply && reply.ok && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(reply.job || '')) return Promise.reject(new Error(_('未收到有效任务回执，请重新检测。')));
-	if (reply && reply.job) sessionValue('job',{job:reply.job,kind:kind,action:action});
-	return waitJob(reply);
+function waitJob(reply,self) {
+ if (!reply || !reply.ok) { if(self)self.jobUncertain=false;return Promise.reject(new Error(reply && reply.message || _('操作未完成，请重新检测。'))); }
+ if (!reply.job) return Promise.resolve();
+ var attempts=0, failures=0;
+ function check() {
+  return sourceCalls.job_status(reply.job).then(function(result) {
+   failures=0;
+   if (!result || !result.ok) { if(self)self.jobUncertain=false;throw new Error(result && result.message || _('任务结果未知，请重新检测。')); }
+   showProgress(self,result.progress || {stage:'checking'});
+   if (!result.pending) { if(self)self.jobUncertain=false;return; }
+   if (++attempts>1200) throw new Error(_('任务仍在后台，点击重新检测继续核对，勿重复提交。'));
+   return delay(2000).then(check);
+  },function(error) {
+   showProgress(self,{stage:'reconnecting',elapsed:(self && self.jobProgress || {}).elapsed || 0});
+   if (++failures>15) throw new Error(_('连接尚未恢复，任务回执已保留。请重新检测继续核对。'));
+   return delay(2000).then(check);
+  });
+ }
+ return check();
+}
+function trackJob(reply,kind,action,self) {
+ if (reply && reply.ok && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(reply.job || '')) return Promise.reject(new Error(_('未收到有效任务回执，请重新检测。')));
+ if (reply && reply.job) {
+  var receipt={job:reply.job,kind:kind,action:action};sessionValue('job',receipt);
+  if(self){self.currentJob=receipt;self.jobUncertain=true;}
+ }
+ return waitJob(reply,self);
+}
+function taskStatus(self) {
+ var retries=0;
+ function read() {return getStatus().catch(function(error){
+  showProgress(self,{stage:'reconnecting'});
+  if(++retries<=5)return delay(1000).then(read);
+  self.jobUncertain=!!self.currentJob;throw error;
+ });}
+ return read();
+}
+function finishJob(self) {
+ if(self.jobUncertain){
+  self.currentStatus=Object.assign({},self.currentStatus,{stale:true});
+  self.notice={kind:'error',text:_('连接或任务结果尚未确认，回执已保留；点击重新检测继续核对。'),detail:(self.notice || {}).detail};
+ }else{
+  var saved=sessionValue('job');
+  if(!saved || !self.currentJob || saved.job===self.currentJob.job)sessionValue('job',null);
+  self.currentJob=null;
+ }
+ self.busy=null;self.jobProgress=null;
 }
 
 // Phosphor Icons (MIT), license: /usr/share/licenses/luci-app-adzero/.
@@ -151,7 +193,7 @@ return view.extend({
 			icon(self.notice.kind === 'error' ? 'info' : 'check'), el('div', {}, [ el('strong', {}, self.notice.text),
 				self.notice.detail ? el('details', { 'class': 'az-error-details' }, [ el('summary', {}, _('查看错误信息')), el('pre', {}, self.notice.detail) ]) : null ]) ]));
 		if (busy && !loading && !(s.stale && busy === 'status')) nodes.push(el('div', { 'class': 'az-working', role: 'status', 'aria-live': 'polite' }, [ el('span', { 'class': 'az-spinner', 'aria-hidden': 'true' }),
-			busy === 'rules' ? _('正在下载、校验并应用规则；离开页面后任务仍会继续。') : busy === 'enable' ? _('正在开启过滤…') : busy === 'disable' ? _('正在关闭并恢复…') : busy === 'refresh' ? _('正在更新并同步规则…') : busy === 'lookup' ? _('正在查询当前规则…') : busy === 'allow' || busy === 'revoke' ? _('正在应用放行名单并同步代理…') : busy === 'pause' ? _('正在暂停保护…') : busy === 'resume' ? _('正在恢复保护…') : _('正在检测状态…') ]));
+			self.jobProgress && phaseText[self.jobProgress.stage] ? phaseText[self.jobProgress.stage] + (self.jobProgress.elapsed>=10 ? _(' · 已用 ') + self.jobProgress.elapsed + _(' 秒') : '') : busy === 'routing_on' ? _('正在开启自动分流…') : busy === 'routing_off' ? _('正在关闭自动分流…') : busy === 'rules' ? _('正在下载、校验并应用规则；离开页面后任务仍会继续。') : busy === 'enable' ? _('正在开启过滤…') : busy === 'disable' ? _('正在关闭并恢复…') : busy === 'refresh' ? _('正在更新并同步规则…') : busy === 'lookup' ? _('正在查询当前规则…') : busy === 'allow' || busy === 'revoke' ? _('正在应用放行名单并同步代理…') : busy === 'pause' ? _('正在暂停保护…') : busy === 'resume' ? _('正在恢复保护…') : _('正在检测状态…') ]));
 		if (self.rulesOpen) { nodes.push(self.renderRules(s)); return el('div',{'class':'az-app'},nodes); }
 		nodes.push(el('section', { 'class': 'az-card az-hero' + (f.enabled ? ' is-on' : '') + (loading ? ' is-loading' : ''), 'aria-busy': loading ? 'true' : 'false' }, [
 			el('div', { 'class': 'az-hero-main' }, [ el('div', { 'class': 'az-hero-heading' }, [ icon('shield'),
@@ -269,14 +311,14 @@ return view.extend({
 			.catch(function(e){self.sourcesError=String(e.message || e);}).then(function(){self.sourcesLoading=false;self.paint();});
 	},
 	continueSourceJob: function(reply) {
-		var self=this,failure=null;self.busy='rules';self.notice=null;self.paint();
-		return trackJob(reply,'source',null).catch(function(e){failure=String(e.message || e);}).then(getStatus).then(function(s){
+		var self=this,failure=null;self.busy='rules';self.notice=null;self.jobProgress=null;self.jobUncertain=false;self.paint();
+		return trackJob(reply,'source',null,self).catch(function(e){failure=String(e.message || e);}).then(function(){return taskStatus(self);}).then(function(s){
 			self.currentStatus=s;self.lastChecked=new Date();self.domainResult=null;self.removeSource=null;
 			var healthy=s.state==='disabled' || s.state==='configured_unverified';
 			self.notice=failure || !healthy ? {kind:'error',text:_('规则未确认应用，已重新读取当前状态。'),detail:failure || _('请先处理恢复记录。')} :
 				{kind:'success',text:s.state==='disabled'?_('规则选择已保存，开启保护后应用。'):_('规则已应用并同步到当前接入。')};
 		}).catch(function(e){self.currentStatus={state:'error',error:String(e)};self.notice={kind:'error',text:_('规则任务结果暂时无法确认，请重新检测。')};})
-			.then(function(){sessionValue('job',null);self.busy=null;return self.loadSources();}).then(function(){
+			.then(function(){finishJob(self);return self.loadSources();}).then(function(){
 				if (self.sourcesError) { self.notice={kind:'error',text:_('任务已结束，但规则列表暂时无法核对，请重新读取。')};self.paint(); }
 			});
 	},
@@ -285,7 +327,7 @@ return view.extend({
 		if (self.busy || s.stale || !(flags(s).enabled || s.state==='disabled' && !s.managed)) return Promise.resolve();
 		if (method==='source_add' && !args[0] && (!args[1] || !/^https:\/\//i.test(args[2]))) {self.notice={kind:'error',text:_('请填写名称和 HTTPS 订阅地址。')};self.paint('az-source-name');return Promise.resolve();}
 		if (['source_add','source_toggle','source_remove','source_refresh'].indexOf(method)<0) return Promise.resolve();
-		self.busy='rules';self.notice=null;self.paint();
+		self.busy='rules';self.notice=null;self.jobProgress=null;self.jobUncertain=false;self.paint();
 		return sourceCalls[method].apply(null,args).then(function(reply){return self.continueSourceJob(reply);}).then(function(){
 			if (!self.notice || self.notice.kind!=='success') return;
 			var items=(self.sourcesData || {}).items || [], matches=true;
@@ -325,11 +367,11 @@ return view.extend({
 	runPolicy: function(action, args, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
 		if (['allow','revoke','pause','resume','routing_on','routing_off'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause','routing_on','routing_off'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
-		self.busy = action; self.notice = null; self.paint();
+		self.busy = action; self.notice = null; self.jobProgress=null;self.jobUncertain=false;self.paint();
 		var failure;
 		return (receipt ? Promise.resolve(receipt) : policyCalls[action].apply(null,args)).then(function(result) {
-			return trackJob(result,'policy',action);
-		}).catch(function(err) { failure = String(err.message || err); }).then(getStatus).then(function(s) {
+			return trackJob(result,'policy',action,self);
+		}).catch(function(err) { failure = String(err.message || err); }).then(function(){return taskStatus(self);}).then(function(s) {
 			self.currentStatus = s; self.lastChecked = new Date(); self.domainResult = null;
 			var allowed = (s.policy || {}).allowed || [], expected = action === 'pause' ? s.state === 'paused' : s.state === 'configured_unverified';
 			if (action === 'allow' && !receipt) expected = expected && allowed.indexOf(args[1]) >= 0;
@@ -340,7 +382,7 @@ return view.extend({
 		}).catch(function(err) {
 			self.currentStatus = {state:'error',error:String(err)};
 			self.notice = {kind:'error',text:_('操作结果暂时无法确认，请重新检测。'),detail:failure || String(err)};
-		}).then(function() { sessionValue('job',null); self.busy = null; self.paint(action === 'routing_on' || action === 'routing_off' ? 'az-routing' : action === 'allow' || action === 'revoke' ? 'az-domain' : 'az-toggle'); });
+		}).then(function() { finishJob(self); self.paint(action === 'routing_on' || action === 'routing_off' ? 'az-routing' : action === 'allow' || action === 'revoke' ? 'az-domain' : 'az-toggle'); });
 	},
 	paint: function(focusId) {
 		var panel = this.panelNode || document.getElementById('adzero-panel');
@@ -356,6 +398,13 @@ return view.extend({
 	refreshStatus: function(initial) {
 		var self = this;
 		if (self.busy) return Promise.resolve();
+		var saved=sessionValue('job') || self.currentJob;
+		if(initial!==true && saved && typeof saved==='object' && saved.job){
+			var receipt={ok:true,job:saved.job};
+			if(saved.kind==='action')return self.runAction(saved.action,receipt);
+			if(saved.kind==='policy')return self.runPolicy(saved.action,[],receipt);
+			if(saved.kind==='source')return self.continueSourceJob(receipt);
+		}
 		var previous=self.currentStatus;
 		self.busy = 'status'; self.notice = null; self.paint();
 		return getStatus().then(function(s) { self.currentStatus = s; self.lastChecked = new Date(); })
@@ -368,11 +417,11 @@ return view.extend({
 	runAction: function(action, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
 		if (['enable','disable','refresh'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || (action === 'refresh' && f.enabled)))) return Promise.resolve();
-		self.busy = action; self.notice = null; self.paint();
+		self.busy = action; self.notice = null; self.jobProgress=null;self.jobUncertain=false;self.paint();
 		var failure = null;
 		return (receipt ? Promise.resolve(receipt) : policyCalls[action]()).then(function(result) {
-			return trackJob(result,'action',action);
-		}).catch(function(err) { failure = String(err); }).then(function() { return getStatus(); }).then(function(s) {
+			return trackJob(result,'action',action,self);
+		}).catch(function(err) { failure = String(err); }).then(function() { return taskStatus(self); }).then(function(s) {
 			self.currentStatus = s; self.lastChecked = new Date();
 			var expected = action === 'disable' ? 'disabled' : 'configured_unverified';
 			if (failure || s.state !== expected) self.notice = { kind: 'error', text: _('操作未完成，已重新读取当前状态。'), detail: failure || _('当前状态尚未满足操作结果，请检查服务日志后重新检测。') };
@@ -380,13 +429,13 @@ return view.extend({
 		}).catch(function(err) {
 			self.currentStatus = { state: 'error', error: String(err) };
 			self.notice = { kind: 'error', text: _('操作结果暂时无法确认，请重新检测。'), detail: failure || String(err) };
-		}).then(function() { sessionValue('job',null); self.busy = null; self.paint(action === 'refresh' ? 'az-update' : 'az-toggle'); });
+		}).then(function() { finishJob(self); self.paint(action === 'refresh' ? 'az-update' : 'az-toggle'); });
 	},
 	render: function(status) {
 		var self = this;
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.9.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.9.1' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {

@@ -13,6 +13,8 @@ case "$1" in
 	id=$(cat /proc/sys/kernel/random/uuid) || exit 1
 	printf '%s\n' "$id" | grep -Eq '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' || exit 1
 	mkdir "$jobs/$id" || exit 1
+	date +%s > "$jobs/$id/created"
+	printf '%s\n' queued > "$jobs/$id/stage"
 	"$0" run "$id" "$@" </dev/null >"$jobs/$id/log" 2>&1 &
 	printf '{"job":"%s"}\n' "$id"
 	;;
@@ -20,6 +22,8 @@ case "$1" in
 	id=$2;shift 2
 	printf '%s\n' "$id" | grep -Eq '^[a-f0-9-]{36}$' || exit 1
 	[ -d "$jobs/$id" ] || exit 1
+	export ADZERO_JOB_CONTEXT="$jobs/$id"
+	printf '%s\n' "$$" > "$jobs/$id/worker"
 	code=0
 	"$ctl" "$@" || code=$?
 	printf '%s\n' "$code" > "$jobs/$id/result.new" && mv "$jobs/$id/result.new" "$jobs/$id/result"
