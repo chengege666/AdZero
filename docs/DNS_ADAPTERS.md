@@ -4,7 +4,7 @@ ctl 在全局锁内调用 adapter。adapter 使用固件自己的 ucode、UCI �
 
 ## NaiLink
 
-针对当前 NaiLink 的 daed 与 LuCI CGI gateway：创建 60 秒有效、只授予 luci-app-daed-router 写权限的本地 ubus session，以同源 POST 调用 CGI。每次调用后销毁 session；不读取登录密码、JWT 密钥或 SQLite。旧版缺少该网关时会失败并保留诊断。
+针对当前 NaiLink 的 daed 与 LuCI CGI gateway：创建 60 秒有效、只授予 luci-app-daed-router 写权限的本地 ubus session，核对授权后以同源 POST 调用 CGI。每次调用后销毁 session；不读取登录密码、JWT 密钥或 SQLite。开启前还须验证后端授权，HTTP 200 本身不代表 GraphQL 已通过。旧版缺少网关或本机身份失效时会停止并保留诊断。网关重载 502/504 不当作成功或立即回滚；保留未确认记录，原生服务进程身份更新且 API 可读后才允许显式恢复。详见 [响应修复记录](INTERACTION_FIXES.md)。
 
 读取唯一选中 DNS profile，在 routing.request 前部增加自有 qname(ext:"adzero-geosite.dat:adzero") -> reject。规则通过 GraphQL parsedDns 检查，再 updateDns，run(dry:false) 应用。DAT 放入 daed 自己的 /etc/daed 搜索目录；绝对路径 ext 在真实 dae 检查中失败，因此不能使用绝对路径标签。
 

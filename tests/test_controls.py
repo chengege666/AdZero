@@ -104,7 +104,8 @@ else:
 import json,os,sys
 from pathlib import Path
 r=Path(os.environ['ADZERO_POLICY_ROOT']); p=r/'profile.json'; profile=json.loads(p.read_text()); req=json.loads(Path(sys.argv[1]).read_text()); q=req['query']; v=req['variables']
-if 'dnss(' in q: result={'dnss':[profile]}
+if 'general{' in q: result={'general':{'dae':{'running':True}}}
+elif 'dnss(' in q: result={'dnss':[profile]}
 elif 'parsedDns' in q: result={'parsedDns':{'string':v['raw']}}
 elif 'updateDns' in q:
  assert v['id']==profile['id']; profile['dns']['string']=v['dns']; p.write_text(json.dumps(profile)); result={'updateDns':{'id':profile['id']}}

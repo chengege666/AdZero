@@ -191,6 +191,38 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.assertFalse(restored['running']);self.assertEqual(restored['dns'],before['dns']);self.assertEqual(restored['traffic'],before['traffic'])
         self.assertEqual(json.loads(self.run_adapter('status').stdout)['routing']['mode'],'direct')
 
+    def test_nailink_already_restored_profiles_do_not_submit_duplicate_writes(self):
+        p=self.nailink_fixture()
+        self.run_adapter('apply')
+        journal=json.loads((self.root/'etc/adzero/adapter.json').read_text())
+        current=json.loads(p.read_text())
+        current['dns']['dns']['string']=journal['dns']['before']
+        current['traffic']['routing']['string']=journal['traffic']['before']
+        p.write_text(json.dumps(current))
+        api=Path(self.env['ADZERO_NAILINK_API_FIXTURE'])
+        api.write_text(api.read_text().replace("if 'general{' in q:","if 'updateDns' in q or 'updateRouting' in q:sys.exit(81)\nelif 'general{' in q:"))
+        self.run_adapter('remove')
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+        after=json.loads(p.read_text())
+        self.assertEqual(after['dns'],current['dns'])
+        self.assertEqual(after['traffic'],current['traffic'])
+
+    def test_nailink_unconfirmed_reload_does_not_start_rollback_mutations(self):
+        p=self.nailink_fixture()
+        self.run_adapter('apply')
+        path=self.root/'etc/adzero/adapter.json'
+        journal=json.loads(path.read_text())
+        journal['nailink_reload_unconfirmed']=True
+        journal['nailink_run_identity']=None
+        path.write_text(json.dumps(journal))
+        before=p.read_bytes()
+        assets={f['path']:Path(f['path']).read_bytes() for f in journal['files']}
+        result=self.run_adapter('remove',success=False)
+        self.assertIn('no second mutation submitted',result.stderr)
+        self.assertEqual(p.read_bytes(),before)
+        self.assertEqual(json.loads(path.read_text()),journal)
+        self.assertEqual({name:Path(name).read_bytes() for name in assets},assets)
+
     def test_nailink_fast_toggle_reloads_once_per_direction_and_keeps_filtering(self):
         p=self.nailink_fixture()
         self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")

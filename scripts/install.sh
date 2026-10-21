@@ -3,7 +3,7 @@
 set -eu
 set -f
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.9.4}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.9.5}
 LOCAL_DIR=
 ENABLE=1
 UPGRADE=0
@@ -61,7 +61,7 @@ INSTALL_LOCK_OWNED=0
 # Strip the whole comm field, which may contain spaces or parentheses.
 # Linux start ticks distinguish a surviving process from a reused PID.
 process_snapshot() (
-	IFS= read -r proc_stat < "/proc/$1/stat" 2>/dev/null || exit 1
+	IFS= read -r proc_stat 2>/dev/null < "/proc/$1/stat" || exit 1
 	proc_fields=${proc_stat##*) }
 	set -- $proc_fields
 	[ "$#" -ge 20 ] || exit 1
@@ -72,7 +72,7 @@ process_snapshot() (
 )
 watch_matches() (
 	# Only the exact scheduler command and our UID may receive a signal.
-	proc_args=$(tr '\000' '\n' < "/proc/$1/cmdline" 2>/dev/null) || exit 1
+	proc_args=$(tr '\000' '\n' 2>/dev/null < "/proc/$1/cmdline") || exit 1
 	case "$proc_args" in
 		"/bin/sh
 $WATCH"|"/bin/ash

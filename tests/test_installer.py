@@ -318,6 +318,34 @@ while :; do /bin/sleep 0.05; done
         self.run_installer("--upgrade")
         self.assertEqual(self.process_state(process), "T")
 
+    def test_scheduler_exits_before_cleanup_without_missing_proc_warning(self):
+        process = self.live_watcher()
+        lock = self.root / "tmp/adzero.lock"
+        lock.mkdir()
+        command = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "sh"))
+        output_path = self.base / "installer-output"
+        output_file = output_path.open("w")
+        self.addCleanup(output_file.close)
+        installer = subprocess.Popen(command + [str(ROOT / "scripts/install.sh"), "--local-dir", str(self.release), "--upgrade"], env=self.env, stdout=output_file, stderr=subprocess.PIPE, text=True)
+        try:
+            # Wait for the installer's post-STOP identity check to finish.
+            # Observing T alone can race that check and test an earlier exit.
+            self.wait_for(lambda: "已暂停后台调度" in output_path.read_text())
+            self.assertEqual(self.process_state(process), "T")
+            os.kill(process.pid, signal.SIGTERM)
+            os.kill(process.pid, signal.SIGCONT)
+            process.wait(timeout=3)
+            lock.rmdir()
+            _, error = installer.communicate(timeout=10)
+            output = output_path.read_text()
+            self.assertEqual(installer.returncode, 0, output + error)
+            self.assertNotIn("/proc/", error)
+            self.assertNotIn("can't open", error)
+        finally:
+            if installer.poll() is None:
+                installer.kill()
+                installer.communicate(timeout=3)
+
     def test_similar_command_with_extra_argument_is_not_signalled(self):
         process = self.live_watcher(args=("unrelated",))
         result = self.run_installer("--upgrade")

@@ -42,7 +42,9 @@ def main():
             f.env['ADZERO_JOB_CONTEXT']=str(context)
             before=json.loads(p.read_text())['runs'];started=time.monotonic()
             proc=subprocess.run(controls.SHELL+[str(args.libexec/'ctl'),*argv],env=f.env,text=True,capture_output=True,timeout=180)
-            assert proc.returncode==0,proc.stderr
+            if proc.returncode != 0:
+                state=f.ctl('status')
+                raise AssertionError(proc.stderr+'\nIsolated controller state: '+state.stdout)
             after=json.loads(p.read_text())['runs']
             row={'action':label,'seconds':round(time.monotonic()-started,4),'proxy_reload_calls':after-before}
             if (context/'timeline').exists():row['timeline']=(context/'timeline').read_text().splitlines()

@@ -115,6 +115,9 @@ function yaml(path, engine) {
 	return value;
 }
 function graphql(query, variables) {
+	let operation = index(query, 'run(dry:false)') >= 0 ? 'reload' :
+		index(query, 'parsedDns') >= 0 ? 'validate_dns' : index(query, 'updateDns') >= 0 ? 'write_dns' :
+		index(query, 'parsedRouting') >= 0 ? 'validate_routing' : index(query, 'updateRouting') >= 0 ? 'write_routing' : 'read';
 	// Isolated API transaction fixture; unavailable on an unprefixed router.
 	let fixture = getenv('ADZERO_NAILINK_API_FIXTURE');
 	if (root && fixture) {
@@ -130,6 +133,8 @@ function graphql(query, variables) {
 		session = bus.call('session', 'create', {timeout:60})?.ubus_rpc_session;
 		if (!session || !match(session, /^[a-f0-9]{32}$/)) die('Cannot create local adapter session');
 		bus.call('session', 'grant', {ubus_rpc_session:session, scope:'access-group', objects:[['luci-app-daed-router','write']]});
+		if (bus.call('session', 'access', {ubus_rpc_session:session, scope:'access-group', object:'luci-app-daed-router', function:'write'})?.access !== true)
+			die('NaiLink local LuCI session was not granted access; no API request sent');
 		let payload = sprintf('%J', {query, variables:variables ?? {}});
 		let request = state_dir + '/graphql-request.json';
 		atomic(request, payload);
@@ -143,9 +148,25 @@ function graphql(query, variables) {
 		if (rc != 0 || !length(response)) die('NaiLink CGI request failed');
 		response = replace(response, /\r\n/g, '\n');
 		let separator = index(response, '\n\n');
-		if (separator < 0 || match(substr(response, 0, separator), /Status: [45]/)) die('NaiLink CGI rejected local access');
+		if (separator < 0) die('NaiLink CGI returned an invalid response (' + operation + ')');
+		let status = match(substr(response, 0, separator), /(^|\n)Status: ([0-9]{3})/);
+		let code = status ? +status[2] : 200;
+		if (code >= 400) {
+			let reason = index([401,403],code) >= 0 ? 'local session denied' :
+				index([502,504],code) >= 0 ? 'upstream unavailable or timed out; completion unconfirmed' :
+				code == 503 ? 'gateway or backend not ready' : code == 413 ? 'request too large' : 'request rejected';
+			if (operation == 'reload' && index([502,504],code) >= 0 && journal) {
+				journal.nailink_reload_unconfirmed = true; save();
+				progress.failure('nailink_gateway');
+			}
+			die('NaiLink CGI HTTP ' + code + ' (' + operation + '): ' + reason + '; private response omitted');
+		}
 		let result = json(substr(response, separator + 2));
-		if (length(result.errors ?? []) || !result.data) die('NaiLink API rejected DNS changes (private response omitted)');
+		if (length(filter(result.errors ?? [], e => type(e.message) == 'string' && substr(e.message,0,13) == 'access denied'))) {
+			progress.failure('nailink_auth');
+			die('NaiLink GraphQL authorization denied (' + operation + '); local LuCI session passed; check NaiLink local identity; private response omitted');
+		}
+		if (length(result.errors ?? []) || !result.data) die('NaiLink API rejected ' + operation + ' (private response omitted)');
 		bus.call('session', 'destroy', {ubus_rpc_session:session});
 		bus.disconnect();
 		return result.data;
@@ -163,9 +184,13 @@ function active_plugin() {
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
 	if (!length(active)) return 'none';
 	if (index(['nailink','passwall','openclash','nikki'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
+	// Check the real gateway/backend before ctl enables or restarts filtering.
+	// Merely recognizing a running process does not prove API authorization.
+	let nailink_runtime = active[0].id == 'nailink' ? graphql('{general{dae{running}}}').general?.dae : null;
+	if (active[0].id == 'nailink' && type(nailink_runtime?.running) != 'bool') die('NaiLink returned invalid runtime state');
 	if (split_enabled) {
 		if (active[0].id == 'nailink') {
-			if (graphql('{general{dae{running}}}').general?.dae?.running !== true) return 'none';
+			if (nailink_runtime?.running !== true) return 'none';
 		} else if (active[0].runtime == 'stopped') return 'none';
 		else if (active[0].runtime != 'running') {
 			let expected=active[0].id=='passwall'?['xray','sing-box']:['mihomo','clash'];
@@ -194,6 +219,34 @@ function update_traffic(id,text) {
 	graphql('query($raw:String!){parsedRouting(raw:$raw){string}}',{raw:text});
 	graphql('mutation($id:ID!,$routing:String!){updateRouting(id:$id,routing:$routing){id}}',{id,routing:text});
 }
+function nailink_identity() {
+	let bus = connect();
+	if (!bus) return null;
+	let services;
+	try { services = bus.call('service','list',{name:'daed'}); } catch(e) { bus.disconnect(); return null; }
+	bus.disconnect();
+	let instances = filter(values(services?.daed?.instances ?? {}), i => i.running === true && type(i.pid) == 'int');
+	if (length(instances) != 1) return null;
+	let pid = instances[0].pid;
+	if (pid <= 1) return null;
+	let stat = match(fs.readfile('/proc/' + pid + '/stat') ?? '', /^[0-9]+ \(.*\) (.*)$/);
+	let fields = stat ? split(stat[1], /[ \t]+/) : [];
+	let boot = trim(fs.readfile('/proc/sys/kernel/random/boot_id') ?? '');
+	if (!length(boot) || !match(fields[19] ?? '', /^[0-9]+$/)) return null;
+	return {boot,pid,start:fields[19]};
+}
+function confirm_nailink_recovery() {
+	if (!journal?.nailink_reload_unconfirmed) return;
+	let identity = nailink_identity();
+	if (!identity || !journal.nailink_run_identity || same(identity,journal.nailink_run_identity)) {
+		progress.failure('nailink_gateway');
+		die('NaiLink reload completion is unconfirmed; no second mutation submitted. Restart the native NaiLink service before recovery; journal retained');
+	}
+	// A different procd process plus a responsive authorized API proves the
+	// previous daemon's request cannot still commit after this restoration.
+	graphql('{general{dae{running}}}');
+	delete journal.nailink_reload_unconfirmed; save();
+}
 function restart(plugin) {
 	progress.stage('restarting');
 	if (plugin == 'none') {
@@ -205,7 +258,9 @@ function restart(plugin) {
 			if(journal.stage=='restarting')die('NaiLink 内核在应用期间已停止。');
 			return; // restoring profiles must not start a core the user stopped
 		}
-		graphql('mutation{run(dry:false)}'); return;
+		journal.nailink_run_identity = nailink_identity(); save();
+		graphql('mutation{run(dry:false)}');
+		delete journal.nailink_run_identity; save(); return;
 	}
 	let service = root + '/etc/init.d/' + plugin;
 	if(journal?.split){
@@ -386,6 +441,7 @@ function apply_split(plugin) {
 }
 function restore() {
 	if (!journal) return;
+	confirm_nailink_recovery();
 	progress.stage('restoring');
 	journal.stage = 'restoring'; save();
 	// Restore configuration first, restart, then remove provider files.
@@ -412,9 +468,9 @@ function restore() {
 		if (current.id != journal.dns.id) die('NaiLink selected profile changed; recovery required');
 		if(journal.split && current.dns.string!=journal.dns.after && current.dns.string!=journal.dns.before)die('NaiLink DNS 已修改，分流恢复记录保留。');
 		let restored = current.dns.string == journal.dns.after ? journal.dns.before : lib.strip_block(current.dns.string);
-		update_dns(current.id, restored);
+		if (current.dns.string != restored) update_dns(current.id, restored);
 	}
-	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=journal.traffic.before)die('NaiLink 流量路由已修改，恢复记录保留。');update_traffic(current.id,journal.traffic.before);}
+	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=journal.traffic.before)die('NaiLink 流量路由已修改，恢复记录保留。');if(current.text!=journal.traffic.before)update_traffic(current.id,journal.traffic.before);}
 	restart(journal.plugin);
 	for (let file in journal.files) if (file.kind == 'owned') {
 		let current = fs.readfile(file.path);
@@ -426,6 +482,7 @@ function restore() {
 	journal = null;
 }
 function rollback_update(previous) {
+	confirm_nailink_recovery();
 	progress.stage('restoring');
 	let old = json(previous);
 	journal.stage='rolling_back';
@@ -448,9 +505,9 @@ function rollback_update(previous) {
 	if (journal.dns) {
 		let current = selected_dns(), value = old.dns?.after ?? journal.dns.before;
 		if (current.id != journal.dns.id || (current.dns.string != journal.dns.after && current.dns.string != value)) die('Concurrent NaiLink DNS change prevents rollback');
-		update_dns(current.id, value);
+		if (current.dns.string != value) update_dns(current.id, value);
 	}
-	if(journal.traffic){let current=selected_traffic(),value=old.traffic?.after??journal.traffic.before;if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=value)die('Concurrent routing change prevents rollback');update_traffic(current.id,value);}
+	if(journal.traffic){let current=selected_traffic(),value=old.traffic?.after??journal.traffic.before;if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=value)die('Concurrent routing change prevents rollback');if(current.text!=value)update_traffic(current.id,value);}
 	restart(journal.plugin);
 	atomic(journal_path, previous);
 	fs.unlink(state_dir + '/adapter.previous.json');
@@ -540,6 +597,10 @@ try {
 	if (action == 'status') {
 		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
 			client_dns_verified:false, router_dns_verified:false,routing:{enabled:split_enabled,mode:journal?.split?.mode??'inactive',traffic_verified:false}}));
+	} else if (action == 'nailink-status') {
+		let state = graphql('{general{dae{running modified}}}').general?.dae;
+		if (type(state?.running) != 'bool') die('NaiLink returned invalid runtime state');
+		print(sprintf('%J\n', {authorized:true,running:state.running,modified:type(state.modified) == 'bool' ? state.modified : null}));
 	} else if (action == 'remove') restore();
 	else if(action=='routing-check')print(routing_check(shift(ARGV))+'\n');
 	else if(action=='reconfigure-nailink')reconfigure_nailink();

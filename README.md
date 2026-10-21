@@ -1,6 +1,6 @@
 # AdZero
 
-当前测试版 **v0.9.4** 修复旧版后台同步占锁导致无法升级：校验安装包后，仅暂停后台调度器，等待当前任务完成，再备份和调用旧版恢复配置；升级中止时恢复本次暂停的调度器。保留 v0.9.3 的规则缓存、分流和订阅优化，以及 v0.9.2 的状态读取修复，详见 [响应修复记录](docs/INTERACTION_FIXES.md)。
+当前测试版 **v0.9.5** 增加 NaiLink 真实 CGI/后端授权预检，区分本机会话拒绝、GraphQL 授权失效和网关超时；不在授权失败后继续启动过滤后端。重载 502/504 未确认时保留记录，阻止立即回滚和第二次写操作。保留 v0.9.4 升级过渡及 v0.9.3 缓存优化，详见 [响应修复记录](docs/INTERACTION_FIXES.md)。
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
@@ -38,10 +38,10 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.4/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.5/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.9.4)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.9.5)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -50,16 +50,18 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本使用 --upgrade：先校验安装包、暂停后台调度并等当前任务完成，备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.4/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.9.5/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
+
+若出现「NaiLink GraphQL authorization denied」或已核对为 HTTP 200 / `access denied`，先通过 NaiLink 原生服务重启刷新它的本机授权（会短暂中断代理），待 NaiLink 页面恢复后再执行升级。AdZero 不会自行读取密钥或重置账户。新版本可用 `/usr/libexec/adzero/adapter nailink-status` 做只读授权检查；不要删除 `adapter.json`。HTTP 502/504 重载完成未确认时也保留记录，需先完成原生服务重启再关闭恢复。
 
 升级器核对调度器的完整命令、UID 和 Linux 进程启动时间，仅对确认的 watch 进程发送 STOP；当前 ctl/backend 子任务继续完成，不发送终止信号或删除操作锁。默认共等待最多 180 秒，每 15 秒反馈；只重试新旧控制器明确的占锁错误，恢复失败立即停止。普通退出、失败或 Ctrl+C 会恢复本次暂停且身份未变的调度器；原来已暂停的进程保持原状。安装器另有互斥锁，避免同时执行两个升级。SIGKILL 或断电无法执行清理，应先检查进程和锁；不按 PID 消失自动删锁。
 
 这是让旧版完成当前任务后进入新版优化的升级过渡，不能加速已经运行的旧任务。锁持续占用则停止安装并保留配置、锁和恢复记录。请提供 `ls -la /tmp/adzero.lock` 与 `ps w | grep -E '[a]dzero/(ctl|watch|adapter|backend)'` 的只读结果，不要直接删除锁。升级期间请等待当前命令完成。升级备份中的 state.tar.gz 可能含原有 DNS 配置，请仅保留在路由器本地。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.9.4 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.9.5 地址。
 
 v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修正旧默认规则源；v0.6.0 已解决 LuCI 将 disabled=false 写为实际禁用属性的问题。缺少 gawk、GNU grep/sed、coreutils-sort 仍为后端推荐提示，本版未因此新增依赖。
 
@@ -109,6 +111,8 @@ sh scripts/check.sh
 python3 scripts/check_openwrt_runtime.py
 # 在 Linux/WSL 的隔离 chroot 中验证 RPC，需要 root
 python3 scripts/check_rpc.py
+# 真实 NaiLink CGI 与 API-only daemon 的授权链，不运行代理内核
+python3 scripts/check_nailink_gateway.py
 # 以下三项需要 ADZERO_UCODE 指向真实 ucode 命令（含 -L 模块目录）
 python3 scripts/check_dns_core.py
 python3 scripts/check_dae.py

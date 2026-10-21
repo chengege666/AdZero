@@ -1,0 +1,14 @@
+{
+  "source_sha256": "bd9283c205e96dc1d4e7af82706a2bf7ddb570d1bc6e65124adab9a40c08f488",
+  "installer_sha256": "f025f19ab146df7eac44817fd1853704e87511b05f0c0c62fb98f05f7b7865eb",
+  "native_tests": 238,
+  "ui_assertions": 115,
+  "nailink_gateway_checks": 14,
+  "rpc_checks": 38,
+  "sdk_builds": 3,
+  "actual_gateway_and_api_only_daemon": true,
+  "native_prepare_preserves_existing_database_rows": true,
+  "ambiguous_reload_scope": "HTTP 502/504 during reload; actual CGI deadline with slow upstream fixture; procd identity fixture",
+  "device_acceptance": "not_run",
+  "proxy_kernel_and_lan": "not_run"
+}

@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""Real NaiLink CGI + API-only daemon + rpcd in a disposable rootfs.
+
+The pinned daemon never starts the proxy kernel. No LAN, router credentials,
+production database, DNS service or eBPF changes are involved.
+"""
+import argparse
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import sqlite3
+import subprocess
+import tarfile
+import tempfile
+import time
+import urllib.request
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from build_sdk import source_hash
+from check_openwrt_runtime import ROOT, SHA256 as ROOTFS_SHA256
+
+PACKAGE_SHA256 = '666dc4d2313a9954ae8be5ae023f5cbe99a12240de80d2d4ce0afc8f977d9d5b'
+PACKAGE_URL = 'https://github.com/slobys/NaiLink/releases/download/openwrt-v0.6.30/daed-router-0.6.30-x86_64.ipk'
+
+
+def payload_file(package, name):
+    raw = package.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == PACKAGE_SHA256
+    if raw.startswith(b'!<arch>\n'):
+        offset = 8
+        data = None
+        while offset < len(raw):
+            header = raw[offset:offset + 60]
+            size = int(header[48:58])
+            offset += 60
+            if header[:16].decode().strip().rstrip('/') == 'data.tar.gz':
+                data = raw[offset:offset + size]
+                break
+            offset += size + size % 2
+        assert data is not None
+    else:
+        with tarfile.open(fileobj=io.BytesIO(raw), mode='r:*') as archive:
+            member = next(m for m in archive.getmembers() if m.name.endswith('data.tar.gz'))
+            data = archive.extractfile(member).read()
+    with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+        member = next(m for m in archive.getmembers() if m.name.lstrip('./') == name)
+        return archive.extractfile(member).read()
+
+
+def main(package=None):
+    if os.geteuid() != 0:
+        raise SystemExit('Run as root in Linux/WSL; disposable chroot only')
+    if package is None:
+        package = ROOT / 'artifacts/runtime/nailink-0.6.30-x86_64.ipk'
+        if not package.exists():
+            with urllib.request.urlopen(PACKAGE_URL, timeout=90) as response:
+                raw = response.read(40 * 1024 * 1024)
+            assert hashlib.sha256(raw).hexdigest() == PACKAGE_SHA256
+            package.write_bytes(raw)
+    rootfs = ROOT / 'artifacts/runtime/openwrt-24.10.8-x86-64-rootfs.tar.gz'
+    assert hashlib.sha256(rootfs.read_bytes()).hexdigest() == ROOTFS_SHA256
+    gateway = payload_file(package, 'usr/libexec/daed/luci-proxy')
+    daemon = payload_file(package, 'usr/bin/daed')
+    env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'ADZERO_ADAPTER_ROOT': '/',
+           'ADZERO_ADAPTER_INVENTORY': '/tmp/inventory.json'}
+    checks = []
+    with tempfile.TemporaryDirectory(prefix='adzero-nailink-gateway-') as temporary:
+        base = Path(temporary)
+        with tarfile.open(rootfs) as archive:
+            archive.extractall(base, filter='fully_trusted')
+
+        def put(name, data, mode=0o644):
+            target = base / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data if isinstance(data, bytes) else data.encode())
+            target.chmod(mode)
+            return target
+
+        def run(*args, timeout=15):
+            return subprocess.run(['chroot', temporary, *args], env=env, text=True,
+                                  capture_output=True, timeout=timeout)
+
+        def adapter(action='nailink-status'):
+            return run('/usr/bin/ucode', '-S', '/usr/libexec/adzero/adapter.uc', '--', action)
+
+        def snapshot():
+            with sqlite3.connect(base / 'etc/daed/wing.db') as db:
+                names = [r[0] for r in db.execute("select name from sqlite_master where type='table' order by name")]
+                return {name: db.execute('select * from "' + name.replace('"', '""') + '" order by rowid').fetchall() for name in names}
+
+        for directory in ['dev', 'tmp', 'etc/adzero', 'var/run/ubus']:
+            (base / directory).mkdir(parents=True, exist_ok=True)
+        os.mknod(base / 'dev/null', 0o666 | 0o20000, os.makedev(1, 3))
+        os.mknod(base / 'dev/urandom', 0o666 | 0o20000, os.makedev(1, 9))
+        (base / 'var/run/ubus/ubus.sock').symlink_to('/tmp/ubus.sock')
+        for source in (ROOT / 'luci-app-adzero/root/usr/libexec/adzero').iterdir():
+            if source.is_file():
+                put('usr/libexec/adzero/' + source.name, source.read_bytes(), 0o755)
+        put('usr/libexec/daed/luci-proxy', gateway, 0o755)
+        put('usr/bin/daed', daemon, 0o755)
+        with socket.socket() as reservation:
+            reservation.bind(('127.0.0.1', 0))
+            port = reservation.getsockname()[1]
+        put('etc/config/daed', f"config daed 'main'\n option listen_port '{port}'\n")
+        config = put('etc/config/adzero', "config adzero 'main'\n option enabled '0'\n option routing_enabled '0'\n")
+        backend_config = put('etc/config/adblock-fast', "config adblock-fast 'config'\n option enabled '0'\n option dns 'dnsmasq.servers'\n")
+        put('etc/init.d/adblock-fast', '#!/bin/sh\ntouch /tmp/backend-was-called\nexit 0\n', 0o755)
+        put('tmp/inventory.json', json.dumps({'plugins': [{'id': 'nailink', 'installed': True, 'enabled': True, 'runtime': 'running'}]}))
+        # procd process inventory and /proc identity records below are fixtures;
+        # gateway/backend authorization and ubus execution remain real.
+        put('usr/share/rpcd/ucode/adzero_service_fixture', "import * as fs from 'fs';\nreturn {service:{list:{args:{name:''},call:()=>json(fs.readfile('/tmp/service-data.json'))}}};\n")
+        put('tmp/service-data.json','{}')
+        processes = []
+        with (ROOT / 'artifacts/runtime/nailink-gateway.log').open('w+') as log:
+            def prepare():
+                value = run('/usr/libexec/daed/luci-proxy', '--prepare', timeout=30)
+                assert value.returncode == 0, 'isolated prepare failed'
+
+            def start():
+                process = subprocess.Popen(['chroot', temporary, '/usr/bin/daed', 'run', '--api-only',
+                    '--config', '/etc/daed', '--listen', f'127.0.0.1:{port}'], env=env, stdout=log, stderr=log)
+                processes.append(process)
+                for _ in range(80):
+                    try:
+                        request = urllib.request.Request(f'http://127.0.0.1:{port}/graphql', b'{"query":"{healthCheck}"}', {'Content-Type': 'application/json'})
+                        with urllib.request.urlopen(request, timeout=.3) as response:
+                            assert json.load(response)['data']['healthCheck'] == 1
+                        return process
+                    except Exception:
+                        assert process.poll() is None, 'isolated API-only daemon exited'
+                        time.sleep(.1)
+                raise AssertionError('isolated API-only daemon not ready')
+
+            try:
+                processes.append(subprocess.Popen(['chroot', temporary, '/sbin/ubusd', '-s', '/tmp/ubus.sock'], env=env, stdout=log, stderr=log))
+                time.sleep(.2)
+                processes.append(subprocess.Popen(['chroot', temporary, '/sbin/rpcd', '-s', '/tmp/ubus.sock'], env=env, stdout=log, stderr=log))
+                time.sleep(.3)
+                prepare()
+                process = start()
+                value = adapter()
+                assert value.returncode == 0 and json.loads(value.stdout) == {'authorized': True, 'running': False, 'modified': False}, value.stderr
+                checks.append('real CGI + daemon JWT + rpcd authorization')
+                before = snapshot()
+                original = config.read_bytes()
+                put('etc/daed/luci-session.json', json.dumps({'username': 'luci', 'secret': 'intentionally-stale-test-key'}), 0o600)
+                value = adapter()
+                assert value.returncode != 0 and 'GraphQL authorization denied' in value.stderr and 'intentionally-stale' not in value.stderr
+                checks.append('stale local identity reproduces access denied without key exposure')
+                value = adapter('check')
+                assert value.returncode != 0 and config.read_bytes() == original and not (base / 'etc/adzero/adapter.json').exists()
+                checks.append('authorization preflight rejects before adapter ownership or config writes')
+                value = run('/bin/sh','/usr/libexec/adzero/ctl','enable')
+                assert value.returncode != 0 and 'GraphQL authorization denied' in value.stderr, value.stderr
+                assert not (base/'tmp/backend-was-called').exists() and not (base/'etc/adzero/managed').exists()
+                assert config.read_bytes()==original and "option enabled '0'" in backend_config.read_text()
+                checks.append('production ctl refuses before backend startup, configuration or ownership changes')
+                process.terminate()
+                process.wait(timeout=8)
+                processes.remove(process)
+                prepare()  # The official helper runs with the service stopped.
+                process = start()
+                value = adapter()
+                assert value.returncode == 0 and json.loads(value.stdout)['authorized']
+                assert snapshot() == before, 'official identity preparation changed existing database rows'
+                checks.append('official stopped-service prepare restores access and preserves all database rows')
+                put('tmp/service-data.json',json.dumps({'daed':{'instances':{'main':{'running':True,'pid':process.pid}}}}))
+                stat=Path(f'/proc/{process.pid}/stat').read_text()
+                start_ticks=stat.rsplit(') ',1)[1].split()[19]
+                put(f'proc/{process.pid}/stat',stat)
+                put('proc/sys/kernel/random/boot_id','test-boot-id\n')
+                identity={'boot':'test-boot-id','pid':process.pid,'start':start_ticks}
+                recovery={'schema':1,'plugin':'nailink','stage':'restarting','files':[],'flags':[],
+                          'nailink_reload_unconfirmed':True,'nailink_run_identity':identity}
+                record=put('etc/adzero/adapter.json',json.dumps(recovery),0o600)
+                value=adapter('remove')
+                assert value.returncode!=0 and 'no second mutation submitted' in value.stderr,value.stderr
+                assert json.loads(record.read_text())==recovery
+                checks.append('same procd process identity blocks a second mutation after ambiguous reload')
+                # Same PID with different start ticks must count as a new daemon.
+                fields=stat.rsplit(') ',1)[1].split();fields[19]=str(int(start_ticks)+1)
+                put(f'proc/{process.pid}/stat',stat.rsplit(') ',1)[0]+') '+' '.join(fields)+'\n')
+                put('usr/libexec/daed/luci-proxy.real',gateway,0o755)
+                put('usr/libexec/daed/luci-proxy', '''#!/bin/sh
+umask 077
+request=$(mktemp /tmp/gateway-fixture.XXXXXX)
+trap 'rm -f "$request"' EXIT
+cat > "$request"
+if grep -q 'run(dry:false)' "$request"; then
+    printf 'Status: 200 OK\\nContent-Type: application/json\\n\\n{"data":{"run":1}}'
+else
+    /usr/libexec/daed/luci-proxy.real < "$request"
+fi
+''',0o755)
+                value=adapter('remove')
+                assert value.returncode==0 and not record.exists(),value.stderr
+                checks.append('new process start plus real authorized API allows explicit recovery; reload ack fixture')
+                # Protocol-only fixtures exercise production response handling;
+                # they do not replace the real JWT/backend checks above.
+                for status, expected in [(401, 'local session denied'), (403, 'local session denied'),
+                                         (502, 'completion unconfirmed'), (503, 'not ready'), (413, 'too large')]:
+                    put('usr/libexec/daed/luci-proxy', f"#!/bin/sh\nprintf 'Status: {status} Fixture\\nContent-Type: text/plain\\n\\nprivate-response-marker'\n", 0o755)
+                    value = adapter()
+                    assert value.returncode != 0 and f'HTTP {status}' in value.stderr and expected in value.stderr
+                    assert 'private-response-marker' not in value.stderr
+                    checks.append(f'HTTP {status} classified without private response')
+                put('usr/libexec/daed/luci-proxy', """#!/bin/sh
+printf '%s' 'Status: 200 OK
+Content-Type: application/json
+
+{"errors":[{"message":"private-response-marker"}],"data":null}'
+""", 0o755)
+                value = adapter()
+                assert value.returncode != 0 and 'private-response-marker' not in value.stderr
+                checks.append('unknown GraphQL error remains private')
+                process.terminate(); process.wait(timeout=8); processes.remove(process)
+                upstream={'dns':'upstream { local: "udp://223.5.5.5:53" }\nrouting { request { fallback: local } }','calls':[]}
+                class SlowAPI(BaseHTTPRequestHandler):
+                    def log_message(self,*_): pass
+                    def do_POST(self):
+                        request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                        query=request['query']; variables=request.get('variables',{})
+                        if 'general{' in query: operation='read'; data={'general':{'dae':{'running':True}}}
+                        elif 'dnss(' in query: operation='read_dns'; data={'dnss':[{'id':'dns','dns':{'string':upstream['dns']}}]}
+                        elif 'updateDns' in query: operation='write_dns'; upstream['dns']=variables['dns']; data={'updateDns':{'id':'dns'}}
+                        elif 'run(dry:false)' in query: operation='reload'; data={'run':1}
+                        else: operation='validate_dns'; data={'parsedDns':{'string':''}}
+                        upstream['calls'].append(operation)
+                        if operation=='reload': time.sleep(31.5)
+                        raw=json.dumps({'data':data}).encode()
+                        try:
+                            self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
+                        except (BrokenPipeError,ConnectionResetError): pass
+                with ThreadingHTTPServer(('127.0.0.1',port),SlowAPI) as server:
+                    threading.Thread(target=server.serve_forever,daemon=True).start()
+                    put('usr/libexec/daed/luci-proxy',gateway,0o755)
+                    put('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")
+                    put('var/run/adblock-fast/dnsmasq.servers','server=/ads.example/\n')
+                    try:
+                        value=run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','apply',timeout=45)
+                        assert value.returncode!=0 and 'HTTP 502 (reload)' in value.stderr and 'no second mutation submitted' in value.stderr,value.stderr
+                        assert json.loads(record.read_text())['nailink_reload_unconfirmed'] is True
+                        assert upstream['calls'].count('reload')==1 and upstream['calls'][-1]=='reload',upstream['calls']
+                        checks.append('actual 30-second CGI timeout with slow upstream fixture retains journal and submits no rollback mutation')
+                    finally: server.shutdown()
+            finally:
+                for process in reversed(processes):
+                    process.terminate()
+                    process.wait(timeout=8)
+    report = {'source_sha256': source_hash(ROOT / 'luci-app-adzero'), 'nailink_package_sha256': PACKAGE_SHA256,
+              'nailink_gateway_sha256': hashlib.sha256(gateway).hexdigest(), 'checks': checks,
+              'runtime': 'actual NaiLink 0.6.30 CGI + API-only daemon and actual OpenWrt rpcd/ubusd/ucode',
+              'proxy_kernel_and_router': 'not_run', 'existing_database_rows_preserved': True,
+              'timeout_fixture': 'real CGI 30-second deadline, upstream handler/slow reload and procd inventory fixtures; no claim of actual proxy reload completion'}
+    (ROOT / 'artifacts/runtime/nailink-gateway-result.json').write_text(json.dumps(report, indent=2) + '\n')
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--package', type=Path, help='Optional locally cached checksum-pinned NaiLink IPK')
+    main(parser.parse_args().package)
