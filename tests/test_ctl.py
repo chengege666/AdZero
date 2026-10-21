@@ -666,6 +666,7 @@ exit 0
                 self.run_ctl("enable", success=False)
                 self.assertFalse(self.state.exists())
 
+    @unittest.skipUnless(os.environ.get('ADZERO_UCODE'), 'requires actual OpenWrt ucode')
     def test_real_probe_is_composed_into_status(self):
         self.env.update(ADZERO_PROBE=str(CTL.with_name("probe")), ADZERO_PROBE_ROOT=self.tmp.name, ADZERO_OPKG="/missing-opkg", ADZERO_APK="/missing-apk", ADZERO_UBUS="/missing-ubus")
         compatibility = self.status()["compatibility"]

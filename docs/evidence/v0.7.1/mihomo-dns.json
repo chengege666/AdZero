@@ -1,0 +1,728 @@
+{
+  "core": "v1.19.32",
+  "asset_sha256": "ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20",
+  "checks": [
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "blocked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "allowed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        1
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        1
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        1
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        1
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        1
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        1
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "paused",
+      "tracker": [
+        0,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        0,
+        1
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "resumed",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        0,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "redir-host",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "udp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "A",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        1
+      ]
+    },
+    {
+      "phase": "revoked",
+      "tracker": [
+        3,
+        0
+      ],
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "query": "AAAA",
+      "blocked": [
+        3,
+        0
+      ],
+      "normal": [
+        0,
+        0
+      ]
+    }
+  ],
+  "source_sha256": "baa64efbf815ef6bac4faf4f317fc2a3fe20d05fa0ef00ce10b12884e2069887",
+  "scope": "real local core, deterministic loopback upstream; router/LAN not tested"
+}

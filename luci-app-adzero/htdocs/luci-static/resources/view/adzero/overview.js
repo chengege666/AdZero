@@ -235,13 +235,16 @@ return view.extend({
 	render: function(status) {
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.7.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.7.1' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {
 				if (!document.contains(self.panelNode)) { poll.remove(self.pausePoll); self.pausePoll = null; return Promise.resolve(); }
 				if (!self.busy && flags(self.currentStatus || {}).paused) return getStatus().then(function(s) {
-					if (!self.busy && flags(self.currentStatus || {}).paused) { self.currentStatus = s; self.lastChecked = new Date(); self.paint(); }
+					if (!self.busy && flags(self.currentStatus || {}).paused) {
+						if (s.state !== 'paused') self.notice = null;
+						self.currentStatus = s; self.lastChecked = new Date(); self.paint();
+					}
 				}).catch(function() {});
 				return Promise.resolve();
 			};

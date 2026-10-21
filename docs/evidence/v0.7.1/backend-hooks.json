@@ -1,0 +1,41 @@
+{
+  "upstream": "adblock-fast 1.2.4-r4 / OpenWrt 25.12.5 rc.common",
+  "sources": {
+    "adblock-fast-1.2.4-r4.init": "630f27de08507520a03e1378c1a7018cb64bc7b499b0e7456cbc8697e80fa9e2",
+    "rc-common-25.12.5.sh": "dd8ae95c78d10cccf78cb487874f163ace4c1ee14dace05fe28393b19ba639e4"
+  },
+  "cases": [
+    {
+      "action": "start",
+      "fw4_restart": false,
+      "returncode": 1
+    },
+    {
+      "action": "stop",
+      "fw4_restart": false,
+      "returncode": 1
+    },
+    {
+      "action": "dl",
+      "fw4_restart": false,
+      "returncode": 1
+    },
+    {
+      "action": "start",
+      "fw4_restart": true,
+      "returncode": 0
+    },
+    {
+      "action": "stop",
+      "fw4_restart": true,
+      "returncode": 0
+    },
+    {
+      "action": "dl",
+      "fw4_restart": true,
+      "returncode": 0
+    }
+  ],
+  "source_sha256": "baa64efbf815ef6bac4faf4f317fc2a3fe20d05fa0ef00ce10b12884e2069887",
+  "scope": "exact upstream shell bodies; inert procd fixtures; no live service lifecycle"
+}

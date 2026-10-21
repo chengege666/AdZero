@@ -26,7 +26,7 @@ function E(tag, attrs = {}, children = []) {
   el.disabled = Object.hasOwn(el.attrs, 'disabled'); el.open = Object.hasOwn(el.attrs, 'open'); return el;
 }
 const body = E('body'); active = body;
-const doc = { body, get activeElement() { return active; }, getElementById(id) { return nodes(root, n => n.attrs.id === id)[0] || null; } };
+const doc = { body, contains: n => !!nodes(root, x => x === n).length, get activeElement() { return active; }, getElementById(id) { return nodes(root, n => n.attrs.id === id)[0] || null; } };
 const commands = [];
 let state, failAction, failStatus, pending, resolveAction, staleResult, statusPending, resolveStatus;
 const api = { exec: async (program, args) => {
@@ -141,6 +141,9 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(state.state === 'paused' && text(root).includes('15 分钟后'),'pause deadline visible');
   check(find('az-domain').disabled && find('az-update').disabled && !find('az-resume').disabled,'paused controls guarded');
   check(find('az-toggle').attrs['data-action'] === 'resume','paused switch resumes');
+  state.state='configured_unverified'; await app.pausePoll();
+  check(app.currentStatus.state==='configured_unverified' && app.notice===null,'automatic resume clears obsolete paused notice');
+  state.state='paused'; app.currentStatus=state;
   await app.runPolicy('resume',[]); check(state.state === 'configured_unverified','resume supported');
   rpcStale=true; await app.runPolicy('allow',['ads.example','ads.example']); check(app.notice.kind==='error','stale RPC success rejected');
   rpcStale=false; rpcFailure=true; await app.runPolicy('pause',[300]); check(app.notice.kind==='error' && state.state!=='paused','RPC failure is not optimistic pause');

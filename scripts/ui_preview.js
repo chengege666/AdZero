@@ -55,6 +55,9 @@ async function initialMount(delay) {
   document.getElementById('timing').textContent = '状态填入：' + Math.round(performance.now() - start) + ' ms（含模拟延迟）';
 }
 document.getElementById('reload').addEventListener('click', () => initialMount(5000));
+document.getElementById('expire-pause').addEventListener('click', () => {
+  if (state.state === 'paused') { state.state = 'configured_unverified'; state.policy.pause = null; }
+});
 document.getElementById('scenario').addEventListener('change', ev => {
   state = structuredClone(baseline);
   if (ev.target.value === 'off') state.state = 'disabled';

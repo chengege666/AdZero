@@ -1,0 +1,29 @@
+{
+  "source_sha256": "baa64efbf815ef6bac4faf4f317fc2a3fe20d05fa0ef00ce10b12884e2069887",
+  "scope": "isolated local Chrome, production view, actual SDK LuCI DOM and Argon shell; simulated RPC and ctl; no router access",
+  "desktop_css_width": 2048,
+  "mobile_css_widths": [
+    320,
+    390
+  ],
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "horizontal_overflow": false,
+  "tested": [
+    "query parent rule and explicit subtree scope",
+    "allow then canonical status and personal list",
+    "revoke",
+    "pause and immediate resume",
+    "initial loading",
+    "disabled controls during operations",
+    "simulated pause expiration followed by actual production status poll; paused notice cleared and enabled heading shown"
+  ],
+  "screenshots": [
+    "docs/images/adzero-v0.7.1-desktop.jpg"
+  ],
+  "device_installation": "not_run",
+  "automatic_resume_notice_cleared": true,
+  "unchanged_mobile_layout_reference": "v0.7.0 browser-ui.json, same CSS; 320/390 px light/dark"
+}

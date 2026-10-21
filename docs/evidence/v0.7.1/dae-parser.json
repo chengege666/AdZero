@@ -1,0 +1,8 @@
+{
+  "core": "dae v2.1.1",
+  "asset_sha256": "c550af580dc97cc90986260da78c4bf72917f3213c2b5d8b79c45199d9c3dc90",
+  "dns_parser_validation": "passed",
+  "source_sha256": "baa64efbf815ef6bac4faf4f317fc2a3fe20d05fa0ef00ce10b12884e2069887",
+  "domains": 1002,
+  "scope": "real dae parser only; no eBPF, daed API, router or LAN execution"
+}

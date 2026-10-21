@@ -1,0 +1,8 @@
+{
+  "runtime": "pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot",
+  "checks": 8,
+  "nested_rpcd_call": "passed",
+  "typed_input_and_no_log_leak": "passed",
+  "router": "not_touched",
+  "source_sha256": "baa64efbf815ef6bac4faf4f317fc2a3fe20d05fa0ef00ce10b12884e2069887"
+}
