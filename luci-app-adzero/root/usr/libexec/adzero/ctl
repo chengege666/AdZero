@@ -277,6 +277,7 @@ enable_protection() {
 		error '默认规则初始化失败，回滚未确认，请检查状态。'
 	fi
 	if ! "$BACKEND_INIT" restart; then
+		rule_failure_hint
 		rollback_enable "$previous" && error '后端启动失败，原配置已恢复。'
 		error '后端启动失败，回滚未确认，请检查状态。'
 	fi
@@ -345,7 +346,7 @@ refresh_blocklists() {
 	[ "$(tls_download_state)" = strict ] || error 'HTTPS 证书校验被外部关闭，拒绝更新规则。'
 	[ "$(rule_sources_state)" = configured ] || error '没有有效规则源，拒绝空更新。'
 	reject_insecure_custom_fetch_flags
-	"$BACKEND_INIT" dl || error '规则更新失败；请检查网络和后端日志。'
+	"$BACKEND_INIT" dl || { rule_failure_hint; error '规则更新失败；请检查网络和后端日志。'; }
 	"$ADAPTER" apply || error '代理规则同步失败，现有恢复记录已保留。'
 	printf 'blocklist refresh requested\n'
 }

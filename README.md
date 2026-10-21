@@ -2,17 +2,17 @@
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
-**v0.5.1 是公开测试版。** 安装矩阵覆盖 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）和 25.12.5 rockchip/armv8（APK）**。各目标使用对应官方 SDK。四种代理适配已经实现；真实路由器、eBPF 和 LAN 终端验收仍待完成，不能把配置成功当作所有设备都已拦截。
+**v0.5.2 是公开测试版。** 安装矩阵覆盖 OpenWrt **24.10.8 x86/64（IPK）、25.12.5 x86/64（APK）和 25.12.5 rockchip/armv8（APK）**。各目标使用对应官方 SDK。四种代理适配已经实现；真实路由器、eBPF 和 LAN 终端验收仍待完成，不能把配置成功当作所有设备都已拦截。
 
 ## 一键安装
 
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.5.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.5.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.5.1)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.5.2)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -20,7 +20,9 @@ sh install.sh --local-dir "$(pwd)"
 
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。更新已有适配版本前，先在原版关闭保护，保留恢复记录。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.5.1 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.5.2 地址。
+
+v0.5.2 修正 HaGeZi 默认规则的失效地址。v0.5.1 若已安装但启用时报「Failed to download AdZero - HaGeZi Light」，在确认回滚完成后重新运行上面的安装命令即可升级。缺少 gawk、GNU grep/sed、coreutils-sort 的推荐提示本身不表示启动失败；本轮用 OpenWrt BusyBox 校验规则过滤和排序，未因此新增依赖。
 
 安装依赖使用固件自己的软件源，不升级整套固件。依赖下载需要联网；离线发行包没有捆绑所有依赖。当前 APK 为开发者未签名包，安装器只对通过 SHA-256 检查的本地 APK 使用 --allow-untrusted。SHA-256 防止文件损坏，下载可信度依赖 GitHub HTTPS。
 
@@ -66,11 +68,14 @@ python3 scripts/check_openwrt_runtime.py
 # 以下两项需要 ADZERO_UCODE 指向真实 ucode 命令（含 -L 模块目录）
 python3 scripts/check_dns_core.py
 python3 scripts/check_dae.py
+python3 scripts/check_rule_source.py
 ~~~
 
 [验证记录](docs/LOCAL_VALIDATION.md) · [DNS 适配设计](docs/DNS_ADAPTERS.md) · [SDK 构建](docs/PACKAGING.md) · [兼容矩阵](docs/COMPATIBILITY.md) · [设备验收](docs/DEVICE_ACCEPTANCE.md)
 
 [GitHub Actions](https://github.com/slobys/AdZero/actions) 提供隔离测试及上述三个官方 SDK 组合的真实构建。离线 build_ipk.py 仅用于归档检查，不用于公开安装清单。WebCodex 源码导入记录见 [SOURCE_IMPORT.md](docs/SOURCE_IMPORT.md)。
+
+check_rule_source.py 每次通过严格 HTTPS 下载包内配置的默认规则，用生产 ucode 解析器和固定版本 adblock-fast 的域名过滤表达式校验，避免只测模拟后端而遗漏失效链接。该检查不启动 DNS 服务、不修改 UCI；它证明开发/CI 网络当时可下载，仍需路由器自身网络验收。
 
 ## 后续兼容范围
 

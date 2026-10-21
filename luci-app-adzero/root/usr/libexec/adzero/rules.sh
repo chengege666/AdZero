@@ -1,6 +1,8 @@
 # Sourced by ctl. Own only a new, reserved default list; keep user lists intact.
 DEFAULT_RULE=adblock-fast.adzero_default
-DEFAULT_RULE_URL=https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/light.txt
+# HaGeZi moved legacy domains/ lists. Use its current, suffix-covering domain
+# format directly from GitHub (the same host used by the release installer).
+DEFAULT_RULE_URL=https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt
 RULE_MARKER=$STATE_DIR/default_rule.owned
 
 rule_sources_state() {
@@ -65,4 +67,10 @@ restore_default_rule() {
 		fi
 	fi
 	rm -f "$RULE_MARKER"
+}
+rule_failure_hint() {
+	# Only print our public URL, never a user subscription or its credentials.
+	if [ -f "$RULE_MARKER" ] && [ "$(get_uci "$DEFAULT_RULE.url")" = "$DEFAULT_RULE_URL" ]; then
+		printf 'AdZero: 默认规则下载/处理未完成，请检查此 HTTPS 地址的可达性及后端日志：%s\n' "$DEFAULT_RULE_URL" >&2
+	fi
 }

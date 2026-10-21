@@ -1,4 +1,19 @@
-# v0.5.1 验证记录（2026-10-21）
+# v0.5.2 验证记录（2026-10-21）
+
+本轮修复用户在 OpenWrt 25.12.5 rockchip/armv8 上报告的默认规则下载失败。
+
+- 用户日志确认 v0.5.1 APK 和 adblock-fast 1.2.4-r4 安装成功，但默认 HaGeZi Light 下载失败，随后出现空列表/Sorting combined block-list 错误；ctl 报告已回滚，尚未独立读取设备状态确认。
+- 实测旧 jsDelivr 地址返回 HTTP 403，提示仓库超过其大小上限；原 domains/light.txt 的 GitHub 路径也返回 404。HaGeZi 当前主仓库已改用 wildcard/light-onlydomains.txt 等格式，旧格式迁至独立仓库。参见 [上游说明](https://github.com/hagezi/dns-blocklists#readme)。
+- 包内默认地址切换为当前官方 GitHub 原始地址，严格 HTTPS 下载通过：1,398,563 字节、66,425 条有效域名。规则会变化，此处是当时快照；内容 SHA-256 和时间记录在 evidence/v0.5.2/default-rule-source.json。
+- 同一份下载通过生产 ucode 域名解析器，以及 adblock-fast **1.2.4-r4** 固定源码的实际域名过滤表达式 + OpenWrt BusyBox sed/sort；前后域名集合相同。这只测试规则处理，没有启动真实后端服务。
+- 上游缺少 gawk/GNU grep/sed/coreutils-sort 仅产生推荐警告；空输入本身会让处理停在排序阶段。因此本轮没有将该警告当作失败原因或新增这些依赖。
+- **113 项回归全部通过**，使用官方 OpenWrt BusyBox/ash、ucode/UCI 和实际 Ruby/yq；服务/包管理器仍为隔离替身。新增用例验证 HTTP 失败、HTML/空规则拒绝，以及失败提示不会泄露用户订阅地址。
+- 三个官方 SDK 输出重新构建并通过 12 个运行文件内容/权限、实际压缩 JS 的解包检查。包源码 SHA-256 为 `4052b1aafcd4a500dbc049afc7035342f730b27375fba9472f366b728ceb83cb`；证据见 [evidence/v0.5.2](evidence/v0.5.2/)。代理适配器未改动，历史内核证据保持原有范围。
+- 开发/CI 现在额外执行 check_rule_source.py，每次重新下载包内配置的默认地址。在线可达性取决于执行网络与当时时间，不能替代用户设备和 LAN 验收。
+
+本版仍待设备重新安装/启用与 LAN DNS 查询。v0.5.1 的安装成功不能提升为 v0.5.2 设备通过。
+
+## v0.5.1 验证记录（2026-10-21）
 
 本轮针对真实回报的 OpenWrt 25.12.5 r33051-f5dae5ece4 / rockchip/armv8，补充 ARM64 官方 SDK 构建入口和安装清单。
 

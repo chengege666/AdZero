@@ -1,6 +1,6 @@
 # 兼容性与证据矩阵
 
-v0.5.1 保留 NaiLink、PassWall、OpenClash、Nikki 的原生入口适配，并扩展 Rockchip ARM64。公开安装清单按以下 SDK 组合生成：
+v0.5.2 保留 NaiLink、PassWall、OpenClash、Nikki 的原生入口适配和 Rockchip ARM64 支持，修正默认规则源。公开安装清单按以下 SDK 组合生成：
 
 | 固件完整版本 | target / 包架构 | 包格式 | SDK | 设备安装 | LAN 过滤 |
 | --- | --- | --- | --- | --- | --- |

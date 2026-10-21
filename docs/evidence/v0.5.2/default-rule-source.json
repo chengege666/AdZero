@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-10-21T04:44:44.123819+00:00",
+  "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt",
+  "download": "passed",
+  "bytes": 1398563,
+  "sha256": "4caa6dc2c5b7f30b0d4c25f75d56decce4b56549d466fb7c666fa366e07e9e56",
+  "domains": 66425,
+  "production_domain_parser": "passed",
+  "backend": "adblock-fast 1.2.4-r4",
+  "backend_source_sha256": "19727b189472f380b9791b1fc37c4acdec60eea06650f7d845fea8fafbd49315",
+  "backend_filter_sort": "passed",
+  "source_sha256": "4052b1aafcd4a500dbc049afc7035342f730b27375fba9472f366b728ceb83cb",
+  "scope": "HTTPS download and isolated rule filtering only; no services, UCI, router or LAN execution"
+}

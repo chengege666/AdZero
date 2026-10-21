@@ -26,7 +26,7 @@ class SdkBuildTest(unittest.TestCase):
         (self.sdk / ".config").write_text('CONFIG_TARGET_BOARD="x86"\nCONFIG_TARGET_SUBTARGET="64"\nCONFIG_TARGET_ARCH_PACKAGES="x86_64"\n')
 
     def compile(self, package_format):
-        path = self.sdk / "bin/packages/x86_64/local" / ("luci-app-adzero_0.5.1-r1_all." + package_format)
+        path = self.sdk / "bin/packages/x86_64/local" / ("luci-app-adzero_" + build_sdk.version() + "_all." + package_format)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"mock-sdk-package-" + package_format.encode())
         return path

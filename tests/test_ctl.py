@@ -157,11 +157,23 @@ class AdZeroTest(unittest.TestCase):
 
     def test_failed_start_restores_backend(self):
         self.fail_once.touch()
-        self.run_ctl("enable", success=False)
+        result = self.run_ctl("enable", success=False)
+        self.assertIn("wildcard/light-onlydomains.txt", result.stderr)
         self.assertEqual(self.config()["adblock-fast.config.enabled"], "0")
         self.assertEqual(self.config()["adblock-fast.config.force_dns"], "1")
         self.assertEqual(self.config()["adzero.main.enabled"], "0")
         self.assertFalse((self.state / "managed").exists())
+
+    def test_failed_backend_does_not_disclose_user_subscription(self):
+        config = self.config()
+        secret_url = "https://user.example/list?token=private-value"
+        config.update({"adblock-fast.userlist": "file_url", "adblock-fast.userlist.url": secret_url})
+        self.conf.write_text(json.dumps(config))
+        self.fail_once.touch()
+        result = self.run_ctl("enable", success=False)
+        self.assertNotIn(secret_url, result.stderr)
+        self.assertNotIn("默认规则", result.stderr)
+        self.assertEqual(self.config(), config)
 
     def test_refresh_only_managed(self):
         self.run_ctl("refresh", success=False)

@@ -1,0 +1,14 @@
+{
+  "evidence": "user-provided SSH installation log, 2026-10-21",
+  "firmware": "OpenWrt 25.12.5 r33051-f5dae5ece4",
+  "target": "rockchip/armv8",
+  "sdk_arch": "aarch64_generic",
+  "apk_cpu_arch": "aarch64",
+  "package_install": "luci-app-adzero 0.5.1-r1 installed successfully via APK",
+  "backend": "adblock-fast 1.2.4-r4",
+  "enable": "failed to download AdZero - HaGeZi Light; empty combined list",
+  "recommended_tools": "gawk, grep, sed, coreutils-sort missing; warning only",
+  "rollback": "reported complete by ctl; device state not independently verified",
+  "v0.5.2_device_acceptance": "not_run",
+  "lan_dns": "not_run"
+}

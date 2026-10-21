@@ -21,7 +21,7 @@ class ReleaseTest(unittest.TestCase):
         self.output = self.root / "release"
 
     def manifest(self, target="rockchip/armv8", arch="aarch64_generic"):
-        package = self.root / "luci-app-adzero-0.5.1-r1.apk"
+        package = self.root / ("luci-app-adzero-" + build_release.version() + ".apk")
         package.write_bytes(b"mock-SDK-output")
         report = {"sdk_build":"passed", "source_sha256":"current", "firmware_declared":"openwrt",
                   "target_observed":target, "package_arch_observed":arch, "release_declared":"25.12.5",
@@ -37,7 +37,8 @@ class ReleaseTest(unittest.TestCase):
         rows = (self.output / "releases.tsv").read_text()
         self.assertIn("rockchip-armv8-aarch64_generic.apk", rows)
         self.assertIn("rockchip/armv8\taarch64_generic\tapk", rows)
-        self.assertTrue((self.root / "adzero-0.5.1-install.tar.gz").exists())
+        release = build_release.version().rsplit('-r', 1)[0]
+        self.assertTrue((self.root / f"adzero-{release}-install.tar.gz").exists())
 
     def test_x86_output_cannot_be_relabelled_as_arm(self):
         with mock.patch.object(build_release, "source_hash", return_value="current"):
