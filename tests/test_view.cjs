@@ -47,6 +47,11 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }
   if (spec.method === 'source_list') return rpcListFailure ? {ok:false,message:'list unavailable'} : {ok:true,data:structuredClone(ruleData)};
+  if (spec.method === 'settings_apply') {
+    const p=JSON.parse(args[0]);
+    if(!rpcStale){ruleData.items=p.items.map((i,n)=>({...i,id:i.id||'batch_'+n,https:true}));state.policy.routing_enabled=p.routing_enabled;ruleData.revision='d'.repeat(64);}
+    return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  }
   if (spec.method === 'job_status') {let next=jobSteps.shift();if(next instanceof Error)throw next;return typeof next==='function'?next():next || {ok:true,pending:false};}
   if (spec.method.startsWith('source_')) {
     if (!rpcStale && spec.method==='source_add') ruleData.items.push({id:'new1',catalog_id:args[0]||null,name:args[1]||'Library rule',url:args[2]||'https://library.example/list',https:true,enabled:true,domains:42});
@@ -73,7 +78,8 @@ function reset(overrides = {}) {
     compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
   failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = rpcListFailure = storageBlocked = false; sessionID='b'.repeat(32); commands.length = 0;
-  storage.clear();ruleData={items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
+  storage.clear();ruleData={revision:'a'.repeat(64),items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
+  app.draft=app.applyingDraft=app.editSource=null;app.draftSequence=0;
   app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
   jobSteps=[];app.currentJob=null;app.jobUncertain=false;app.jobProgress=null;
   app.busy = app.notice = app.domainResult = null; app.domainInput = ''; root = app.render(state); active = body;
@@ -169,7 +175,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   rpcStale=true;await app.runPolicy('routing_off',[]);check(app.notice.kind==='error' && state.policy.routing_enabled,'routing switch does not claim success without canonical preference');
   rpcStale=false;await app.runPolicy('routing_off',[]);check(!state.policy.routing_enabled && state.state==='configured_unverified','disabling routing retains ad protection');
   reset({state:'configured_unverified',policy:{allowed:[],routing_enabled:true},adapter:{plugin:'none',routing:{mode:'direct'}}});check(text(root).includes('国内 DNS / 全部直连'),'no-proxy mode explains domestic resolution and direct traffic');
-  reset();check(find('az-routing').disabled,'routing requires master protection');
+  reset();check(!find('az-routing').disabled,'routing preference may be staged while protection is off');
   reset({state:'configured_unverified'});
   rpcStale=true; await app.runPolicy('allow',['ads.example','ads.example']); check(app.notice.kind==='error','stale RPC success rejected');
   rpcStale=false; rpcFailure=true; await app.runPolicy('pause',[300]); check(app.notice.kind==='error' && state.state!=='paused','RPC failure is not optimistic pause');
@@ -218,6 +224,33 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   await app.openRules();check(text(root).includes('待校验')&&text(root).includes('更新时自动校验'),'legacy rules explain missing validation');
   await app.runSource('source_refresh',[]);
   check(app.notice.kind==='success'&&text(root).includes('27')&&!text(root).includes('待校验'),'refresh renders validated count for legacy rules');
+  reset({state:'configured_unverified'});await app.openRules();commands.length=0;
+  await app.stageSource('source_add',['','One','https://one.example/list','domains']);
+  await app.stageSource('source_add',['','Two','https://two.example/list','domains']);
+  check(commands.length===0&&ruleData.items.length===0&&app.draft.items.length===2,'multiple selections stay local with no download RPC');
+  check(find('az-draft-apply')&&!find('az-draft-apply').disabled&&find('az-source-refresh').disabled,'pending bar exposes one apply and prevents conflicting refresh');
+  const key=app.draft.items[0]._key;
+  await app.stageSource('source_toggle',[key,'https://one.example/list',false]);
+  app.rulesOpen=false;app.paint();await app.stageRouting(true);
+  check(commands.length===0&&find('az-routing').attrs['aria-checked']==='true'&&!state.policy.routing_enabled,'routing is staged without changing live state');
+  check(find('az-update').disabled,'overview refresh also explains pending edits by disabling conflicting update');
+  await app.openRules();
+  check(app.draft.items.length===2,'switching internal tabs preserves all pending choices');
+  commands.length=0;await app.applyDraft();
+  check(commands.filter(x=>x==='settings_apply').length===1&&!commands.includes('source_toggle')&&!commands.includes('routing_on'),'one typed batch applies all selections');
+  check(app.draft===null&&app.notice.kind==='success'&&ruleData.items.length===2&&state.policy.routing_enabled,'only canonical completion clears pending changes');
+  check(!JSON.stringify([...storage.values()]).includes('one.example'),'draft URLs are never persisted in browser storage');
+  commands.length=0;await app.stageSource('source_toggle',[ruleData.items[0].id,ruleData.items[0].url,true]);
+  find('az-draft-discard').events.click();
+  check(app.draft===null&&commands.length===0&&!ruleData.items[0].enabled,'discard makes no server calls and leaves active choices alone');
+  await app.stageSource('source_toggle',[ruleData.items[0].id,ruleData.items[0].url,true]);
+  rpcFailure=true;await app.applyDraft();
+  check(app.draftCount()>0&&app.notice.kind==='error','rejected batch keeps every pending choice');
+  rpcFailure=false;rpcStale=true;await app.applyDraft();
+  check(app.draftCount()>0&&app.notice.kind==='error','successful receipt without desired config is not accepted');
+  reset();await app.openRules();await app.stageSource('source_add',['','Temporary','https://temp.example/list','domains']);
+  await app.stageSource('source_remove',[app.draft.items[0]._key,'https://temp.example/list']);
+  check(app.draft===null&&!find('az-draft-apply'),'adding then removing an unapplied source cancels without a task');
   reset();jobSteps=[new Error('connection reset'),new Error('network reloading'),{ok:true,pending:false}];
   await app.runAction('enable');
   check(app.notice.kind==='success' && commands.filter(x=>x==='enable').length===1,'network reload retries receipt without resubmitting mutation');

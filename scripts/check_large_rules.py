@@ -26,12 +26,13 @@ def main():
     try:
         p=RoutingAdapterTest.nailink_fixture(f)
         names=[f'ad{i:06d}.example' for i in range(206372)]
-        bodies={'https://bench.example/large':names,'https://bench.example/extra':['extra-ad.example','extra-track.example']}
+        bodies={'https://bench.example/large':names,'https://bench.example/extra':['extra-ad.example','extra-track.example'],
+                'https://bench.example/batch0':['batch0-ad.example'],'https://bench.example/batch1':['batch1-ad.example']}
         f.write('source-downloads.json',json.dumps(bodies))
         cfg=f.root/'etc/config/adblock-fast'
         cfg.write_text(cfg.read_text()+"\nconfig file_url 'large'\n option enabled '1'\n option action 'block'\n option adzero_format 'domains'\n option url 'https://bench.example/large'\nconfig file_url 'extra'\n option enabled '0'\n option action 'block'\n option adzero_format 'domains'\n option url 'https://bench.example/extra'\n")
-        for key,names in bodies.items():f.write('body-'+('large' if key.endswith('/large') else 'extra'),'\n'.join(names)+'\n')
-        fetch=f.write('bin/fetch','#!/bin/sh\necho "$1" >> "$ADZERO_SOURCES_ROOT/fetches"\ncase "$1" in */large) cp "$ADZERO_SOURCES_ROOT/body-large" "$2";; *) cp "$ADZERO_SOURCES_ROOT/body-extra" "$2";; esac\n',True)
+        for key,names in bodies.items():f.write('body-'+key.rsplit('/',1)[1],'\n'.join(names)+'\n')
+        fetch=f.write('bin/fetch','#!/bin/sh\necho "$1" >> "$ADZERO_SOURCES_ROOT/fetches"\ncase "$1" in */large) body=large;; */batch0) body=batch0;; */batch1) body=batch1;; *) body=extra;; esac\ncp "$ADZERO_SOURCES_ROOT/body-$body" "$2"\n',True)
         data=f.write('country.json',json.dumps({'domain_raw':''.join(f'server=/cn{i:06d}.example.cn/114.114.114.114\n' for i in range(109795)),
                                              'cidr_raw':''.join(f'10.{i//256}.{i%256}.0/24\n' for i in range(10015))}))
         f.env.update(ADZERO_SOURCE_FETCH_FIXTURE=str(fetch),ADZERO_ROUTING_DATA_FIXTURE=str(data),ADZERO_ROUTING_DATA_PROGRAM=str(args.libexec/'routing-data'))
@@ -52,11 +53,22 @@ def main():
             if label=='unchanged_reconcile':assert after==before
             if label.startswith('routing_'):assert after-before==1
             results.append(row);print(json.dumps(row),flush=True)
+        # Two new selections plus a routing change are one production action.
+        listing=json.loads(f.ctl('sources-list').stdout)
+        items=[{key:item[key] for key in ('id','name','url','format','enabled')} for item in listing['items']]
+        for n in range(2):items.append({'id':None,'name':'Batch '+str(n),'url':'https://bench.example/batch'+str(n),'format':'domains','enabled':True})
+        plan=f.write('batch-plan.json',json.dumps({'revision':listing['revision'],'items':items,'routing_before':True,'routing_enabled':False}))
+        before=json.loads(p.read_text())['runs'];downloads_before=len((f.root/'fetches').read_text().splitlines());started=time.monotonic()
+        result=f.ctl('settings-apply',str(plan))
+        assert result.returncode==0,result.stderr
+        assert json.loads(p.read_text())['runs']==before+1
+        results.append({'action':'batch_two_sources_and_routing_off','seconds':round(time.monotonic()-started,4),'proxy_reload_calls':1,'precheck_downloads':len((f.root/'fetches').read_text().splitlines())-downloads_before})
         final=json.loads(f.ctl('status').stdout)
-        assert final['state']=='configured_unverified' and final['backend']['domains']==206377,final
+        assert final['state']=='configured_unverified' and final['backend']['domains']==206379,final
+        assert json.loads(f.ctl('lookup','batch0-ad.example').stdout)['match']=='exact'
         report={'source_sha256':source_hash(ROOT/'luci-app-adzero') if args.libexec.resolve()==(ROOT/'luci-app-adzero/root/usr/libexec/adzero').resolve() else 'explicit_old_libexec',
                 'rules':206375,'domestic_domains':109795,'domestic_cidrs':10015,'measurements':results,
-                'precheck_downloads':len((f.root/'fetches').read_text().splitlines()),
+                'precheck_downloads':downloads_before,'batch_precheck_downloads':len((f.root/'fetches').read_text().splitlines())-downloads_before,
                 'scope':'real ctl/UCI/ucode; synthetic large rules; backend/download/NaiLink API/reload fixtures; not router or network timings'}
         args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report),flush=True)

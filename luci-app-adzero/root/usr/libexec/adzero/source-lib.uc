@@ -22,6 +22,26 @@ export function format(value) {
 	if (index(['domains','hosts','adblock'],value) < 0) die('请选择域名、Hosts 或基础 DNS Adblock 格式。');
 	return value;
 };
+// Whole-page desired configuration. Revision checks remain server-side under
+// ctl's lock; this validator is also used at the typed RPC boundary.
+export function plan(raw) {
+	if (type(raw) != 'string' || length(raw) > 100000) die('待应用内容无效或过大。');
+	let p;
+	try { p=json(raw); } catch(e) { die('待应用内容不是有效 JSON。'); }
+	if (type(p) != 'object' || type(p.revision)!='string' || !match(p.revision,/^[a-f0-9]{64}$/) || type(p.routing_before) != 'bool' || type(p.routing_enabled) != 'bool' || type(p.items) != 'array' || length(p.items)>30) die('待应用配置无效，请重新读取。');
+	let ids={},urls={},items=[];
+	for(let item in p.items){
+		if(type(item)!='object'||type(item.enabled)!='bool'||(item.id!=null&&(type(item.id)!='string'||!match(item.id,/^[A-Za-z0-9_]{1,80}$/))))die('待应用规则无效。');
+		let id=item.id??null,name=title(item.name),address=item.url,kind=item.format;
+		if(type(address)!='string'||length(address)>2048||!length(address)||match(address,/[[:cntrl:]]/))die('规则地址无效。');
+		if(!id||item.enabled)address=url(address);
+		if(kind!='unknown'||!id)format(kind);
+		if((id&&ids[id])||urls[address])die('待应用规则中存在重复项。');
+		if(id)ids[id]=true;urls[address]=true;
+		push(items,{id,name,url:address,format:kind,enabled:item.enabled});
+	}
+	return {revision:p.revision,routing_before:p.routing_before,routing_enabled:p.routing_enabled,items};
+};
 export function parse(raw, kind) {
 	format(kind);
 	if (type(raw) != 'string' || length(raw) > 25000000) die('规则文件为空或超过 25 MB。');

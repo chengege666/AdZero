@@ -35,8 +35,20 @@ function selected() {
 	return result;
 }
 function clean_uci() {
-	let changes=uci.changes('adblock-fast');
-	if (changes && length(changes)) die('后端有尚未提交的外部修改，请先保存或撤销后再管理规则。');
+	// adblock-fast leaves numeric file_url.size counters in the shared delta
+	// directory. They describe downloaded lists, not a user's pending edits.
+	for(let change in uci.changes('adblock-fast')?.['adblock-fast'] ?? []) {
+		if(change[0]=='set' && change[2]=='size' && match(''+change[3],/^[0-9]+$/) && uci.get('adblock-fast',change[1])=='file_url')continue;
+		progress.failure('config_conflict');
+		die('后端有尚未提交的外部修改，请先保存或撤销后再管理规则。');
+	}
+}
+function checksum(path){
+	if(fs.lstat(path)?.type!='file'||!(fs.stat(path)?.size>0)||fs.stat(path).size>25000000)return null;
+	let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
+	let proc=fs.popen('sha256sum '+quote(path)+' 2>/dev/null','r');if(!proc)return null;
+	let output=proc.read('all'),code=proc.close(),digest=split(output??'',' ')[0];
+	return code==0&&match(digest,/^[a-f0-9]{64}$/)?digest:null;
 }
 function list() {
 	let items=[];
@@ -48,7 +60,7 @@ function list() {
 			validation:s.adzero_validation ?? (s.adzero_domains?'validated':'unchecked'),
 			domains: s.adzero_domains ? int(s.adzero_domains) : null,updated:s.adzero_updated ? int(s.adzero_updated) : null});
 	}
-	return {catalog:lib.catalog,items,pending:!!read(journal),last:read(dir+'/sources-last.json')};
+	return {catalog:lib.catalog,items,revision:checksum(config),pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
 function download(address,kind) {
 	progress.stage('downloading');
@@ -72,7 +84,7 @@ function download(address,kind) {
 function validate_sources(only) {
 	let union={}, count=0;
 	for (let s in selected()) if (s.enabled != '0') {
-		if(only && s['.name']!=only)continue;
+		if(only && (type(only)=='array' ? index(only,s['.name'])<0 : s['.name']!=only))continue;
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
 		let checked=download(s.url,kind);
 		if(!checked){
@@ -133,22 +145,63 @@ function begin(action,args) {
 	atomic(journal,sprintf('%J',pending));
 	if (!uci.commit('adblock-fast')) die('规则保存失败，恢复记录已保留。');
 }
+function batch_plan(path){
+	if(fs.lstat(path)?.type!='file')die('待应用文件无效。');
+	let p=lib.plan(fs.readfile(path,100001));
+	clean_uci();
+	if(length(uci.changes('adzero')?.adzero??[]))die('AdZero 有未提交的外部修改，请先保存或撤销。');
+	if(p.revision!=checksum(config)||(uci.get('adzero','main','routing_enabled')=='1')!=p.routing_before){progress.failure('config_conflict');die('配置已被其他操作修改，请重新读取并核对待应用选择。');}
+	let existing=selected();
+	for(let item in p.items)if(item.id){
+		let old=filter(existing,s=>s['.name']==item.id)[0];
+		if(!old)die('规则标识已变化，请重新读取。');
+		if(item.format=='unknown'&&item.url!=old.url)die('修改地址时请选择文件格式。');
+		if(item.url!=old.url)lib.url(item.url);
+	}
+	let before=list().items;
+	let simple=items=>map(items,i=>({id:i.id,name:i.name,url:i.url,format:i.format,enabled:i.enabled}));
+	p.rules_changed=!same(simple(before),p.items);
+	return p;
+}
+function begin_batch(path){
+	if(read(journal))die('上次规则变更尚未恢复，请先关闭并恢复。');
+	let p=batch_plan(path),before=fs.readfile(config),prior=model(),existing=selected(),checks=[];
+	for(let old in existing)if(!length(filter(p.items,i=>i.id==old['.name'])))if(!uci.delete('adblock-fast',old['.name']))die('无法删除规则。');
+	for(let item in p.items){
+		let old=item.id?filter(existing,s=>s['.name']==item.id)[0]:null,id=item.id;
+		if(!id){for(let n=1;n<=1000;n++)if(uci.get('adblock-fast','adzero_src_'+n)==null){id='adzero_src_'+n;break;}
+			if(!id||!uci.set('adblock-fast',id,'file_url'))die('无法添加规则。');}
+		let values={name:item.name,url:item.url,enabled:item.enabled?'1':'0',action:'block'};
+		let old_kind=old?.adzero_format??filter(lib.catalog,c=>c.url==old?.url)[0]?.format??old?.adzero_detected_format??'unknown';
+		if(!old||item.format!=old_kind)values.adzero_format=item.format;
+		for(let key in keys(values))if(!uci.set('adblock-fast',id,key,values[key]))die('无法保存待应用规则。');
+		if(item.enabled&&(!old||old.enabled=='0'||old.url!=item.url||old_kind!=item.format))push(checks,id);
+		if(old&&(old.url!=item.url||old_kind!=item.format))for(let key in ['adzero_domains','adzero_updated','adzero_validation','adzero_detected_format'])uci.delete('adblock-fast',id,key);
+	}
+	if(uci.get('adblock-fast','config','enabled')=='1'&&!length(filter(selected(),s=>s.enabled!='0'))&&!length(uci.get('adblock-fast','config','blocked_domain')??[]))die('至少保留一项启用的规则；暂停全部过滤请使用保护开关。');
+	if(length(checks))validate_sources(checks);
+	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode&0777,action:'batch'};
+	if(p.routing_before!=p.routing_enabled)pending.routing={before:uci.get('adzero','main','routing_enabled'),after:p.routing_enabled?'1':'0'};
+	atomic(journal,sprintf('%J',pending));
+	if(!uci.commit('adblock-fast'))die('规则保存失败，恢复记录已保留。');
+	if(pending.routing&&(!uci.set('adzero','main','routing_enabled',pending.routing.after)||!uci.commit('adzero')))die('分流选择保存失败，恢复记录已保留。');
+}
 function rollback() {
 	let pending=read(journal);if (!pending) return;
 	clean_uci();
 	if (pending.schema != 1 || type(pending.before) != 'string' || (!same(model(),pending.after) && !same(model(),pending.prior))) die('配置出现并发变化，已保留规则恢复记录。');
+	if(pending.routing){
+		if(length(uci.changes('adzero')?.adzero??[]))die('分流配置有外部未保存修改，恢复记录已保留。');
+		let current=uci.get('adzero','main','routing_enabled'),p=pending.routing;
+		if(!same(current,p.before)&&current!=p.after)die('分流配置存在并发变化，恢复记录已保留。');
+		let ok=p.before==null?(current==null||uci.delete('adzero','main','routing_enabled')):uci.set('adzero','main','routing_enabled',p.before);
+		if(!ok||!uci.commit('adzero'))die('分流选择恢复失败。');
+	}
 	atomic(config,pending.before,pending.mode ?? 0600);
 }
 function cache_path(){
 	let mode=uci.get('adblock-fast','config','dns');
 	return index(['dnsmasq.servers','dnsmasq.addnhosts'],mode)>=0?root+'/var/run/adblock-fast/'+mode:null;
-}
-function checksum(path){
-	if(fs.lstat(path)?.type!='file'||!(fs.stat(path)?.size>0)||fs.stat(path).size>25000000)return null;
-	let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
-	let proc=fs.popen('sha256sum '+quote(path)+' 2>/dev/null','r');if(!proc)return null;
-	let output=proc.read('all'),code=proc.close(),digest=split(output??'',' ')[0];
-	return code==0&&match(digest,/^[a-f0-9]{64}$/)?digest:null;
 }
 function cache_save(){
 	let path=cache_path();if(!path)return;
@@ -165,6 +218,8 @@ function cache_check(){
 let action=shift(ARGV);if (action == '--') action=shift(ARGV);
 try {
 	if (action == 'list') print(sprintf('%J\n',list()));
+	else if(action=='plan-check'){let p=batch_plan(shift(ARGV));print((p.rules_changed?'1':'0')+' '+(p.routing_before!=p.routing_enabled?'1':'0')+' '+(p.routing_enabled?'1':'0')+'\n');}
+	else if(action=='begin-batch')begin_batch(shift(ARGV));
 	else if (action == 'begin') begin(shift(ARGV),ARGV);
 	else if (action == 'rollback') rollback();
 	else if (action == 'finish') {

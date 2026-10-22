@@ -3,6 +3,7 @@
 import * as fs from 'fs';
 export const stages=['queued','waiting_lock','checking','downloading','validating','processing','adapting','restarting','restoring','verifying'];
 export const messages={
+	config_conflict:'配置有其他未保存的编辑或已经变化。请重新读取并核对；规则数量统计不会阻止应用。',
 	nailink_auth:'NaiLink 后端授权未通过。请通过原生服务重启刷新本机授权，再关闭并恢复 AdZero。',
 	nailink_gateway:'NaiLink 重载请求超时，完成状态尚未确认。已保留记录并阻止再次修改；请先核对或重启 NaiLink 原生服务。',
 	lock_busy:'另一项操作仍在进行，等待操作锁超时。请核对当前任务后重试。',

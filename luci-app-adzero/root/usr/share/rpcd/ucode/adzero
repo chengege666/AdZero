@@ -51,6 +51,23 @@ function source_change(r,action) {
 		return job(r,action,action == 'source-toggle' ? [id,a.expected_url,a.enabled ? '1':'0'] : [id,a.expected_url]);
 	} catch(e) { return {ok:false,message:e.message}; }
 }
+function settings(r){
+	let path;
+	try{
+		let p=sources.plan(r.args.payload),dir='/tmp/adzero-requests';
+		if(!fs.lstat(dir)&&!fs.mkdir(dir,0700))die('无法准备批量任务。');
+		if(fs.lstat(dir)?.type!='directory'||(fs.stat(dir).mode&0777)!=0700||fs.stat(dir).uid!=0)die('批量任务目录无效。');
+		let id=trim(fs.readfile('/proc/sys/kernel/random/uuid')??'');
+		if(!match(id,/^[a-f0-9-]{36}$/))die('无法创建任务标识。');
+		path=dir+'/'+id;
+		let file=fs.open(path,'wx',0600),raw=sprintf('%J',p);
+		if(!file)die('无法保存批量请求。');
+		let size=file.write(raw),closed=file.close();if(size!=length(raw)||!closed)die('批量请求保存不完整。');
+		let result=job(r,'settings-apply',[path]);
+		if(!result.ok)fs.unlink(path);
+		return result;
+	}catch(e){if(path)fs.unlink(path);return {ok:false,message:e.message};}
+}
 return {adzero:{
 	enable:{call:r=>job(r,'enable',[])},
 	disable:{call:r=>job(r,'disable',[])},
@@ -62,6 +79,7 @@ return {adzero:{
 	source_toggle:{args:{id:'',expected_url:'',enabled:true},call:r=>source_change(r,'source-toggle')},
 	source_remove:{args:{id:'',expected_url:''},call:r=>source_change(r,'source-remove')},
 	source_refresh:{call:r=>job(r,'source-refresh',[])},
+	settings_apply:{args:{payload:''},call:r=>settings(r)},
 	job_status:{args:{job:''},call:function(r) {
 		let id=r.args.job;
 		if (!match(id ?? '',/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)) return {ok:false,message:'任务标识无效。'};

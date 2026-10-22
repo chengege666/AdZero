@@ -1,0 +1,107 @@
+{
+  "source_sha256": "3e1e21aa2667ad149492ae2537f731dcdfb98d71deb39409871637d08a918385",
+  "rules": 206375,
+  "domestic_domains": 109795,
+  "domestic_cidrs": 10015,
+  "measurements": [
+    {
+      "action": "enable",
+      "seconds": 4.512,
+      "proxy_reload_calls": 1,
+      "timeline": [
+        "1792627768 waiting_lock",
+        "1792627768 checking",
+        "1792627769 processing",
+        "1792627769 verifying",
+        "1792627769 processing",
+        "1792627769 verifying",
+        "1792627771 adapting",
+        "1792627772 restarting"
+      ]
+    },
+    {
+      "action": "unchanged_reconcile",
+      "seconds": 0.5357,
+      "proxy_reload_calls": 0,
+      "timeline": [
+        "1792627773 waiting_lock",
+        "1792627773 checking",
+        "1792627773 verifying",
+        "1792627773 adapting"
+      ]
+    },
+    {
+      "action": "routing_on_cold",
+      "seconds": 3.9358,
+      "proxy_reload_calls": 1,
+      "timeline": [
+        "1792627773 waiting_lock",
+        "1792627773 checking",
+        "1792627773 verifying",
+        "1792627775 adapting",
+        "1792627777 restarting"
+      ]
+    },
+    {
+      "action": "routing_off",
+      "seconds": 1.6552,
+      "proxy_reload_calls": 1,
+      "timeline": [
+        "1792627777 waiting_lock",
+        "1792627777 checking",
+        "1792627777 verifying",
+        "1792627778 adapting",
+        "1792627778 restarting"
+      ]
+    },
+    {
+      "action": "routing_on_warm",
+      "seconds": 1.7499,
+      "proxy_reload_calls": 1,
+      "timeline": [
+        "1792627779 waiting_lock",
+        "1792627779 checking",
+        "1792627779 verifying",
+        "1792627780 adapting",
+        "1792627780 restarting"
+      ]
+    },
+    {
+      "action": "lookup",
+      "seconds": 0.8476,
+      "proxy_reload_calls": 0,
+      "timeline": [
+        "1792627781 waiting_lock",
+        "1792627781 checking",
+        "1792627781 verifying"
+      ]
+    },
+    {
+      "action": "enable_extra_source",
+      "seconds": 5.2583,
+      "proxy_reload_calls": 1,
+      "timeline": [
+        "1792627781 waiting_lock",
+        "1792627781 checking",
+        "1792627782 verifying",
+        "1792627782 downloading",
+        "1792627782 validating",
+        "1792627782 processing",
+        "1792627782 verifying",
+        "1792627782 processing",
+        "1792627782 verifying",
+        "1792627784 adapting",
+        "1792627786 restarting"
+      ]
+    },
+    {
+      "action": "batch_two_sources_and_routing_off",
+      "seconds": 5.7937,
+      "proxy_reload_calls": 1,
+      "precheck_downloads": 2
+    }
+  ],
+  "precheck_downloads": 1,
+  "batch_precheck_downloads": 2,
+  "scope": "real ctl/UCI/ucode; synthetic large rules; backend/download/NaiLink API/reload fixtures; not router or network timings"
+}

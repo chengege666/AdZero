@@ -1,0 +1,18 @@
+{
+  "source_sha256": "3e1e21aa2667ad149492ae2537f731dcdfb98d71deb39409871637d08a918385",
+  "installer_sha256": "d861191679077de332ae735011bd5e1d4659a26937d987cc1eebc3d1f3adab42",
+  "native_tests": 251,
+  "ui_assertions": 127,
+  "rpc_checks": 42,
+  "nailink_gateway_checks": 14,
+  "sdk_builds": 3,
+  "regression_root_cause": "only numeric file_url.size metadata no longer blocks refresh; external edits still rejected",
+  "batch_scope": "source add/edit/remove/toggle and routing selection; protection/pause/allow remain immediate",
+  "normal_batch_backend_rebuilds": 1,
+  "combined_nailink_batch_proxy_reload_calls": 1,
+  "other_proxy_combined_batch": "PassWall/OpenClash/Nikki production controller tests with service/API fixtures; routing changes may require restore and apply reloads",
+  "precheck_vs_backend_download": "one precheck per changed enabled source; backend may download again",
+  "draft_lifetime": "page memory only; internal tabs preserve draft; beforeunload warning; no URL/token sessionStorage",
+  "device_acceptance": "not_run",
+  "proxy_kernel_and_lan": "not_run"
+}

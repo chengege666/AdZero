@@ -37,7 +37,8 @@
           "source_add",
           "source_toggle",
           "source_remove",
-          "source_refresh"
+          "source_refresh",
+          "settings_apply"
         ]
       },
       "uci": [

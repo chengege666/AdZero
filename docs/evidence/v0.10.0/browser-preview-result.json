@@ -1,0 +1,15 @@
+{
+  "scope": "browser preview with simulated status and RPC; no router connection",
+  "add_two_and_disable_one_operations_before_apply": 0,
+  "internal_tab_switch_preserves_draft": true,
+  "combined_rules_and_routing_operations_after_apply": 1,
+  "applied_confirmation_observed": true,
+  "mobile_dark_viewport_css_pixels": 360,
+  "mobile_document_width_css_pixels": 345,
+  "desktop_document_width_css_pixels": 1270,
+  "screenshots": [
+    "../../images/adzero-v0.10.0-pending.jpg",
+    "../../images/adzero-v0.10.0-mobile-dark.jpg",
+    "../../images/adzero-v0.10.0-applied.jpg"
+  ]
+}

@@ -25,7 +25,7 @@ const api = { exec: async (_program, args) => {
   if (args[0] === 'status') { await new Promise(resolve => setTimeout(resolve, statusDelay)); if (state.state === 'error') throw new Error('模拟：连接暂时中断'); return { code: 0, stdout: JSON.stringify(state) }; }
   throw Error('Only status uses file.exec');
 } };
-let sourceData={items:[],catalog:[]},jobTick=0;
+let sourceData={revision:'a'.repeat(64),items:[],catalog:[]},jobTick=0;
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
@@ -40,6 +40,12 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   }
   jobTick=0;
   document.getElementById('calls').textContent = '操作次数：' + (++calls);
+  if(spec.method==='settings_apply'){
+    const p=JSON.parse(args[0]);
+    sourceData.items=p.items.map((i,n)=>({...i,id:i.id||'batch_'+n,https:true,domains:i.enabled?66425:null,updated:Math.floor(Date.now()/1000)}));
+    sourceData.revision='d'.repeat(64);state.policy.routing_enabled=p.routing_enabled;state.adapter.routing={mode:p.routing_enabled?'proxy':'inactive'};
+    return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  }
   if (['enable','disable','refresh'].includes(spec.method)) {
     state.state = spec.method === 'disable' ? 'disabled' : 'configured_unverified';
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};

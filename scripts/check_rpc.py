@@ -116,6 +116,10 @@ pause) echo source_download > "$ADZERO_JOB_CONTEXT/reason"; exit 1;;
    sleep 2
    echo 'private-backend-token-not-for-browser';;
  source-add) sleep 2;;
+ settings-apply)
+   [ -f "$2" ] || exit 1
+   cat "$2" > /tmp/received-batch.json
+   sleep 2;;
  sources-list) echo '{"catalog":[],"items":[],"pending":false}';;
  *) echo 'private-backend-token-not-for-browser';;
 esac
@@ -160,6 +164,14 @@ esac
             assert finished(result)['ok']
             assert finished(call('resume',{}))['ok']
             assert call('source_list',{})['data']['items']==[]
+            assert not call('settings_apply',{'payload':'invalid'})['ok']
+            payload={'revision':'a'*64,'routing_before':False,'routing_enabled':True,'items':[{'id':None,'name':'Private source','url':'https://example.com/list?token=private-batch-marker','format':'domains','enabled':True}]}
+            receipt=call('settings_apply',{'payload':json.dumps(payload)})
+            assert finished(receipt)['ok'],receipt
+            context=base/'tmp/adzero-jobs'/receipt['job']
+            assert json.loads((base/'tmp/received-batch.json').read_text())==payload
+            assert not (context/'input').exists() and not list((base/'tmp/adzero-requests').iterdir())
+            assert 'private-batch-marker' not in json.dumps(receipt)+(context/'log').read_text()
             assert not call('source_add',{'catalog':'','name':'test','url':'http://example.com/list','format':'domains'})['ok']
             assert not call('source_toggle',{'id':'../../etc','expected_url':'x','enabled':True})['ok']
             start=time.monotonic()
@@ -201,7 +213,7 @@ esac
             large_status=large_status_check(base,run,ctl)
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':38,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced',
+                    'checks':42,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

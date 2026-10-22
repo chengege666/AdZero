@@ -548,12 +548,13 @@ function rules_signature(plugin) {
 	}
 	return {schema:2,mode,sha256,dependencies};
 }
-function reconfigure_nailink() {
+function reconfigure_nailink(with_rules) {
 	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');
 	if(split_enabled&&!country_cached('nailink'))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
 	let previous=sprintf('%J',journal);transaction_previous=previous;
 	try{
 		progress.stage('adapting');
+		if(with_rules){let list=rules();tracked(root+'/etc/daed/adzero-geosite.dat',lib.geosite(list),'owned',0644);journal.count=length(list);}
 		let dns=selected_dns(),after=lib.dae_dns(journal.dns.before),traffic=null,next=null;
 		if(split_enabled){
 			country_files('nailink');after=route.dae_dns(after);traffic=selected_traffic();
@@ -573,7 +574,7 @@ function reconfigure_nailink() {
 		journal.stage='restarting';save();restart('nailink');
 		journal.stage='configured_unverified';
 		let source=rules_signature('nailink');
-		if(source&&source.sha256==journal.rules_source?.sha256)journal.rules_source=source;else delete journal.rules_source;
+		if(source&&(with_rules||source.sha256==journal.rules_source?.sha256))journal.rules_source=source;else delete journal.rules_source;
 		save();fs.unlink(state_dir+'/adapter.previous.json');
 	}catch(e){
 		progress.failure('adapter');
@@ -604,6 +605,7 @@ try {
 	} else if (action == 'remove') restore();
 	else if(action=='routing-check')print(routing_check(shift(ARGV))+'\n');
 	else if(action=='reconfigure-nailink')reconfigure_nailink();
+	else if(action=='reconfigure-nailink-rules')reconfigure_nailink(true);
 	else if (action == 'check') { print(active_plugin() + '\n'); }
 	else if (action == 'hook-openclash') {
 		let path = shift(ARGV);
