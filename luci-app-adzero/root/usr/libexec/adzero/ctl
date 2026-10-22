@@ -210,6 +210,36 @@ finish_pending_reload() {
 json_bool() {
 	if [ "$1" = 1 ]; then printf true; else printf false; fi
 }
+process_start() (
+	case "$1" in ''|*[!0-9]*) exit 1 ;; esac
+	# comm may contain spaces or ')'. Fields after its final ')' start at 3.
+	{ IFS= read -r stat_line < "/proc/$1/stat"; } 2>/dev/null || exit 1
+	stat_fields=${stat_line##*) }
+	set -- $stat_fields
+	[ "$#" -ge 20 ] || exit 1
+	case "$1" in Z|X|x) exit 1 ;; esac
+	shift 19
+	case "$1" in ''|*[!0-9]*) exit 1 ;; esac
+	printf '%s\n' "$1"
+)
+operation_status() (
+	# Presentation only: never reclaim locks or expose PIDs / private argv.
+	[ -d "$LOCK_DIR" ] || { printf '{"active":false,"locked":false}'; exit; }
+	inactive='{"active":false,"locked":true}'
+	[ ! -L "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR/owner" ] && [ ! -L "$LOCK_DIR/identity" ] || { printf '%s' "$inactive"; exit; }
+	{ IFS= read -r record < "$LOCK_DIR/owner"; } 2>/dev/null || { printf '%s' "$inactive"; exit; }
+	set -- $record
+	[ "$#" = 2 ] || { printf '%s' "$inactive"; exit; }
+	pid=$1; action=$2
+	case "$action" in reconcile|enable|disable|refresh|reload|lookup|allow|revoke|pause|resume|routing-on|routing-off|source-add|source-toggle|source-remove|source-refresh|source-verify|settings-apply|controls-apply) ;; *) printf '%s' "$inactive"; exit ;; esac
+	start=$(process_start "$pid") || { printf '%s' "$inactive"; exit; }
+	{ IFS= read -r identity < "$LOCK_DIR/identity"; } 2>/dev/null || { printf '%s' "$inactive"; exit; }
+	[ "$identity" = "$record $start" ] || { printf '%s' "$inactive"; exit; }
+	# A completed operation can release the directory during this read.
+	{ IFS= read -r current < "$LOCK_DIR/owner"; } 2>/dev/null || { printf '{"active":false,"locked":false}'; exit; }
+	[ "$record" = "$current" ] && [ "$(process_start "$pid")" = "$start" ] || { printf '%s' "$inactive"; exit; }
+	printf '{"active":true,"locked":true,"action":"%s"}' "$action"
+)
 print_status() {
 	configured=$(get_uci adzero.main.enabled)
 	actual=$(get_uci adblock-fast.config.enabled)
@@ -280,19 +310,19 @@ print_status() {
 		[ -n "$observation_status" ] || observation_status=null
 		if [ "$state" = configured_unverified ] && [ "$(printf '%s' "$observation_status" | jsonfilter -e '@.client_dns_verified' 2>/dev/null)" = true ]; then client_verified=true; fi
 	fi
-	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":%s,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s,"policy":%s,"observation":%s}\n' \
+	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":%s,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s,"policy":%s,"observation":%s,"operation":%s}\n' \
 		"$state" "$(json_bool "$owner")" "$(json_bool "$configured")" \
 		"$(json_bool "$actual")" "$(resolver_mode)" "$(json_bool "$nailink")" \
 		"$(json_bool "$nailink_active")" "$(json_bool "$nailink_enabled")" \
 		"$(json_bool "$agh")" "$(json_bool "$safe_mode")" "$(json_bool "$dns_review")" \
-		"$port_hint" "$force_status" "$tls_status" "$client_verified" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status" "$policy_status" "$observation_status"
+		"$port_hint" "$force_status" "$tls_status" "$client_verified" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status" "$policy_status" "$observation_status" "$(operation_status)"
 }
 release_lock() {
 	# Never remove a lock whose owner record was replaced by another operation.
 	lock_record=
 	[ -f "$LOCK_DIR/owner" ] && read -r lock_record < "$LOCK_DIR/owner"
 	[ "$lock_record" = "$lock_identity" ] || return 0
-	rm -f "$LOCK_DIR/owner" && rmdir "$LOCK_DIR" 2>/dev/null || :
+	rm -f "$LOCK_DIR/identity" "$LOCK_DIR/owner" && rmdir "$LOCK_DIR" 2>/dev/null || :
 }
 acquire_lock() {
 	progress waiting_lock
@@ -321,6 +351,8 @@ acquire_lock() {
 	fi
 	trap 'release_lock' 0
 	trap 'exit 130' 1 2 3 15
+	lock_start=$(process_start "$$") || error '无法核对操作进程身份。'
+	printf '%s %s\n' "$lock_identity" "$lock_start" > "$LOCK_DIR/identity" || error '无法记录操作进程身份。'
 	progress checking
 }
 # Store prior force_dns before changing anything. An unset value inherits the

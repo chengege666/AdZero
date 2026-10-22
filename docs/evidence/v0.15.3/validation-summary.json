@@ -1,0 +1,19 @@
+{
+  "version": "0.15.3",
+  "source_sha256": "9032753a74dcf6fabee23555eba3667e7caa78935d9af74df6cad63f0bd59b0a",
+  "view_sha256": "6dd8eeddcea6ec96fd2a6b626764a5be021ee21c5e35c954730b3ce63632ddd5",
+  "native_tests": 420,
+  "ui_assertions": 240,
+  "rpc_checks": 61,
+  "native_luci_poll_versions": 2,
+  "browser_sizes": [
+    1440,
+    360
+  ],
+  "sdk_builds": 3,
+  "payload_files": 39,
+  "delivery_cases": 6,
+  "router": "not_connected",
+  "runtime_dependencies_added": false,
+  "scope": "production ctl + live lock-holder fixture; native ucode/RPC; production view/DOM/Poll with simulated RPC; no router or public network acceptance"
+}

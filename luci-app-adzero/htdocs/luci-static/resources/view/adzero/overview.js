@@ -52,6 +52,13 @@ var phaseText = {
  verifying:_('正在核对运行状态…'), reconnecting:_('连接暂时中断，正在继续追踪原任务…')
 };
 function delay(ms) { return new Promise(function(resolve) { setTimeout(resolve,ms); }); }
+function taskError(reply, fallback) {
+ var error=new Error(reply&&reply.message||fallback);error.reason=reply&&reply.reason;return error;
+}
+function operationActive(s) {return !s.stale&&s.operation&&s.operation.active===true;}
+function lockNotice(action) {
+ return {kind:'warning',text:action==='disable'?_('上次关闭未执行：等待其他操作超时。'):_('上次请求未执行：等待其他操作超时。'),detail:_('本次请求未取得操作锁，未修改配置。当前保护状态见下方；同步结束后若仍需操作，请再点击一次。页面不会自动重试原请求。')};
+}
 function showProgress(self, value) {
  if (!self || !self.busy) return;
  var old=self.jobProgress || {};
@@ -59,13 +66,13 @@ function showProgress(self, value) {
  if (old.stage!==value.stage || Math.floor((old.elapsed || 0)/10)!==Math.floor((value.elapsed || 0)/10)) self.paint();
 }
 function waitJob(reply,self) {
- if (!reply || !reply.ok) { if(self)self.jobUncertain=false;return Promise.reject(new Error(reply && reply.message || _('操作未完成，请重新检测。'))); }
+ if (!reply || !reply.ok) { if(self)self.jobUncertain=false;return Promise.reject(taskError(reply,_('操作未完成，请重新检测。'))); }
  if (!reply.job) return Promise.resolve();
  var attempts=0, failures=0;
  function check() {
   return sourceCalls.job_status(reply.job).then(function(result) {
    failures=0;
-   if (!result || !result.ok) { if(self)self.jobUncertain=false;throw new Error(result && result.message || _('任务结果未知，请重新检测。')); }
+   if (!result || !result.ok) { if(self)self.jobUncertain=false;throw taskError(result,_('任务结果未知，请重新检测。')); }
    showProgress(self,result.progress || {stage:'checking'});
    if (!result.pending) { if(self)self.jobUncertain=false;return; }
    if (++attempts>1200) throw new Error(_('任务仍在后台，点击重新检测继续核对，勿重复提交。'));
@@ -111,11 +118,11 @@ function confirmationNotice(notice, s) {
 }
 function confirmingAction(self) {return self.notice&&self.notice.kind==='warning'&&self.notice.expectedState&&(self.currentStatus||{}).state==='inconsistent';}
 function statusKey(s) {
- return JSON.stringify([s.state,!!s.stale,s.managed,s.configured,s.backend_enabled,s.dns_mode_safe,s.adguardhome_running,s.backend,s.adapter,s.policy,(s.compatibility||{}).dns]);
+ return JSON.stringify([s.state,!!s.stale,s.managed,s.configured,s.backend_enabled,s.dns_mode_safe,s.adguardhome_running,s.backend,s.adapter,s.policy,(s.compatibility||{}).dns,s.operation]);
 }
 function needsStatusRecheck(self) {
  var s=self.currentStatus||{},o=self.observation||{},c=o.connection,a=s.adapter||{};
- return s.state==='inconsistent'||!!a.reload_pending||flags(s).enabled&&o.available===true&&(
+ return operationActive(s)||s.state==='inconsistent'||!!a.reload_pending||flags(s).enabled&&o.available===true&&(
   ['protection_disabled','backend_disabled','not_managed'].indexOf(o.reason)>=0||c&&(c.plugin!==a.plugin||c.stage!==a.stage));
 }
 function finishJob(self) {
@@ -166,8 +173,8 @@ function getStatus(cache) {
 }
 function flags(s) {
 	var enabled = s.state === 'configured_unverified';
-	return { enabled: enabled, paused: s.state === 'paused', canDisable: !s.stale && (enabled || s.state === 'paused' || (s.state === 'inconsistent' && s.managed === true)),
-		canEnable: !s.stale && s.state === 'disabled' && s.dns_mode_safe === true && !s.adguardhome_running &&
+	return { enabled: enabled, paused: s.state === 'paused', canDisable: !s.stale && !operationActive(s) && (enabled || s.state === 'paused' || (s.state === 'inconsistent' && s.managed === true)),
+		canEnable: !s.stale && !operationActive(s) && s.state === 'disabled' && s.dns_mode_safe === true && !s.adguardhome_running &&
 			!(s.compatibility && s.compatibility.dns && (s.compatibility.dns.active_proxy_count > 1 || (s.compatibility.dns.uncertain_proxies || []).length)) };
 }
 function pagePolling(self, panel) {
@@ -187,7 +194,8 @@ function pagePolling(self, panel) {
 		var previous=self.currentStatus||{},recovering=needsStatusRecheck(self);
 		if(!recovering || revision!==(self.statusRecheckRevision||0)){rechecks=0;revision=self.statusRecheckRevision||0;}
 		if(ticks++%5===0 && !self.busy && !previous.stale && (recovering||flags(previous).paused) && !statusReading){
-			if(recovering&&rechecks>=12){
+			if(recovering&&rechecks>=(operationActive(previous)?60:12)){
+				if(operationActive(previous)&&!self.notice){self.notice={kind:'warning',text:_('当前操作耗时较长，请重新检测。'),detail:_('操作进程仍持有锁，页面已暂停自动核对。请保留当前状态，不要手动删除锁。')};self.paint();}
 				if(self.notice&&self.notice.expectedState&&self.notice.kind==='warning'){self.notice=Object.assign({},self.notice,{kind:'error',text:_('配置状态仍未确认，请重新检测；不要重复提交原操作。')});self.paint();}
 			}else{
 				if(recovering)rechecks++;statusReading=true;var readRevision=revision;
@@ -198,6 +206,7 @@ function pagePolling(self, panel) {
 					var notice=self.notice,changed=statusKey(previous)!==statusKey(s);
 					if(previous.state==='paused'&&s.state!=='paused')self.notice=null;
 					if(self.notice&&self.notice.expectedState)self.notice=confirmationNotice(self.notice,s);
+					if(operationActive(previous)&&!operationActive(s))rechecks=0;
 					self.currentStatus=s;self.lastChecked=new Date();saveSnapshot(s);
 					if(changed||notice!==self.notice)self.paint(document.activeElement&&document.activeElement.id);
 				}).catch(function(){}).then(function(){statusReading=false;}));
@@ -229,6 +238,7 @@ function sourceKey(i) { return i._key || i.id; }
 function defaultDNS() {return {domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}};}
 function sameDNS(a,b) {return JSON.stringify(a||defaultDNS())===JSON.stringify(b||defaultDNS());}
 function observationHint(o,s) {
+	if(operationActive(s))return _('后台操作进行中，统计稍后更新');
 	if(!o.available)return _('统计组件尚未就绪');
 	if(!flags(s).enabled)return flags(s).paused?_('保护已暂停，统计已暂停'):_('开启或恢复保护后可检测');
 	var reasons={protection_disabled:_('保护状态待同步，统计未开始'),backend_disabled:_('过滤后端尚未就绪，统计未开始'),not_managed:_('过滤接入尚未确认，统计未开始'),unsupported_resolver:_('当前 DNS 模式暂不支持统计'),rules_unavailable:_('等待有效规则，统计未开始'),adapter_pending:_('代理接入尚未完成，统计暂未开始'),adapter_state_invalid:_('接入状态读取异常，统计暂未开始'),adapter_changing:_('接入正在更新，统计稍后自动开始')};
@@ -259,7 +269,7 @@ return view.extend({
 	controlsOpen:false,controlDraft:null,controlSearch:'',controlFilter:'all',controlInput:'',controlKind:'blocked',recentSearch:'',statsBusy:false,statsIntent:null,statsNotice:null,
 	openControls:function(){this.rulesOpen=false;this.controlsOpen=true;this.notice=null;this.paint();return Promise.resolve();},
 	controlCount:function(){var d=this.controlDraft;if(!d)return 0;return ['allowed','blocked'].reduce(function(n,k){return n+d.before[k].filter(function(v){return d.after[k].indexOf(v)<0;}).length+d.after[k].filter(function(v){return d.before[k].indexOf(v)<0;}).length;},0);},
-	canControl:function(){var s=this.currentStatus||{};return !this.busy&&!s.stale&&!this.draftCount()&&!(s.policy||{}).pending&&(flags(s).enabled||s.state==='disabled'&&!s.managed);},
+	canControl:function(){var s=this.currentStatus||{};return !this.busy&&!s.stale&&!operationActive(s)&&!this.draftCount()&&!(s.policy||{}).pending&&(flags(s).enabled||s.state==='disabled'&&!s.managed);},
 	stageControls:function(kind,raw,remove){
 		if(!this.canControl())return Promise.resolve();
 		try{
@@ -352,7 +362,7 @@ return view.extend({
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('规则域名')),
 				el('strong',{'class':'az-number'},number(ready?(connection&&typeof connection.domains==='number'?connection.domains:s.backend.domains):null)),el('p',{},_('当前加载的有效域名'))]),
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('当前接入')),
-				el('strong',{'class':'az-stat-value az-current-adapter',translate:'no'},flags(s).enabled?active:_('未开启')),el('p',{},flags(s).enabled?connectionHint:_('开启后自动识别'))])
+				el('strong',{'class':'az-stat-value az-current-adapter',translate:'no'},operationActive(s)?_('同步中'):flags(s).enabled?active:_('未开启')),el('p',{},operationActive(s)?_('完成后自动更新接入'):flags(s).enabled?connectionHint:_('开启后自动识别'))])
 		]);
 	},
 	renderRecent:function(){
@@ -437,7 +447,8 @@ return view.extend({
 		var self = this; self.currentStatus = s;
 		var f = flags(s), inv = s.compatibility || {}, dns = inv.dns || {};
 		var confirming=confirmingAction(self);
-		var adapter = s.adapter || {}, backend = s.backend || {}, busy = self.busy, locked = busy || s.stale || confirming, loading = s.state === 'loading';
+		var operating=operationActive(s);
+		var adapter = s.adapter || {}, backend = s.backend || {}, busy = self.busy, locked = busy || s.stale || confirming || operating, loading = s.state === 'loading';
 		var active = names[adapter.plugin] || (adapter.plugin === 'none' ? _('路由器 DNS') : _('接入待确认'));
 		var synced = f.enabled && adapter.stage === 'configured_unverified' && adapter.plugin && adapter.plugin !== 'none';
 		var ready = f.enabled && backend.state === 'ready', verified = self.observation&&self.observation.available&&self.observation.active&&(self.observation.verification||{}).state==='passed';
@@ -453,10 +464,11 @@ return view.extend({
 			unavailable: _('请检查插件依赖是否完整，然后重新检测。'), error: _('状态请求未完成，请查看错误详情后重新检测。'), loading: _('页面已就绪，正在读取后端与代理状态。') };
 		if(adapter.reload_pending){titles.inconsistent=_('正在确认代理重载');descriptions.inconsistent=_('本批规则已保留，后台正在核对代理是否完成。请勿重复应用或重载。');}
 		if(confirming){titles.inconsistent=self.notice.action==='disable'?_('正在确认关闭'):_('正在确认配置');descriptions.inconsistent=_('操作已执行，正在核对最终状态，请勿重复提交。');}
+		if(operating){titles[s.state]=s.operation.action==='reconcile'?_('正在同步代理接入'):s.operation.action==='disable'?_('正在关闭并恢复'):_('正在执行其他操作');descriptions[s.state]=_('后台操作尚未结束，完成后页面会自动更新。请稍候，无需再次关闭或应用。');}
 		var conflictNames=(dns.active_proxies||[]).map(function(id){return names[id]||id;}).join('、');
 		var blocker = s.adguardhome_running ? _('AdGuard Home 正在运行，请先关闭对应服务。') : dns.active_proxy_count > 1 ? _('检测到多个代理：')+(conflictNames||_('请检查正在运行的插件'))+_('。请保留一个正在使用的代理后重新检测。') : (dns.uncertain_proxies||[]).length ? _('暂时无法确认 ')+(dns.uncertain_proxies||[]).map(function(id){return id==='nailink'?'NaiLink':names[id]||id;}).join('、')+_(' 内核状态，请检查对应插件后重新检测。') :
 			s.state === 'disabled' && s.dns_mode_safe !== true ? _('当前 DNS 模式不支持自动启用，请检查过滤后端设置。') : null;
-		var toggle = confirming ? el('button',{id:'az-toggle',type:'button','class':'az-button az-button-quiet',disabled:true,'aria-busy':'true'},_('正在确认…')) : f.canDisable && !f.enabled && !f.paused ? el('button', { id: 'az-toggle', 'class': 'az-button az-button-danger', type: 'button',
+		var toggle = operating || confirming ? el('button',{id:'az-toggle',type:'button','class':'az-button az-button-quiet',disabled:true,'aria-busy':'true'},operating?_('操作进行中…'):_('正在确认…')) : f.canDisable && !f.enabled && !f.paused ? el('button', { id: 'az-toggle', 'class': 'az-button az-button-danger', type: 'button',
 			'data-action': 'disable', disabled: locked ? true : null, click: function() { return self.runAction('disable'); } }, _('关闭并恢复')) : el('button', {
 			id: 'az-toggle', 'class': 'az-toggle' + (f.enabled ? ' is-on' : ''), type: 'button', role: 'switch',
 			'aria-label': _('广告过滤'), 'aria-checked': f.enabled ? 'true' : 'false', 'aria-describedby': 'az-operation-note',
@@ -484,10 +496,10 @@ return view.extend({
 			self.jobProgress && phaseText[self.jobProgress.stage] ? phaseText[self.jobProgress.stage] + (self.jobProgress.elapsed>=10 ? _(' · 总计 ') + self.jobProgress.elapsed + _(' 秒') + (typeof self.jobProgress.phase_elapsed==='number' ? _(' · 本阶段 ') + self.jobProgress.phase_elapsed + _(' 秒') : '') : '') : busy === 'routing_on' ? _('正在开启自动分流…') : busy === 'routing_off' ? _('正在关闭自动分流…') : busy === 'rules' ? _('正在下载、校验并应用规则；离开页面后任务仍会继续。') : busy === 'enable' ? _('正在开启过滤…') : busy === 'disable' ? _('正在关闭并恢复…') : busy === 'refresh' ? _('正在更新并同步规则…') : busy === 'lookup' ? _('正在查询当前规则…') : busy === 'allow' || busy === 'revoke' ? _('正在应用放行名单并同步代理…') : busy === 'pause' ? _('正在暂停保护…') : busy === 'resume' ? _('正在恢复保护…') : _('正在检测状态…') ]));
 		if (self.rulesOpen) { nodes.push(self.renderRules(s)); return el('div',{'class':'az-app'},nodes); }
 		if (self.controlsOpen) { nodes.push(self.renderControls(s));return el('div',{'class':'az-app'},nodes); }
-		nodes.push(el('section', { 'class': 'az-card az-hero' + (f.enabled ? ' is-on' : '') + (loading ? ' is-loading' : ''), 'aria-busy': loading || confirming ? 'true' : 'false' }, [
+		nodes.push(el('section', { 'class': 'az-card az-hero' + (f.enabled && !operating ? ' is-on' : '') + (loading ? ' is-loading' : ''), 'aria-busy': loading || confirming || operating ? 'true' : 'false' }, [
 			el('div', { 'class': 'az-hero-main' }, [ el('div', { 'class': 'az-hero-heading' }, [ icon('shield'),
 				el('h3', { 'class': 'az-hero-title' }, titles[s.state] || _('状态暂未确认')),
-				pill(s.stale ? _('上次状态') : loading ? _('检测中') : confirming ? _('确认中') : f.enabled ? _('已开启') : f.paused ? _('已暂停') : s.state === 'disabled' ? _('已关闭') : _('需要留意'), f.enabled ? 'positive' : s.state === 'disabled' || loading || confirming ? 'neutral' : 'attention') ]),
+				pill(s.stale ? _('上次状态') : loading ? _('检测中') : operating ? _('同步中') : confirming ? _('确认中') : f.enabled ? _('已开启') : f.paused ? _('已暂停') : s.state === 'disabled' ? _('已关闭') : _('需要留意'), operating ? 'neutral' : f.enabled ? 'positive' : s.state === 'disabled' || loading || confirming ? 'neutral' : 'attention') ]),
 				el('p', { 'class': 'az-hero-copy' }, descriptions[s.state] || _('请重新检测当前状态。')), blocker ? el('p', { 'class': 'az-inline-warning' }, [ icon('info'), blocker ]) : null ]),
 			el('div', { 'class': 'az-switch-control' }, [ el('span', {}, loading ? _('等待状态确认') : _('保护开关')), toggle ]) ]));
 		if (f.enabled || f.paused) nodes.push(el('div', { 'class': 'az-pause-bar' }, f.paused ? [
@@ -546,7 +558,7 @@ return view.extend({
 	},
 	renderRules: function(s) {
 		var self=this,data=self.sourcesData,items=self.draft?self.draft.items:data ? data.items || [] : [],catalog=data ? data.catalog || [] : [];
-		var enabled=flags(s).enabled, editable=!!data && !self.controlCount() && !self.sourcesError && !self.busy && !self.sourcesLoading && !s.stale && !data.pending && (enabled || s.state==='disabled' && !s.managed);
+		var enabled=flags(s).enabled, editable=!!data && !operationActive(s) && !self.controlCount() && !self.sourcesError && !self.busy && !self.sourcesLoading && !s.stale && !data.pending && (enabled || s.state==='disabled' && !s.managed);
 		var form=self.customSource || (self.customSource={name:'',url:'',format:'domains'});
 		function updateField(key) { return function(e) { form[key]=e.target.value; }; }
 		function date(value) { return value ? new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value*1000)) : _('尚无记录'); }
@@ -560,7 +572,7 @@ return view.extend({
 			el('p',{'class':'az-source-footnote'},_('默认沿用上次校验结果；文件未变化时不重新完整解析。手动校验只检查本地快照，不下载、不重载。新文件保留基础格式检查。')),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
-			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : (s.adapter||{}).reload_pending ? _('正在确认上一次代理重载，本批规则已保留。请稍候重新检测，勿重复应用。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
+			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : operationActive(s) ? _('后台操作正在进行，完成后可继续调整规则。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : (s.adapter||{}).reload_pending ? _('正在确认上一次代理重载，本批规则已保留。请稍候重新检测，勿重复应用。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
 			el('section',{'class':'az-card az-source-list'},items.length ? [
 				el('div',{'class':'az-source-table-heading','aria-hidden':'true'},[el('span',{},_('规则名称 / 地址')),el('span',{},_('校验数量 / 最近检查')),el('span',{},_('操作'))]),
 				items.map(function(item) { return el('div',{'class':'az-source-row'},[
@@ -615,7 +627,7 @@ return view.extend({
 		var items=JSON.parse(JSON.stringify(data.items)),routing=(this.currentStatus.policy||{}).routing_enabled===true;
 		this.draft={revision:data.revision,items:items,base:JSON.parse(JSON.stringify(items)),routing_before:routing,routing_enabled:routing,dns_before:JSON.parse(JSON.stringify(data.dns||defaultDNS())),dns:JSON.parse(JSON.stringify(data.dns||defaultDNS()))};
 	},
-	canStage: function() { var s=this.currentStatus||{};return !this.busy&&!s.stale&&!this.controlCount()&&!this.sourcesError&&(flags(s).enabled||s.state==='disabled'&&!s.managed); },
+	canStage: function() { var s=this.currentStatus||{};return !this.busy&&!s.stale&&!operationActive(s)&&!this.controlCount()&&!this.sourcesError&&(flags(s).enabled||s.state==='disabled'&&!s.managed); },
 	stageRouting: function(value) {
 		var self=this;if(!self.canStage())return Promise.resolve();
 		return (self.sourcesData?Promise.resolve():self.loadSources()).then(function(){self.ensureDraft();self.draft.routing_enabled=value;self.notice=null;if(!self.draftCount())self.draft=null;self.paint('az-routing');}).catch(function(e){self.notice={kind:'error',text:String(e.message||e)};self.paint();});
@@ -711,7 +723,7 @@ return view.extend({
 	},
 	runSource: function(method,args) {
 		var self=this,s=self.currentStatus || {};
-		if (self.busy || s.stale || self.draftCount() || !(flags(s).enabled || s.state==='disabled' && !s.managed)) return Promise.resolve();
+		if (self.busy || operationActive(s) || s.stale || self.draftCount() || !(flags(s).enabled || s.state==='disabled' && !s.managed)) return Promise.resolve();
 		if (method==='source_add' && !args[0] && (!args[1] || !/^https:\/\//i.test(args[2]))) {self.notice={kind:'error',text:_('请填写名称和 HTTPS 订阅地址。')};self.paint('az-source-name');return Promise.resolve();}
 		if (['source_add','source_toggle','source_remove','source_refresh','source_verify'].indexOf(method)<0) return Promise.resolve();
 		self.busy='rules';self.notice=null;self.jobProgress=null;self.jobUncertain=false;self.paint();
@@ -742,7 +754,7 @@ return view.extend({
 	},
 	lookupDomain: function() {
 		var self = this;
-		if (self.busy || (self.currentStatus || {}).stale || !flags(self.currentStatus || {}).enabled) return Promise.resolve();
+		if (self.busy || operationActive(self.currentStatus||{}) || (self.currentStatus || {}).stale || !flags(self.currentStatus || {}).enabled) return Promise.resolve();
 		var input = (self.domainInput || '').trim();
 		if (!input) { self.domainResult = {error:_('请输入要查询的域名或网址。')}; self.paint('az-domain'); return Promise.resolve(); }
 		self.busy = 'lookup'; self.notice = null; self.domainResult = null; self.paint();
@@ -754,7 +766,7 @@ return view.extend({
 	},
 	runPolicy: function(action, args, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (['allow','revoke','pause','resume','routing_on','routing_off'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause','routing_on','routing_off'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
+		if (['allow','revoke','pause','resume','routing_on','routing_off'].indexOf(action)<0 || self.busy || !receipt && (operationActive(self.currentStatus||{})||(self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause','routing_on','routing_off'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
 		self.busy = action; self.notice = null; self.jobProgress=null;self.jobUncertain=false;self.paint();
 		var failure;
 		return (receipt ? Promise.resolve(receipt) : policyCalls[action].apply(null,args)).then(function(result) {
@@ -812,21 +824,22 @@ return view.extend({
 	},
 	runAction: function(action, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (['enable','disable','refresh','reload'].indexOf(action)<0 || self.busy || !receipt && (confirmingAction(self)||(self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || ((action === 'refresh'||action === 'reload') && f.enabled)))) return Promise.resolve();
+		if (['enable','disable','refresh','reload'].indexOf(action)<0 || self.busy || !receipt && (operationActive(self.currentStatus||{})||confirmingAction(self)||(self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || ((action === 'refresh'||action === 'reload') && f.enabled)))) return Promise.resolve();
 		self.statusRecheckRevision=(self.statusRecheckRevision||0)+1;
 		self.busy = action; self.notice = null; self.jobProgress=null;self.jobUncertain=false;self.paint();
 		var failure = null;
 		return (receipt ? Promise.resolve(receipt) : policyCalls[action]()).then(function(result) {
 			return trackJob(result,'action',action,self);
-		}).catch(function(err) { failure = String(err); }).then(function() { return taskStatus(self,failure?null:action==='disable'?'disabled':'configured_unverified'); }).then(function(s) {
+		}).catch(function(err) { failure = err; }).then(function() { return taskStatus(self,failure?null:action==='disable'?'disabled':'configured_unverified'); }).then(function(s) {
 			self.currentStatus = s; self.lastChecked = new Date();
 			var expected = action === 'disable' ? 'disabled' : 'configured_unverified';
-			if(!failure&&s.state==='inconsistent')self.notice=actionConfirmation(action);
-			else if (failure || s.state !== expected) self.notice = { kind: 'error', text: _('操作未完成，已重新读取当前状态。'), detail: failure || _('当前状态尚未满足操作结果，请检查服务日志后重新检测。') };
+			if(failure&&failure.reason==='lock_busy')self.notice=lockNotice(action);
+			else if(!failure&&s.state==='inconsistent')self.notice=actionConfirmation(action);
+			else if (failure || s.state !== expected) self.notice = { kind: 'error', text: _('操作未完成，已重新读取当前状态。'), detail: failure ? String(failure) : _('当前状态尚未满足操作结果，请检查服务日志后重新检测。') };
 			else self.notice = actionSuccess(action);
 		}).catch(function(err) {
 			self.currentStatus = { state: 'error', error: String(err) };
-			self.notice = { kind: 'error', text: _('操作结果暂时无法确认，请重新检测。'), detail: failure || String(err) };
+			self.notice = { kind: 'error', text: _('操作结果暂时无法确认，请重新检测。'), detail: String(failure || err) };
 		}).then(function() { finishJob(self); self.paint(action === 'refresh' ? 'az-update' : 'az-toggle'); });
 	},
 	render: function(status) {
@@ -837,7 +850,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.15.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.15.3' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);

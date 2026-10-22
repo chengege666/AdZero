@@ -709,7 +709,71 @@ exit 0
     def test_status_can_be_read_while_mutation_lock_exists(self):
         self.lock.mkdir()
         self.assertEqual(self.status()["state"], "disabled")
+        self.assertEqual(self.status()["operation"], {"active": False, "locked": True})
         self.assertTrue(self.lock.is_dir())
+
+    def test_live_reconcile_identity_and_timeout_leave_filtering_untouched(self):
+        self.run_ctl("enable")
+        held = Path(self.tmp.name) / "hold"
+        ready = Path(self.tmp.name) / "ready"
+        held.touch()
+        self.env.update(MOCK_LOCK_HOLD=str(held), MOCK_LOCK_READY=str(ready))
+        self.adapter.write_text('''#!/usr/bin/env python3
+import os, sys, time
+from pathlib import Path
+if sys.argv[1] == 'apply':
+    Path(os.environ['MOCK_LOCK_READY']).touch()
+    while Path(os.environ['MOCK_LOCK_HOLD']).exists(): time.sleep(0.02)
+if sys.argv[1] == 'status': print('{"plugin":"nailink","stage":"restoring","domains":2}')
+''')
+        command = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "/bin/sh")) + [str(CTL), "reconcile"]
+        first = subprocess.Popen(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env)
+        try:
+            deadline = time.monotonic() + 10
+            while not ready.exists() and first.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(ready.exists())
+            status = self.status()
+            self.assertEqual(status["state"], "inconsistent")  # raw transaction state stays honest
+            self.assertEqual(status["operation"], {"active": True, "locked": True, "action": "reconcile"})
+            self.assertNotIn(str(first.pid), json.dumps(status["operation"]))
+            identity = (self.lock / "identity").read_text()
+            (self.lock / "identity").write_text(f"{first.pid} reconcile 0\n")
+            self.assertFalse(self.status()["operation"]["active"], "a reused PID cannot mask a recovery error")
+            (self.lock / "identity").write_text(identity)
+            before = self.config()
+            jobs = Path(self.tmp.name) / "job"
+            jobs.mkdir()
+            self.env["ADZERO_JOB_CONTEXT"] = str(jobs)
+            result = self.run_ctl("disable", success=False)
+            self.assertIn("等待操作锁超时", result.stderr)
+            self.assertEqual((jobs / "reason").read_text(), "lock_busy")
+            self.assertEqual(self.config(), before)
+            self.assertIsNone(first.poll())
+            self.assertEqual((self.lock / "identity").read_text(), identity)
+            held.unlink()
+            out, err = first.communicate(timeout=15)
+            self.assertEqual(first.returncode, 0, out + err)
+            self.assertFalse(self.lock.exists())
+            self.assertEqual(self.status()["operation"], {"active": False, "locked": False})
+        finally:
+            held.unlink(missing_ok=True)
+            if first.poll() is None:
+                first.kill()
+                first.communicate(timeout=5)
+
+    def test_dead_unknown_or_linked_owner_is_not_reported_as_live(self):
+        self.lock.mkdir()
+        owner, identity = self.lock / "owner", self.lock / "identity"
+        for value in ("999999999 reconcile", "1 secret-value", "malformed"):
+            owner.write_text(value + "\n")
+            identity.write_text(value + " 1\n")
+            before = (owner.read_bytes(), identity.read_bytes())
+            self.assertEqual(self.status()["operation"], {"active": False, "locked": True})
+            self.assertEqual((owner.read_bytes(), identity.read_bytes()), before)
+        identity.unlink()
+        identity.symlink_to(self.conf)
+        self.assertEqual(self.status()["operation"], {"active": False, "locked": True})
 
     def test_background_reconcile_after_disable_is_a_quiet_noop(self):
         before = self.config()
