@@ -49,7 +49,8 @@ def check(directory):
                 suffix = 'rockchip-armv8-aarch64_generic.apk' if 'rockchip' in kind else ('25.12.5-x86_64.apk' if kind.endswith('apk') else '24.10.8-x86_64.ipk')
                 assert suffix in result.stdout, result.stdout
                 manager = 'opkg' if kind.endswith('ipk') else 'apk'
-                assert fixture.log.read_text().splitlines() == ['ctl disable', manager + ' update', manager + (' install' if manager == 'opkg' else ' add')]
+                expected=['opkg update','ctl disable','opkg install'] if manager=='opkg' else ['apk check-local','ctl disable','apk add-local']
+                assert fixture.log.read_text().splitlines() == expected
                 assert list((fixture.root / 'etc/adzero-backups').glob('*/state.tar.gz'))
                 results.append({'target': kind, 'catalog_ending': ending, 'selection_checksum_backup_restore_install': 'passed'})
             finally:

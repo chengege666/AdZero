@@ -3,7 +3,7 @@
 set -eu
 set -f
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.15.0}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.15.1}
 LOCAL_DIR=
 ENABLE=1
 UPGRADE=0
@@ -98,7 +98,7 @@ resume_watchers() {
 cleanup() {
 	resume_watchers
 	[ "$INSTALL_LOCK_OWNED" != 1 ] || rmdir "$INSTALL_LOCK" 2>/dev/null || :
-	rm -f "$TMP/releases.tsv" "$TMP/package.$EXT" "$TMP/disable.log" "$TMP/watchers"
+	rm -f "$TMP/releases.tsv" "$TMP/package.$EXT" "$TMP/disable.log" "$TMP/watchers" "$TMP/preflight.log"
 	rmdir "$TMP" 2>/dev/null || :
 }
 trap 'cleanup' 0
@@ -159,6 +159,23 @@ fetch() {
 		curl --fail --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 --output "$2" "${BASE_URL%/}/$1" || fail '下载失败；没有更改 DNS 配置。'
 	fi
 }
+APK_LOCAL=0
+prepare_package() {
+	# Resolve against installed packages only. A local APK with satisfied
+	# dependencies must not depend on unrelated repository availability.
+	if [ "$PM" = apk ]; then
+		if apk add --simulate --no-network --repositories-file /dev/null --allow-untrusted "$TMP/package.apk" > "$TMP/preflight.log" 2>&1; then
+			APK_LOCAL=1
+			printf 'AdZero: 本地安装包依赖检查通过，无需刷新软件源。\n'
+		else
+			printf 'AdZero: 需要联网准备依赖，先检查固件软件源；尚未关闭旧版保护。\n'
+			apk update || fail '固件软件源更新失败，尚未关闭旧版保护。请恢复软件源后重试。'
+			apk add --simulate --allow-untrusted "$TMP/package.apk" || fail '安装包或依赖预检失败，尚未关闭旧版保护。'
+		fi
+	else
+		opkg update || fail '固件软件源更新失败，尚未关闭旧版保护。请恢复软件源后重试。'
+	fi
+}
 fetch releases.tsv "$TMP/releases.tsv"
 # A Windows-authored catalog may use CRLF. Remove only the line terminator;
 # retain exact firmware/target/ABI/format matching and duplicate rejection.
@@ -183,6 +200,8 @@ if [ "$UPGRADE" = 1 ] && [ -x "$CTL" ]; then
 	pause_watchers
 	wait_upgrade_lock
 fi
+# Repository errors must happen before the OLD controller restores its state.
+prepare_package
 BACKUP="$ROOT/etc/adzero-backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP"
 chmod 700 "$ROOT/etc/adzero-backups" "$BACKUP"
@@ -208,12 +227,13 @@ if [ "$UPGRADE" = 1 ]; then
 fi
 printf 'AdZero: 安装 %s；配置备份：%s\n' "$FILE" "$BACKUP/config.tar.gz"
 if [ "$PM" = opkg ]; then
-	opkg update || fail '固件软件源更新失败。'
 	opkg install "$TMP/package.ipk" || fail '安装失败，请检查当前固件软件源依赖。'
 else
-	apk update || fail '固件软件源更新失败。'
-	# Refresh repository metadata with normal verification before allowing our unsigned package.
-	apk add --allow-untrusted "$TMP/package.apk" || fail '安装失败，请检查当前固件软件源依赖。'
+	if [ "$APK_LOCAL" = 1 ]; then
+		apk add --no-network --repositories-file /dev/null --allow-untrusted "$TMP/package.apk" || fail '本地安装失败；备份已保留，请核对软件包状态后恢复保护。'
+	else
+		apk add --allow-untrusted "$TMP/package.apk" || fail '安装失败；备份已保留，请核对软件包与依赖后恢复保护。'
+	fi
 fi
 [ -x "$CTL" ] || fail '安装后缺少 AdZero 控制程序。'
 if [ "$ENABLE" = 1 ]; then

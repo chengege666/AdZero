@@ -28,7 +28,7 @@ class InstallerTest(unittest.TestCase):
         self.write("etc/config/keep", "private=original\n")
         self.write("usr/lib/opkg/status", "fixture")
         self.executable(self.bin / "id", "#!/bin/sh\necho 0\n")
-        self.executable(self.bin / "opkg", '#!/bin/sh\nif [ "$1" = print-architecture ]; then echo "arch x86_64 10"; else echo "opkg $1" >> "$MOCK_INSTALL_LOG"; fi\n')
+        self.executable(self.bin / "opkg", '#!/bin/sh\nif [ "$1" = print-architecture ]; then echo "arch x86_64 10"; else echo "opkg $1" >> "$MOCK_INSTALL_LOG"; [ "$1" != update ] || exit "${MOCK_UPDATE_FAIL:-0}"; fi\n')
         self.executable(self.root / "usr/libexec/adzero/ctl", '#!/bin/sh\necho "ctl $1" >> "$MOCK_INSTALL_LOG"\n')
         package = self.release / "adzero-test.ipk"
         package.write_bytes(b"not executed - package manager fixture")
@@ -109,7 +109,22 @@ class InstallerTest(unittest.TestCase):
         self.write("etc/openwrt_release", "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.5'\nDISTRIB_REVISION='r33051-f5dae5ece4'\nDISTRIB_TARGET='rockchip/armv8'\nDISTRIB_ARCH='" + declared + "'\n")
         (self.root / "usr/lib/opkg/status").unlink()
         self.write("lib/apk/db/installed", "fixture")
-        self.executable(self.bin / "apk", '#!/bin/sh\nif [ "$1" = --print-arch ]; then echo "' + arch + '"; else echo "apk $1" >> "$MOCK_INSTALL_LOG"; fi\n')
+        self.executable(self.bin / "apk", '''#!/bin/sh
+if [ "$1" = --print-arch ]; then echo "''' + arch + '''"; exit 0; fi
+if [ "$1" = update ]; then echo 'apk update' >> "$MOCK_INSTALL_LOG"; exit "${MOCK_UPDATE_FAIL:-0}"; fi
+simulate=0; offline=0
+for arg in "$@"; do
+  [ "$arg" != --simulate ] || simulate=1
+  [ "$arg" != --no-network ] || offline=1
+done
+case "$simulate:$offline" in
+  1:1) echo 'apk check-local' >> "$MOCK_INSTALL_LOG"; exit "${MOCK_APK_LOCAL_FAIL:-0}" ;;
+  1:0) echo 'apk check-online' >> "$MOCK_INSTALL_LOG"; exit "${MOCK_APK_ONLINE_FAIL:-0}" ;;
+  0:1) echo 'apk add-local' >> "$MOCK_INSTALL_LOG" ;;
+  *) echo "apk $1" >> "$MOCK_INSTALL_LOG" ;;
+esac
+exit "${MOCK_APK_INSTALL_FAIL:-0}"
+''')
         package = self.release / "arm-test.apk"
         package.write_bytes(b"ARM SDK package fixture, not executed")
         sha = hashlib.sha256(package.read_bytes()).hexdigest()
@@ -119,7 +134,7 @@ class InstallerTest(unittest.TestCase):
         self.arm_apk()
         result = self.run_installer()
         self.assertIn("arm-test.apk", result.stdout)
-        self.assertEqual(self.log.read_text().splitlines(), ["apk update", "apk add", "ctl enable"])
+        self.assertEqual(self.log.read_text().splitlines(), ["apk check-local", "apk add-local", "ctl enable"])
 
     def crlf_catalog(self):
         path = self.release / 'releases.tsv'
@@ -136,7 +151,7 @@ class InstallerTest(unittest.TestCase):
         self.upgrade_fixture()
         result = self.run_installer('--upgrade', '--no-enable')
         self.assertIn('arm-test.apk', result.stdout)
-        self.assertEqual(self.log.read_text().splitlines(), ['ctl disable', 'apk update', 'apk add'])
+        self.assertEqual(self.log.read_text().splitlines(), ['apk check-local', 'ctl disable', 'apk add-local'])
 
     def test_crlf_duplicates_still_stop_before_restore_and_install(self):
         self.arm_apk()
@@ -153,12 +168,62 @@ class InstallerTest(unittest.TestCase):
     def test_apk_repository_arch_spelling_is_accepted_for_exact_target(self):
         self.arm_apk(arch="aarch64_generic")
         self.run_installer("--no-enable")
-        self.assertEqual(self.log.read_text().splitlines(), ["apk update", "apk add"])
+        self.assertEqual(self.log.read_text().splitlines(), ["apk check-local", "apk add-local"])
 
     def test_rockchip_mismatched_apk_cpu_is_rejected_before_install(self):
         self.arm_apk(arch="x86_64")
         self.run_installer(success=False)
         self.assertFalse(self.log.exists())
+
+    def test_apk_local_upgrade_ignores_broken_repository_and_keeps_flags_for_install(self):
+        self.arm_apk()
+        self.upgrade_fixture()
+        self.env['MOCK_UPDATE_FAIL']='1'
+        result=self.run_installer('--upgrade')
+        self.assertIn('无需刷新软件源',result.stdout)
+        self.assertEqual(self.log.read_text().splitlines(),['apk check-local','ctl disable','apk add-local','ctl enable'])
+
+    def test_apk_missing_dependency_repository_error_preserves_old_protection(self):
+        self.arm_apk()
+        journal=self.upgrade_fixture()
+        self.env.update(MOCK_APK_LOCAL_FAIL='1',MOCK_UPDATE_FAIL='1')
+        result=self.run_installer('--upgrade',success=False)
+        self.assertIn('尚未关闭旧版保护',result.stderr)
+        self.assertEqual(self.log.read_text().splitlines(),['apk check-local','apk update'])
+        self.assertEqual(journal.read_text(),'private-recovery-data')
+        self.assertFalse((self.root/'etc/adzero-backups').exists())
+        self.assertFalse((self.root/'tmp/adzero-install.lock').exists())
+
+    def test_apk_missing_dependency_checks_online_before_disable(self):
+        self.arm_apk()
+        self.upgrade_fixture()
+        self.env['MOCK_APK_LOCAL_FAIL']='1'
+        self.run_installer('--upgrade')
+        self.assertEqual(self.log.read_text().splitlines(),['apk check-local','apk update','apk check-online','ctl disable','apk add','ctl enable'])
+
+    def test_apk_online_preflight_failure_does_not_disable_or_install(self):
+        self.arm_apk()
+        journal=self.upgrade_fixture()
+        self.env.update(MOCK_APK_LOCAL_FAIL='1',MOCK_APK_ONLINE_FAIL='1')
+        self.run_installer('--upgrade',success=False)
+        self.assertTrue(journal.exists())
+        self.assertEqual(self.log.read_text().splitlines(),['apk check-local','apk update','apk check-online'])
+
+    def test_apk_commit_failure_retains_backup_without_claiming_enable_or_rollback(self):
+        self.arm_apk()
+        self.upgrade_fixture()
+        self.env['MOCK_APK_INSTALL_FAIL']='1'
+        result=self.run_installer('--upgrade',success=False)
+        self.assertIn('核对软件包状态',result.stderr)
+        self.assertEqual(self.log.read_text().splitlines(),['apk check-local','ctl disable','apk add-local'])
+        self.assertTrue(list((self.root/'etc/adzero-backups').glob('*/state.tar.gz')))
+
+    def test_opkg_repository_error_preserves_old_protection(self):
+        journal=self.upgrade_fixture()
+        self.env['MOCK_UPDATE_FAIL']='1'
+        self.run_installer('--upgrade',success=False)
+        self.assertTrue(journal.exists())
+        self.assertEqual(self.log.read_text().splitlines(),['opkg update'])
 
     def test_rockchip_mismatched_declared_abi_is_rejected(self):
         self.arm_apk(declared="aarch64_cortex-a53")
@@ -197,7 +262,7 @@ fi
         import tarfile
         self.upgrade_fixture()
         self.run_installer("--upgrade")
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "opkg update", "opkg install", "ctl enable"])
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "ctl disable", "opkg install", "ctl enable"])
         backups = list((self.root / "etc/adzero-backups").glob("*/state.tar.gz"))
         self.assertEqual(len(backups), 1)
         with tarfile.open(backups[0]) as archive:
@@ -216,13 +281,13 @@ fi
         Path(self.env["MOCK_UPGRADE_BUSY"]).touch()
         result = self.run_installer("--upgrade")
         self.assertIn("最多 3 秒", result.stdout)
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "wait 1", "ctl disable", "opkg update", "opkg install", "ctl enable"])
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "ctl disable", "wait 1", "ctl disable", "opkg install", "ctl enable"])
 
     def test_upgrade_retries_modern_zero_wait_busy_without_nested_30_second_wait(self):
         self.upgrade_fixture("modern_busy")
         Path(self.env["MOCK_UPGRADE_BUSY"]).touch()
         self.run_installer("--upgrade")
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "wait 1", "ctl disable", "opkg update", "opkg install", "ctl enable"])
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "ctl disable", "wait 1", "ctl disable", "opkg install", "ctl enable"])
 
     def test_upgrade_persistent_busy_preserves_lock_and_recovery(self):
         journal = self.upgrade_fixture("busy_forever")
@@ -240,18 +305,18 @@ fi
         journal = self.upgrade_fixture("restore_failure")
         self.run_installer("--upgrade", success=False)
         self.assertTrue(journal.exists())
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable"])
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "ctl disable"])
 
     def test_upgrade_exit_zero_with_remaining_journal_is_rejected(self):
         journal = self.upgrade_fixture("false_success")
         self.run_installer("--upgrade", success=False)
         self.assertTrue(journal.exists())
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable"])
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "ctl disable"])
 
     def test_upgrade_no_enable_leaves_protection_off(self):
         self.upgrade_fixture()
         self.run_installer("--upgrade", "--no-enable")
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable", "opkg update", "opkg install"])
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "ctl disable", "opkg install"])
 
     def test_second_installer_does_not_remove_first_installer_lock(self):
         lock = self.root / "tmp/adzero-install.lock"
@@ -337,8 +402,17 @@ while :; do /bin/sleep 0.05; done
         self.env["MOCK_UPGRADE_MODE"] = "restore_failure"
         self.run_installer("--upgrade", success=False)
         self.wait_for(lambda: self.process_state(process) != "T")
-        self.assertEqual(self.log.read_text().splitlines(), ["ctl disable"])
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "ctl disable"])
         self.assertTrue((self.root / "etc/adzero/adapter.json").exists())
+
+    def test_live_scheduler_resumes_after_preflight_repository_failure(self):
+        process=self.live_watcher()
+        self.env['MOCK_UPDATE_FAIL']='1'
+        self.run_installer('--upgrade',success=False)
+        self.wait_for(lambda:self.process_state(process)!='T')
+        self.assertTrue((self.root/'etc/adzero/adapter.json').exists())
+        self.assertFalse((self.root/'tmp/adzero-install.lock').exists())
+        self.assertEqual(self.log.read_text().splitlines(),['opkg update'])
 
     def test_previously_stopped_scheduler_is_not_resumed(self):
         process = self.live_watcher()

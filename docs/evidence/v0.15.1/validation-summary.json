@@ -1,0 +1,14 @@
+{
+  "version": "0.15.1",
+  "source_sha256": "427c1a29ec30358bbe2e7a958eb85cbcb45ae8541485f18814e9cff1df975798",
+  "installer_sha256": "62aa5031293c967a0e17ef5877b79f42de1980b5160ff0c8e54d9d604fb5d2bf",
+  "native_tests": 417,
+  "ui_assertions": 200,
+  "sdk_builds": 3,
+  "payload_files": 39,
+  "delivery_cases": 6,
+  "real_apk_checks": 3,
+  "router": "not_connected",
+  "runtime_dependencies_added": false,
+  "scope": "installer change; APK database/solver/package installation native with synthetic packages/controller; full regressions use existing isolated service fixtures"
+}

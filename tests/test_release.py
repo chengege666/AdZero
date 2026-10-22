@@ -109,7 +109,8 @@ class ReleaseTest(unittest.TestCase):
                     expected = 'rockchip-armv8-aarch64_generic.apk' if kind == 'apk-arm' else ('25.12.5-x86_64.apk' if kind == 'apk-x86' else '24.10.8-x86_64.ipk')
                     self.assertIn(expected, reply.stdout)
                     manager = 'opkg' if kind == 'ipk' else 'apk'
-                    self.assertEqual(fixture.log.read_text().splitlines(), ['ctl disable', manager+' update', manager+(' install' if manager == 'opkg' else ' add')])
+                    expected_ops=['opkg update','ctl disable','opkg install'] if manager=='opkg' else ['apk check-local','ctl disable','apk add-local']
+                    self.assertEqual(fixture.log.read_text().splitlines(),expected_ops)
                 finally:
                     fixture.doCleanups()
 

@@ -1,0 +1,36 @@
+{
+  "apk": "apk-tools 3.0.5, compiled for x86_64.",
+  "apk_sha256": "4081b87131cf08cd7203ff81a3793d22e24ab84e8c714b5cd2fb4edf5a7fa9c3",
+  "installer_sha256": "62aa5031293c967a0e17ef5877b79f42de1980b5160ff0c8e54d9d604fb5d2bf",
+  "checks": 3,
+  "cases": [
+    {
+      "case": "installed_dependencies",
+      "operations": [
+        "apk check-local",
+        "ctl disable",
+        "apk add-local",
+        "ctl enable"
+      ],
+      "passed": true
+    },
+    {
+      "case": "missing_dependency",
+      "operations": [
+        "apk check-local",
+        "apk update"
+      ],
+      "passed": true
+    },
+    {
+      "case": "version_mismatch",
+      "operations": [
+        "apk check-local",
+        "apk update"
+      ],
+      "passed": true
+    }
+  ],
+  "repository_requests": 0,
+  "scope": "real apk database/solver/package installation and delivered installer; synthetic packages and controller; no router service or host package changes"
+}

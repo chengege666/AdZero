@@ -94,6 +94,18 @@ python3 scripts/check_release_delivery.py dist/v0.12.1/release
 
 发布后还应重新下载文件，检查校验和及清单行尾，并对下载回来的发行目录执行同样检查。
 
+## v0.15.1 软件源故障与本地 APK 升级
+
+安装器先用 `apk add --simulate --no-network --repositories-file /dev/null` 检查本地包与已安装依赖，通过后才关闭旧版，再用相同的本地限制安装。若不能离线准备，软件源刷新和在线模拟必须在关闭之前通过；不会因无关第三方源失败而先停止保护。不修改系统的软件源列表或跳过依赖检查。
+
+除 `tests/test_installer.py` 的失败注入、信号和调度器检查外，可用官方 SDK 的主机 APK 工具执行真实数据库与依赖求解测试：
+
+~~~sh
+python3 scripts/check_apk_installer.py --apk /absolute/path/to/sdk/staging_dir/host/bin/apk --output artifacts/apk-installer-result.json
+~~~
+
+它在临时根中生成并安装合成包，检查依赖已满足时的本地版本升级、缺失依赖及版本不满足时保留旧状态；不可用源仅绑定回环地址。控制器为替身，不操作主机软件包数据库、真实 DNS 或路由器；不能代替设备升级验收。
+
 ## 开发预览
 
 python3 scripts/build_ipk.py 仍能生成可重复的离线 OPKG 归档，供测试路径和权限。它不进入公开安装清单。正式发行来源与测试证据见 [LOCAL_VALIDATION.md](LOCAL_VALIDATION.md)。
