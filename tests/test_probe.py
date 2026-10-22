@@ -159,11 +159,30 @@ class ProbeTest(unittest.TestCase):
 
     def test_ssrplus_selection_is_not_a_boolean_enable_flag(self):
         self.data['uci']={'shadowsocksr.@global[0].global_server':'node_main'}
+        self.write('proc/800/cmdline','/var/etc/ssrplus/bin/ss-redir\0-c\0/var/etc/ssrplus/tcp-only-ssr-retcp.json\0')
         plugins={p['id']:p for p in self.probe()['plugins']}
         self.assertTrue(plugins['ssrplus']['active'])
-        self.assertFalse(plugins['ssrplus']['adapter_supported'])
+        self.assertTrue(plugins['ssrplus']['adapter_supported'])
+        self.assertFalse(plugins['ssrplus']['routing_supported'])
         self.data['uci']['shadowsocksr.@global[0].global_server']='nil'
+        (self.root/'proc/800/cmdline').unlink()
         self.assertFalse(next(p for p in self.probe()['plugins'] if p['id']=='ssrplus')['active'])
+
+    def test_stopped_ssrplus_node_does_not_conflict_with_passwall(self):
+        self.data['uci']={'shadowsocksr.@global[0].global_server':'saved_node','passwall.@global[0].enabled':'1'}
+        self.write('proc/800/cmdline','/usr/bin/xray\0run\0-c\0/tmp/etc/passwall/acl/default/config.json\0')
+        status=self.probe()
+        self.assertEqual(status['dns']['active_proxies'],['passwall'])
+        self.assertEqual(next(p for p in status['plugins'] if p['id']=='ssrplus')['runtime'],'stopped')
+
+    def test_ssrplus_config_ownership_handles_symlinked_core_and_excludes_dns_tools(self):
+        self.data['uci']={'shadowsocksr.@global[0].global_server':'saved_node'}
+        path='proc/800/cmdline'
+        self.write(path,'/usr/bin/xray\0run\0-c\0/var/etc/ssrplus/tcp-udp-ssr-retcp.json\0')
+        self.assertEqual(self.probe()['dns']['active_proxies'],['ssrplus'])
+        for raw in ('/var/etc/ssrplus/bin/dns2tcp\0-L\0localhost\0','/var/etc/ssrplus/bin/ssr-redir\0-c\0/var/etc/ssrplus/ssr-server1.json\0'):
+            self.write(path,raw)
+            self.assertEqual(self.probe()['dns']['active_proxies'],[])
 
     def test_homeproxy_server_or_log_cleaner_is_not_a_client(self):
         self.data['uci']={'homeproxy.config.main_node':'nil'}

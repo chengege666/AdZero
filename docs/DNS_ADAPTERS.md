@@ -14,7 +14,19 @@ GeoSite 使用 RootDomain 匹配，保留原上游与其他请求/响应规则�
 
 原生 block_host 追加带起止标记的域名，备份 use_block_list 并设为 1，然后重启 PassWall 使其原生 DNS 生成器读取列表。恢复只删除自有块，保留列表中后来增加的用户域名。ACL、直连/代理列表的优先级和各 DNS 后端需真机检查。
 
-## OpenClash
+## 运行加载检查
+
+v0.14.0 的服务调用保留 `/etc/rc.common` 解释器参数，修复直接 `sh init.d/name restart` 只定义函数却返回成功的问题。此修正适用于 PassWall、OpenClash、Nikki 和无代理时的 dnsmasq。PassWall 默认 dnsmasq 模式另有运行配置检查和有限重试；恢复原配置时不启动已停止的代理。
+
+## SSR Plus+（v0.14.0）
+
+使用原生 `/etc/ssrplus/deny.list` 标记块，读取黑白列表、Netflix 与原生域名转发列表，为命中屏蔽父域名的子域名补齐屏蔽项。保留节点、DNS 上游和原生分流，不触发 SSR Plus+ 自带广告订阅更新。当前不支持 AdZero 自动分流，开启前会明确拒绝，尚未写入配置。
+
+原生服务重新生成 DNS 后，检查运行中的系统 dnsmasq 是否包含 `dnsmasq-ssrplus.conf`、其中指向的生成目录是否加载最多三个屏蔽样本。隔离验收使用固定提交的原生 `gfw2ipset.sh`，控制服务环境，不运行代理传输与防火墙；真实设备仍待验收。
+
+参考：[SSR Plus+ 原生生成器](https://github.com/fw876/helloworld/blob/2abdc9aa9e19607774dc9789709212b70b8607c6/luci-app-ssr-plus/root/usr/share/shadowsocksr/gfw2ipset.sh)。
+
+## OpenClash 原生覆写
 
 在官方 openclash_custom_overwrite.sh 的 shebang 后插入自有调用，确保现有 exit 0 前执行。钩子只处理 /etc/openclash 下传入的运行配置；订阅原文保留。Ruby 安全读取 YAML，支持 anchors，生成 JSON（合法 YAML），并调用现有 clash_meta -t 检查后原子替换。
 

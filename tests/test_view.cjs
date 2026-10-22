@@ -161,6 +161,10 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   }
   reset({ state: 'inconsistent', managed: true, backend: { state: 'failed', errors: 1 } });
   check(text(root).includes('过滤后端报告错误') && !find('az-toggle').disabled, 'essential backend warning and recovery survive simplification');
+  reset({state:'configured_unverified',adapter:{plugin:'ssrplus',stage:'configured_unverified'},policy:{allowed:[],routing_enabled:false}});
+  check(text(root).includes('SSR Plus+')&&find('az-routing').disabled&&!find('az-toggle').disabled,'SSR Plus+ filtering works while unsupported automatic routing is disabled');
+  reset({state:'configured_unverified',adapter:{plugin:'ssrplus',stage:'configured_unverified'},policy:{allowed:[],routing_enabled:true}});
+  check(!find('az-routing').disabled,'saved automatic routing can still be turned off after switching to SSR Plus+');
   reset({ state: 'error', error: '<img src=x onerror=alert(1)>' });
   check(!nodes(root, n => n.scalarHtml).length, 'untrusted data cannot reach innerHTML');
   reset(); check(find('az-domain').disabled && find('az-lookup').disabled,'query unavailable when off');
@@ -370,6 +374,12 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   commands.length=0;await poll.tick();
   check(text(find('az-live-metrics')).includes('PassWall')&&text(find('az-live-metrics')).includes('246,925')&&!text(find('az-live-metrics')).includes('NaiLink'),'light snapshot synchronizes adapter and domains after background switch');
   check(commands.length===0,'proxy card changes without full status, download or reload');
+  observationFixture.connection.runtime={state:'missing',reason:'rules_not_included'};
+  observationFixture.connection.confirmed=false;await poll.tick();
+  check(text(find('az-live-metrics')).includes('DNS 规则未加载')&&!text(find('az-live-metrics')).includes('规则已同步'),'saved PassWall rules are not reported as loaded DNS');
+  check(!find('az-toggle').attrs.disabled,'missing runtime leaves protection controls operable');
+  observationFixture.connection.runtime={state:'ready',reason:null};observationFixture.connection.confirmed=true;await poll.tick();
+  check(text(find('az-live-metrics')).includes('规则已同步'),'runtime recovery appears on the next lightweight poll');
   observationFixture.current={matched_positive:2};await poll.tick();
   check(text(find('az-live-health')).includes('2 条命中规则')&&observationFixture.blocked===4,'positive rule hits are diagnosed without inflating blocked counter');
   observationFixture.current={matched_positive:0};await poll.tick();

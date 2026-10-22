@@ -42,7 +42,7 @@ export function adapter_context(reader){
 				if(raw!=null&&length(raw)==s.size){
 					let data=json(raw);
 					if(data?.schema==1&&type(data.plugin)=='string'&&length(data.plugin)&&type(data.files)=='array'&&type(data.stage)=='string')
-						value={present:true,plugin:data.plugin,stage:data.stage,domains:type(data.count)=='int'&&data.count>=0?data.count:null,routing_mode:data.split?.mode??'inactive',reason:data.stage=='configured_unverified'?null:'adapter_pending'};
+						value={present:true,plugin:data.plugin,stage:data.stage,domains:type(data.count)=='int'&&data.count>=0?data.count:null,routing_mode:data.split?.mode??'inactive',runtime_supported:data.runtime_supported===true,runtime_samples:data.runtime_samples??[],runtime_retry_exhausted:(data.runtime_retries??0)>=3,reason:data.stage=='configured_unverified'?null:'adapter_pending'};
 				}
 			}catch(e){}
 		}

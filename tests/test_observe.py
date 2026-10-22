@@ -211,13 +211,13 @@ class ObserveTest(unittest.TestCase):
 
     def test_adapter_stage_after_large_provider_is_found_for_each_plugin(self):
         steps=[]
-        for plugin in ('nailink','passwall','openclash','nikki','none'):
+        for plugin in ('nailink','passwall','openclash','nikki','ssrplus','none'):
             raw=json.dumps(self.journal(plugin))
             self.assertGreater(raw.index('"stage"'),1024)
             steps.append({'raw':raw})
         result=self.contexts(steps)
         self.assertTrue(all(v['stage']=='configured_unverified' and v['reason'] is None for v in result['values']))
-        self.assertEqual(result['reads'],5)
+        self.assertEqual(result['reads'],6)
 
     def test_large_journal_metadata_is_cached_instead_of_reparsed_each_tick(self):
         result=self.contexts([{'raw':json.dumps(self.journal()),'repeat':1000}])

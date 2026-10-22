@@ -23,25 +23,25 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 - **可编辑 DNS**：国内、国外 DNS 都有默认地址，可以自行添加、删除和调整顺序。
 - **可选自动分流**：有受支持代理时，国内直连、国外走当前代理；无代理时使用国内 DNS 和本地直连。默认关闭。
 
-提供 NaiLink、PassWall、OpenClash、Nikki 的 DNS 适配；使用 adblock-fast 处理广告规则，无需另外安装 AdGuard Home 或 SmartDNS。
+提供 NaiLink、PassWall、OpenClash、Nikki 的 DNS 适配，并支持 SSR Plus+ 原生域名广告过滤。使用 adblock-fast 处理广告规则，无需另外安装 AdGuard Home 或 SmartDNS。
 
 ## 安装与升级
 
-当前为 **v0.13.0 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.14.0 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.13.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.14.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.13.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.14.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.13.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.14.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
@@ -63,7 +63,9 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 SDK 构建与隔离测试已通过，实际设备的网络与过滤效果仍需验证。ImmortalWrt、iStoreOS、其他版本与架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进，安装器会拒绝尚未匹配的组合。
 
-NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。PassWall 2、SSR Plus+ 和 HomeProxy 目前仅识别，不自动写入其配置；同时开启多个代理或遇到未知代理时，不会自动接管。
+NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。
+
+PassWall 的默认 dnsmasq 和 SSR Plus+ 接入会核对运行进程、配置加载路径与屏蔽规则样本。未加载时有限重试并显示提示，页面仍可操作；这不能代替终端效果检测。内容未变且运行配置正常时，不重复重启代理。
 
 切换时先停止旧代理、启动新代理，再点击「重新检测」。NaiLink 的管理服务和代理内核分别判断；说明见 [切换代理](docs/PROXY_SWITCHING.md)。
 

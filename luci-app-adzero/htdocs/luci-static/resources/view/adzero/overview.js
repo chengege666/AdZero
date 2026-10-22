@@ -207,7 +207,8 @@ return view.extend({
 	renderMetrics:function(s){
 		var o=this.observation||{},available=o.available===true,hasCounts=available&&(o.active===true||o.queries>0),ready=flags(s).enabled&&(s.backend||{}).state==='ready';
 		var connection=available&&o.connection?o.connection:null,adapter=connection||s.adapter||{},active=names[adapter.plugin]||(adapter.plugin==='none'?_('路由器 DNS'):_('接入待确认')),
-			synced=connection?connection.confirmed===true:adapter.stage==='configured_unverified',ratio=available&&o.queries>0?(100*o.blocked/o.queries).toFixed(1)+'%':'—';
+			synced=connection?connection.confirmed===true:adapter.stage==='configured_unverified'&&(!adapter.runtime||adapter.runtime.state==='ready'),ratio=available&&o.queries>0?(100*o.blocked/o.queries).toFixed(1)+'%':'—';
+		var connectionHint=adapter.runtime&&adapter.runtime.state==='missing'?(adapter.runtime_retry_exhausted?_('DNS 规则未加载，请重新加载'):_('DNS 规则未加载，等待自动同步')):adapter.runtime&&adapter.runtime.state==='unknown'?_('配置已保存，DNS 加载待确认'):synced?_('规则已同步'):_('接入待确认');
 		var detected=(((s.compatibility||{}).dns||{}).active_proxies||[]);
 		if(adapter.plugin==='none'&&detected.length===1&&names[detected[0]]){active=names[detected[0]];synced=false;}
 		return el('div',{'class':'az-stats-grid az-live-grid'},[
@@ -218,7 +219,7 @@ return view.extend({
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('规则域名')),
 				el('strong',{'class':'az-number'},number(ready?(connection&&typeof connection.domains==='number'?connection.domains:s.backend.domains):null)),el('p',{},_('当前加载的有效域名'))]),
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('当前接入')),
-				el('strong',{'class':'az-stat-value az-current-adapter',translate:'no'},flags(s).enabled?active:_('未开启')),el('p',{},flags(s).enabled?(synced?_('规则已同步'):_('接入待确认')):_('开启后自动识别'))])
+				el('strong',{'class':'az-stat-value az-current-adapter',translate:'no'},flags(s).enabled?active:_('未开启')),el('p',{},flags(s).enabled?connectionHint:_('开启后自动识别'))])
 		]);
 	},
 	renderRecent:function(){
@@ -278,6 +279,8 @@ return view.extend({
 	renderObservationHealth:function(){
 		var o=this.observation||{},c=o.current||{};
 		if(!o.available||!o.active)return null;
+		if(o.connection&&o.connection.runtime_retry_exhausted)return el('p',{'class':'az-inline-warning'},_('自动同步多次未完成，已暂停重试。请检查代理后点击“重新加载”；仍可关闭保护或调整规则。'));
+		if(o.connection&&o.connection.runtime&&o.connection.runtime.state==='missing')return el('p',{'class':'az-inline-warning'},_('代理 DNS 尚未加载当前屏蔽规则，后台将有限重试。也可点击“重新加载”；无需重新下载订阅。'));
 		if(c.matched_positive>0)return el('p',{'class':'az-inline-warning'},_('当前接入期间，有 ')+number(c.matched_positive)+_(' 条命中规则的查询仍返回了 IP 地址。请用“效果检测”核对实际过滤；DNS 查询量增加不等于拦截量增加。'));
 		return el('p',{'class':'az-live-caption'},_('收到新的拦截应答才会增加计数；没有广告查询或设备直接使用缓存时，数字保持不变。'));
 	},
@@ -354,13 +357,13 @@ return view.extend({
 		nodes.push(el('div',{id:'az-live-health'},[self.renderObservationHealth()]));
 		nodes.push(el('div',{id:'az-live-verification'},[self.renderVerification()]));
 		nodes.push(el('div',{id:'az-live-recent'},[self.renderRecent()]));
-		var network=[];
+		var network=[],routingUnavailable=adapter.plugin==='ssrplus'||((((s.compatibility||{}).dns||{}).active_proxies||[]).join(',')==='ssrplus');
 		network.push(el('section', {'class':'az-card az-domain-card'},[
 			el('div',{'class':'az-section-heading'},[el('h3',{},_('自动分流')),
-				el('button',{id:'az-routing',type:'button','class':'az-toggle'+((self.draft?self.draft.routing_enabled:routingWanted)?' is-on':''),role:'switch','aria-checked':(self.draft?self.draft.routing_enabled:routingWanted)?'true':'false','aria-label':_('自动分流'),disabled:locked||!(f.enabled||s.state==='disabled'&&!s.managed)?true:null,
+				el('button',{id:'az-routing',type:'button','class':'az-toggle'+((self.draft?self.draft.routing_enabled:routingWanted)?' is-on':''),role:'switch','aria-checked':(self.draft?self.draft.routing_enabled:routingWanted)?'true':'false','aria-label':_('自动分流'),disabled:locked||!(f.enabled||s.state==='disabled'&&!s.managed)||routingUnavailable&&!(self.draft?self.draft.routing_enabled:routingWanted)?true:null,
 					click:function(){return self.stageRouting(!(self.draft?self.draft.routing_enabled:routingWanted));}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))) ]),
 			el('p',{'class':'az-card-copy'},self.draft&&self.draft.routing_enabled!==routingWanted?_('待应用：')+(self.draft.routing_enabled?_('开启自动分流'):_('关闭自动分流'))+_('。当前网络继续使用已应用配置。'):routingWanted && f.enabled ? routing.mode==='proxy'?_('国内直连 / 国外代理 · 配置已应用') : routing.mode==='direct'?_('国内 DNS / 全部直连 · 配置已应用'):_('分流接入待确认') : f.paused?_('恢复保护后继续应用已保存的选择。'):!f.enabled?_('可先选择分流，应用后在开启保护时生效。'):_('自动识别当前代理，同时配置 DNS 和连接去向。')),
-			el('p',{'class':'az-operation-note'},_('有代理时国内直连、国外走当前代理；无代理时使用国内 DNS 与本地直连。切换可能短暂重载网络，实际出口需在设备上验证。')) ]));
+			el('p',{'class':'az-operation-note'},routingUnavailable?_('SSR Plus+ 当前支持广告过滤，请关闭 AdZero 自动分流；连接去向与 DNS 上游由 SSR Plus+ 原生设置管理。'):_('有代理时国内直连、国外走当前代理；无代理时使用国内 DNS 与本地直连。切换可能短暂重载网络，实际出口需在设备上验证。')) ]));
 		network.push(self.renderDNS(s));
 		nodes.push(el('details',{'class':'az-card az-network-settings',open:self.networkOpen?true:null,toggle:function(e){self.networkOpen=e.target.open;}},[
 			el('summary',{},[el('div',{},[el('strong',{},_('DNS 与分流')),el('p',{},routingWanted?_('自动分流已开启'):_('使用当前网络设置'))]),el('span',{'class':'az-details-hint'},_('展开设置'))]),el('div',{'class':'az-network-body'},network)
@@ -707,7 +710,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.13.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.14.0' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);

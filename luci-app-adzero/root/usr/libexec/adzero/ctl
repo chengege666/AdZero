@@ -148,7 +148,7 @@ reload_current() {
 	if ! "$SOURCES" cache-current >/dev/null 2>&1 && ! "$SOURCES" cache-live >/dev/null 2>&1; then
 		backend_restart dl || error '重新加载后端失败，恢复记录已保留。'
 	fi
-	"$ADAPTER" apply || error '重新加载代理接入未完成，恢复记录已保留。'
+	ADZERO_ADAPTER_REFRESH=1 "$ADAPTER" apply || error '重新加载代理接入未完成，恢复记录已保留。'
 	printf 'reloaded current configuration\n'
 }
 backend_rebuild_if_changed() {

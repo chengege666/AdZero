@@ -29,7 +29,7 @@ rockchip/armv8 的官方 profiles 元数据与用户回报均为 OpenWrt 25.12.5
 | OpenClash | 原生覆写钩子 + Meta 内核配置检查 | 不同插件/核心版本、订阅刷新、TUN |
 | Nikki | 原生混入 + UCI 数组合并，核对生成配置 | 不同插件/核心版本、重启、TUN |
 | PassWall 2 | 识别，拒绝自动接入 | 独立适配实现 |
-| SSR Plus+ | 按原生 global_server 节点选择识别，尚未自动接入 | 独立 DNS 适配和真实设备 |
+| SSR Plus+ | 原生 deny.list 广告过滤、运行 DNS 配置检查；保留原生分流，需关闭 AdZero 自动分流 | 不同版本、真实设备和 LAN |
 | HomeProxy | 区分 sing-box-c 客户端和服务端/日志实例，仅识别 | 原生 DNS 适配和真实设备 |
 | 多代理/未知代理 | 检测并拒绝自动修改 | 查明 DNS 所有者 |
 

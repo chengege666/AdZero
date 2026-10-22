@@ -86,6 +86,21 @@ else:
         self.write('etc/init.d/' + plugin, '#!/bin/sh\nexit 0\n')
         self.write('etc/config/passwall', "config global\n option enabled '1'\n option use_block_list '0'\n")
         self.write('etc/passwall/rules/block_host', 'user-block.example\n')
+        if plugin == 'passwall':
+            # This fixture now models the native generated DNS handoff. Inert
+            # restart scripts exercise the missing-runtime retry path elsewhere.
+            self.write('proc/900/comm','dnsmasq_default\n')
+            self.write('proc/900/cmdline','/tmp/etc/passwall/bin/dnsmasq_default\0-C\0/tmp/etc/passwall/acl/default/dnsmasq.conf\0')
+            self.write('proc/900/stat','900 dnsmasq fixture\n')
+            generator=self.write('dns-fixture.py', '''from pathlib import Path
+import os
+r=Path(os.environ['ADZERO_ADAPTER_ROOT'])
+d=r/'tmp/etc/passwall/acl/default';(d/'dnsmasq.d').mkdir(parents=True,exist_ok=True)
+(d/'dnsmasq.conf').write_text('port=11400\\nconf-dir=/tmp/etc/passwall/acl/default/dnsmasq.d\\n')
+names=[s.strip() for s in (r/'etc/passwall/rules/block_host').read_text().splitlines() if s.strip() and not s.startswith('#')]
+(d/'dnsmasq.d/000-address.conf').write_text(''.join('address=/.'+s+'/\\n' for s in names))
+''')
+            self.write('etc/init.d/passwall','#!/bin/sh\nexec python3 '+shlex.quote(str(generator))+'\n')
         if plugin == 'nikki':
             self.write('etc/config/nikki', "config nikki 'config'\n option enabled '1'\nconfig mixin 'mixin'\n option mixin_file_content '0'\n")
             mixin = self.write('etc/nikki/mixin.yaml', '# original\n')

@@ -66,6 +66,17 @@ function section(config, type) {
 	return first;
 }
 function value(config, name, option) { return name ? uci.get(config, name, option) : null; }
+function ssrplus_client(){
+	if(fs.stat(root+'/proc')?.type!='directory')return null;
+	let clients=['xray','v2ray','ss-redir','ssr-redir','sslocal','ss-local','ssr-local','trojan','naive','hysteria','hysteria2','tuic-client','shadow-tls','redsocks2','ipt2socks'];
+	for(let path in fs.glob(root+'/proc/[0-9]*/cmdline')??[]){
+		let args=split(fs.readfile(path,8192)??'','\x00'),binary=args[0]??'';
+		if(index(clients,fs.basename(binary))<0)continue;
+		let config=length(filter(args,a=>match(a,/^\/(var|tmp)\/etc\/ssrplus\/[a-zA-Z0-9_.-]*(retcp|reudp|ssr-local|shunt)[a-zA-Z0-9_.-]*$/)))>0;
+		if(config||match(binary,/^\/(var|tmp)\/etc\/ssrplus\/bin\//)&&!length(filter(args,a=>index(a,'ssr-server')>=0)))return true;
+	}
+	return false;
+}
 const plugins = [], rows = [
 	['nailink','daed','main','enabled',null,null],
 	['passwall','passwall',section('passwall','global'),'enabled',null,'dns_redirect'],
@@ -97,6 +108,10 @@ for (let row in rows) {
 		if(id=='homeproxy'&&value(service,'config','routing_mode')=='custom')enabled=null;
 	}
 	if (installed && id != 'nailink') runtime = service_state(service,id=='homeproxy'?'sing-box-c':null);
+	if(installed&&id=='ssrplus'){
+		let running=ssrplus_client();core_checked=type(running)=='bool';
+		runtime=core_checked?(running?'running':'stopped'):'unknown';
+	}
 	if (hint_option) {
 		let setting = value(service, hint_section ?? name, hint_option);
 		if (setting == '0') hint = 'disabled';
@@ -105,8 +120,10 @@ for (let row in rows) {
 	}
 	if (installed) proxy_count++;
 	let plugin = {id, installed, enabled, runtime, dns_hint:hint, integration:'unverified'};
-	plugin.adapter_supported=index(['nailink','passwall','openclash','nikki'],id)>=0;
+	plugin.adapter_supported=index(['nailink','passwall','openclash','nikki','ssrplus'],id)>=0;
+	plugin.routing_supported=index(['nailink','passwall','openclash','nikki'],id)>=0;
 	if (id == 'nailink') { plugin.manager_runtime = manager_runtime; plugin.core_checked = core_checked; }
+	if(id=='ssrplus')plugin.core_checked=core_checked;
 	plugin.active = proxy.active(plugin);
 	if(id=='homeproxy'&&runtime=='unknown'){
 		plugin.active=false;

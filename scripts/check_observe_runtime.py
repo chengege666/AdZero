@@ -151,10 +151,11 @@ def main():
             query('doubleclick.net',151);query('www.baidu.com',152)
             value=wait_for(lambda s:s.get('queries')==6 and s.get('blocked')==3)
             # Background switch metadata arrives through the same small snapshot.
-            journal.update(plugin='passwall',count=246925,split={'mode':'proxy'})
+            journal.update(plugin='passwall',count=246925,split={'mode':'proxy'},runtime_supported=True,runtime_samples=['doubleclick.net'])
             replace_journal('configured_unverified')
             value=wait_for(lambda s:s.get('connection',{}).get('plugin')=='passwall')
-            assert value['connection']['domains']==246925 and value['connection']['confirmed'],value
+            assert value['connection']['domains']==246925 and not value['connection']['confirmed'],value
+            assert value['active'] and value['connection']['runtime']['state']=='missing',value
             assert value['queries']==6 and value['blocked']==3 and value['current']['matched']==0,value
             assert json.loads(run('/usr/libexec/adzero/observe','recent-start').stdout)['ok']
             wait_for(lambda s:s.get('recent',{}).get('enabled'))

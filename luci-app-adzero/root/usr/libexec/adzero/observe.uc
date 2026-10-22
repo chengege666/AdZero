@@ -2,6 +2,7 @@
 import * as fs from 'fs';
 import { cursor } from 'uci';
 import * as state from './observe-state.uc';
+import * as proxy from './proxy-state.uc';
 import * as wire from './observe-lib.uc';
 import * as cache from './rules-cache.uc';
 let action=shift(ARGV);if(action=='--')action=shift(ARGV);
@@ -48,6 +49,7 @@ if(match(boot,/^[a-f0-9-]{36}$/)&&prior?.boot==boot){
 result.boot=boot;
 const outputs={'dnsmasq.servers':'/var/run/adblock-fast/dnsmasq.servers','dnsmasq.addnhosts':'/var/run/adblock-fast/dnsmasq.addnhosts','smartdns.domainset':'/var/run/adblock-fast/smartdns.domainset','unbound.adb_list':'/var/lib/unbound/adb_list.adblock-fast'};
 const adapter_context=state.adapter_context();
+const native_runtime={passwall:proxy.dns_runtime(root,'passwall'),ssrplus:proxy.dns_runtime(root,'ssrplus')};
 function refresh(){
 	uci.unload('adzero');uci.unload('adblock-fast');
 	let mode=uci.get('adblock-fast','config','dns'),path=outputs[mode],file=path?fs.stat(root+path):null,config=fs.stat(root+'/etc/config/adzero');
@@ -56,6 +58,12 @@ function refresh(){
 	let reason=uci.get('adzero','main','enabled')!='1'?'protection_disabled':uci.get('adblock-fast','config','enabled')!='1'?'backend_disabled':!fs.stat(root+'/etc/adzero/managed')?'not_managed':!path?'unsupported_resolver':!file?.size?'rules_unavailable':null;
 	let context=adapter_context();
 	result.connection={plugin:context.present?context.plugin??null:'none',stage:context.present?context.stage??'unknown':'inactive',domains:context.domains??null,routing_mode:context.routing_mode??'inactive',confirmed:context.present&&!context.reason};
+	if(native_runtime[context.plugin]){
+		result.connection.runtime=context.runtime_supported?native_runtime[context.plugin](context.runtime_samples):{state:'unknown',reason:'runtime_unavailable'};
+		result.connection.runtime_retry_exhausted=context.runtime_retry_exhausted;
+		result.connection.confirmed&&=result.connection.runtime.state=='ready';
+		signature+='|'+result.connection.runtime.state+'|'+result.connection.runtime.reason;
+	}
 	if(!reason&&context.present)reason=context.reason;
 	let enabled=!reason;
 	if(signature!=previous||enabled!=active){
