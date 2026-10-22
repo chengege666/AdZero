@@ -1,0 +1,36 @@
+{
+  "version": "0.12.3",
+  "source_sha256": "7514d2252b4aef517f12e01f3a8d7644b413bee2f8f8c592facf020f0d6efe29",
+  "fixes": [
+    "NaiLink core state separated from management process and saved enable flag",
+    "stopped proxy is not restarted during restoration, with or without automatic routing",
+    "native LuCI immediate Poll registration survives pre-mount callback; one-second metrics snapshots",
+    "focus and open disclosure retained during live refresh"
+  ],
+  "native_regression_tests": 354,
+  "ui_assertions": 173,
+  "rpc_checks": 52,
+  "cgi_runtime_checks": 7,
+  "sdk_builds": 3,
+  "payload_files_per_package": 38,
+  "release_delivery_checks": 6,
+  "actual_capture": {
+    "queries": 6,
+    "blocked": 3,
+    "udp_tcp": true,
+    "terminal_challenge": true
+  },
+  "native_luci_poll_sha256": {
+    "24.10.8": "85faaa7550f2ebecf7c6a7cf36da004f859c360bfefd3aafb6bf70316d7e9342",
+    "25.12.5": "aa6bc33e985d0ece6d65305c821c15f010105569864a6a30a0678660e14f919c"
+  },
+  "browser": "Chromium desktop and mobile; actual production view/DOM/Poll; simulated RPC",
+  "proxy_scope": "NaiLink API and service restart are fixtures; actual ubus authorization and cleanup tested",
+  "native_adapters": [
+    "nailink",
+    "passwall",
+    "openclash",
+    "nikki"
+  ],
+  "device_acceptance": "pending; no router connection in this run"
+}

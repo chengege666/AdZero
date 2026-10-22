@@ -200,6 +200,25 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.assertIn('no second mutation submitted',result.stderr)
         return p
 
+    def test_handoff_from_stopped_nailink_to_passwall_keeps_old_core_stopped(self):
+        for routing in (True,False):
+            with self.subTest(routing=routing):
+                p=self.nailink_fixture()
+                if not routing:self.write('etc/config/adzero',"config adzero 'main'\n option routing_enabled '0'\n")
+                self.run_adapter('apply')
+                original=json.loads(p.read_text());original['running']=False;p.write_text(json.dumps(original))
+                self.select('passwall')
+                inventory=Path(self.env['ADZERO_ADAPTER_INVENTORY']);data=json.loads(inventory.read_text())
+                data['plugins'].append({'id':'nailink','installed':True,'enabled':True,'runtime':'stopped','active':False})
+                inventory.write_text(json.dumps(data))
+                self.run_adapter('apply')
+                after=json.loads(p.read_text())
+                self.assertFalse(after['running'])
+                self.assertEqual(after['runs'],original['runs'])
+                self.assertNotIn('ADZERO MANAGED BEGIN',after['dns']['dns']['string'])
+                self.assertEqual(json.loads(self.run_adapter('status').stdout)['plugin'],'passwall')
+                self.run_adapter('remove')
+
     def test_pending_reload_preserves_new_dat_and_waits_for_version_completion(self):
         p=self.pending_reload();record=self.root/'etc/adzero/adapter.json';journal=json.loads(record.read_text())
         current=json.loads(p.read_text());self.assertTrue(current['modified'])

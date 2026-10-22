@@ -47,6 +47,10 @@ class ProbeTest(unittest.TestCase):
         self.env["ADZERO_APK"] = str(self.root / "missing-apk")
         self.write("etc/openwrt_release", "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='24.10.8'\nDISTRIB_TARGET='x86/64'\n")
         self.write("www/luci-static/resources/view.js", "fixture")
+        self.write('proc/meminfo', 'MemTotal: 3962420 kB\n')
+        core = self.root / 'nailink.json'
+        core.write_text('{"running":true}')
+        self.env['ADZERO_PROBE_NAILINK_FIXTURE'] = str(core)
 
     def write(self, name, content=""):
         path = self.root / name
@@ -136,7 +140,7 @@ class ProbeTest(unittest.TestCase):
         status = self.probe()
         self.assertEqual(status["cores"], ["mihomo", "xray", "sing-box"])
         for plugin in status["plugins"]:
-            self.assertEqual(plugin["runtime"], "unknown")
+            self.assertEqual(plugin["runtime"], "stopped" if plugin['id']=='nailink' else "unknown")
             self.assertEqual(plugin["integration"], "unverified")
         self.assertEqual(status["dns"]["proxy_count"], 5)
         self.assertEqual(status["dns"]["active_proxy_count"], 1)
@@ -152,6 +156,40 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(plugins["nikki"]["runtime"], "running")
         self.assertEqual(plugins["nikki"]["dns_hint"], "plugin_redirect")
         self.assertEqual(plugins["openclash"]["runtime"], "stopped")
+
+    def test_nailink_manager_stays_running_after_core_stop_selects_passwall(self):
+        self.data.update(running=['daed','xray'], uci={'daed.main.enabled':'1','passwall.@global[0].enabled':'1'})
+        Path(self.env['ADZERO_PROBE_NAILINK_FIXTURE']).write_text('{"running":false}')
+        status = self.probe()
+        plugins = {p['id']:p for p in status['plugins']}
+        self.assertEqual(plugins['nailink']['manager_runtime'],'running')
+        self.assertEqual(plugins['nailink']['runtime'],'stopped')
+        self.assertFalse(plugins['nailink']['active'])
+        self.assertEqual(status['dns']['active_proxies'],['passwall'])
+        self.assertEqual(status['dns']['active_proxy_count'],1)
+        self.assertEqual(status['dns']['uncertain_proxies'],[])
+
+    def test_saved_enabled_nailink_with_no_daemon_is_stopped(self):
+        self.data['uci']={'daed.main.enabled':'1','passwall.@global[0].enabled':'1'}
+        status=self.probe()
+        self.assertEqual(status['dns']['active_proxies'],['passwall'])
+
+    def test_unavailable_core_query_is_unknown_instead_of_conflicting_or_stopped(self):
+        self.data.update(running=['daed'],uci={'daed.main.enabled':'1','passwall.@global[0].enabled':'1'})
+        for payload in ('null','{broken','{"running":"false"}'):
+            Path(self.env['ADZERO_PROBE_NAILINK_FIXTURE']).write_text(payload)
+            status=self.probe()
+            self.assertEqual(status['dns']['uncertain_proxies'],['nailink'])
+            self.assertEqual(status['dns']['active_proxies'],['passwall'])
+            self.assertEqual(status['plugins'][0]['runtime'],'unknown')
+
+    def test_two_really_active_proxies_are_named(self):
+        self.data.update(running=['daed'],uci={'daed.main.enabled':'1','passwall.@global[0].enabled':'1'})
+        self.assertEqual(self.probe()['dns']['active_proxies'],['nailink','passwall'])
+
+    def test_stopped_service_overrides_saved_enabled_setting(self):
+        self.data.update(services={'openclash':False,'nikki':True},uci={'openclash.config.enable':'1','nikki.config.enabled':'1'})
+        self.assertEqual(self.probe()['dns']['active_proxies'],['nikki'])
 
     def test_private_configuration_is_not_returned(self):
         self.write("etc/config/passwall")

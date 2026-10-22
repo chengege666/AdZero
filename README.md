@@ -15,7 +15,7 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 - **广告过滤**：内置常用规则库，也能添加自己的 HTTPS 规则订阅。
 - **批量应用**：先添加、编辑或开关多项规则，再一次应用，减少重复加载。
-- **拦截统计**：显示局域网可观察范围内的 DNS 拦截请求数与比例，和规则域名数量分别展示。
+- **拦截统计**：每秒自动刷新局域网可观察范围内的 DNS 拦截请求数与比例，和规则域名数量分别展示。
 - **效果检测**：复制页面提供的查询命令，在电脑执行后自动核对拦截与正常解析。
 - **域名查询与放行**：查询域名是否命中规则，误拦截时可放行。
 - **临时暂停**：网站或 App 异常时，暂停几分钟做对比，到期尝试自动恢复。
@@ -26,21 +26,21 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.12.2 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.12.3 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.12.2) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.12.3) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
@@ -64,6 +64,8 @@ SDK 构建与隔离测试已通过，实际设备的网络与过滤效果仍需�
 
 NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。PassWall 2 目前仅识别；同时开启多个代理或遇到未知代理时，不会自动接管。
 
+切换时先停止旧代理、启动新代理，再点击「重新检测」。NaiLink 的管理服务和代理内核分别判断；说明见 [切换代理](docs/PROXY_SWITCHING.md)。
+
 ## 卸载
 
 先关闭保护并恢复 AdZero 管理的设置，成功后卸载。按路由器的包管理器选择一条：
@@ -86,6 +88,6 @@ DNS 过滤主要拦截广告和追踪域名，无法保证去除同域视频广�
 
 「效果检测」通过后会显示对应设备。统计保存在内存中，重启路由器后清零；不代表网页广告个数，不保存完整查询日志。范围与操作见 [统计与检测说明](docs/OBSERVATION.md)。
 
-[规则管理](docs/RULE_SOURCES.md) · [DNS 设置](docs/DNS_SETTINGS.md) · [验证记录](docs/LOCAL_VALIDATION.md) · [开发与构建](docs/PACKAGING.md) · [Logo 与设计说明](docs/BRAND.md)
+[规则管理](docs/RULE_SOURCES.md) · [DNS 设置](docs/DNS_SETTINGS.md) · [AdGuard 参考与优化方向](docs/ADGUARD_REVIEW.md) · [验证记录](docs/LOCAL_VALIDATION.md) · [开发与构建](docs/PACKAGING.md) · [Logo 与设计说明](docs/BRAND.md)
 
 源码采用 [MIT 许可证](LICENSE)。adblock-fast、代理插件与规则源遵循各自许可。

@@ -7,6 +7,7 @@ import * as lib from './adapter-lib.uc';
 import * as route from './routing-lib.uc';
 import * as progress from './progress-lib.uc';
 import * as rulecache from './rules-cache.uc';
+import * as proxy from './proxy-state.uc';
 
 const root = getenv('ADZERO_ADAPTER_ROOT') ?? '';
 const state_dir = root + '/etc/adzero';
@@ -193,7 +194,8 @@ function graphql(query, variables, readiness) {
 function active_plugin() {
 	let inventory = getenv('ADZERO_ADAPTER_INVENTORY');
 	let data = inventory ? json(fs.readfile(inventory)) : json(capture(['/bin/sh', root + '/usr/libexec/adzero/probe']));
-	let active = filter(data.plugins, p => p.installed && (p.enabled == true || p.runtime == 'running'));
+	if (length(data.dns?.uncertain_proxies ?? [])) die('无法确认 NaiLink 内核状态，请检查 NaiLink 后重新检测；尚未修改配置。');
+	let active = filter(data.plugins, proxy.active);
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
 	if (!length(active)) return 'none';
 	if (index(['nailink','passwall','openclash','nikki'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
@@ -323,7 +325,7 @@ function restart(plugin) {
 		return;
 	}
 	if (plugin == 'nailink') {
-		if((journal?.split||journal?.traffic) && graphql('{general{dae{running}}}').general?.dae?.running !== true){
+		if(graphql('{general{dae{running}}}').general?.dae?.running !== true){
 			if(journal.stage=='restarting')die('NaiLink 内核在应用期间已停止。');
 			return; // restoring profiles must not start a core the user stopped
 		}
@@ -344,11 +346,11 @@ function restart(plugin) {
 		clear_nailink_pending(); return;
 	}
 	let service = root + '/etc/init.d/' + plugin;
-	if(journal?.split){
+	{
 		let inventory=getenv('ADZERO_ADAPTER_INVENTORY');
 		let data=inventory?json(fs.readfile(inventory)):json(capture(['/bin/sh',root+'/usr/libexec/adzero/probe']));
 		let state=filter(data.plugins??[],p=>p.id==plugin)[0];
-		if(state?.runtime=='stopped'){
+		if(state && !proxy.active(state) && (state.runtime=='stopped' || state.enabled===false)){
 			if(journal.stage=='restarting')die('代理内核在应用期间已停止。');
 			return; // restore persisted settings without starting a stopped proxy
 		}

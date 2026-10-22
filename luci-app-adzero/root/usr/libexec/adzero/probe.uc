@@ -3,6 +3,7 @@
 import * as fs from 'fs';
 import { cursor } from 'uci';
 import { connect } from 'ubus';
+import * as proxy from './proxy-state.uc';
 
 const root = getenv('ADZERO_PROBE_ROOT') ?? '';
 const uci = cursor(root + '/etc/config');
@@ -70,19 +71,24 @@ const plugins = [], rows = [
 	['openclash','openclash','config','enable',null,'enable_redirect_dns'],
 	['nikki','nikki','config','enabled','proxy','ipv4_dns_hijack']
 ];
-let proxy_count = 0, active_proxy_count = 0;
+let proxy_count = 0, active_proxy_count = 0, uncertain_proxies = [], active_proxies = [];
 for (let row in rows) {
 	let id = row[0], service = row[1], name = row[2], flag = row[3], hint_section = row[4], hint_option = row[5];
 	let installed = !!(fs.stat(root + '/etc/config/' + service) || fs.stat(root + '/etc/init.d/' + service));
-	let runtime = 'unknown', hint = 'unknown', enabled = null;
+	let runtime = 'unknown', hint = 'unknown', enabled = null, manager_runtime = null, core_checked = null;
 	if (id == 'nailink') {
 		installed ||= !!fs.stat(root + '/usr/share/daed-router/version') || !!processes.daed;
-		if (processes.daed) runtime = 'running';
+		manager_runtime = processes.daed ? 'running' : service_state(service);
+		if (installed && manager_runtime == 'running') {
+			let running = proxy.nailink(root);
+			core_checked = type(running) == 'bool';
+			runtime = core_checked ? (running ? 'running' : 'stopped') : 'unknown';
+		} else if (installed && fs.stat(root + '/proc')?.type == 'directory') { runtime = 'stopped'; core_checked = true; }
 		hint = 'proxy_core_dns';
 	}
 	let setting = value(service, name, flag);
 	if (setting == '1') enabled = true; else if (setting == '0') enabled = false;
-	if (installed && runtime == 'unknown') runtime = service_state(service);
+	if (installed && id != 'nailink') runtime = service_state(service);
 	if (hint_option) {
 		let setting = value(service, hint_section ?? name, hint_option);
 		if (setting == '0') hint = 'disabled';
@@ -90,8 +96,12 @@ for (let row in rows) {
 		else if (id == 'openclash' && setting == '2') hint = 'firewall_redirect';
 	}
 	if (installed) proxy_count++;
-	if (installed && (enabled === true || runtime == 'running')) active_proxy_count++;
-	push(plugins, {id, installed, enabled, runtime, dns_hint:hint, integration:'unverified'});
+	let plugin = {id, installed, enabled, runtime, dns_hint:hint, integration:'unverified'};
+	if (id == 'nailink') { plugin.manager_runtime = manager_runtime; plugin.core_checked = core_checked; }
+	plugin.active = proxy.active(plugin);
+	if (plugin.active) { active_proxy_count++; push(active_proxies,id); }
+	if (installed && core_checked === false) push(uncertain_proxies,id);
+	push(plugins,plugin);
 }
 const release = release_file('/etc/openwrt_release'), os = release_file('/etc/os-release');
 const vendor = release.DISTRIB_ID || os.NAME || '', version = release.DISTRIB_RELEASE || os.VERSION_ID || '';
@@ -137,5 +147,5 @@ print(sprintf('%J\n', {schema_version:1, platform:{family, distribution:vendor, 
 	memory_kib:memory, resource_hint:memory ? (memory < 65536 ? 'low_memory' : 'normal') : 'unknown', validation:'not_device_tested'},
 	plugins, cores:filter(['dae','daed','mihomo','clash','xray','sing-box'], n => processes[n]),
 	resolvers:filter(['dnsmasq','smartdns','unbound','AdGuardHome'], n => processes[n]),
-	dns:{dnsmasq_instances, disabled_instances, inventory_truncated:dnsmasq_instances == 64, proxy_count, active_proxy_count,
+	dns:{dnsmasq_instances, disabled_instances, inventory_truncated:dnsmasq_instances == 64, proxy_count, active_proxy_count, active_proxies, uncertain_proxies,
 		client_path:'unverified', ipv6_path:'unverified', encrypted_dns_bypass:'possible'}}));

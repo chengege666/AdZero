@@ -81,7 +81,8 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   state.policy.pause=spec.method==='pause'?{remaining:args[0],stage:'paused'}:null;
   return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
 }};
-const poll = {add:fn=>{setInterval(fn,5000);},remove:()=>{}};
+const previewTimers=new Map();
+const poll = {add(fn,interval){fn();previewTimers.set(fn,setInterval(fn,interval*1000));},remove(fn){clearInterval(previewTimers.get(fn));previewTimers.delete(fn);}};
 function mount() { app.busy = app.notice = null; app.lastChecked = new Date(); document.getElementById('preview').replaceChildren(app.render(state)); }
 async function initialMount(delay) {
   statusDelay = delay; app.busy = app.notice = app.lastChecked = null;

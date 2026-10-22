@@ -341,3 +341,4 @@
   .az-root .az-network-body { grid-template-columns: 1fr; }
   .az-root .az-network-body > .az-card + .az-card { border-left: 0; border-top: 1px solid var(--az-line); }
 }
+.az-root .az-live-caption { color: var(--az-muted, #64786f); font-size: 12px; margin: -8px 4px 0; }

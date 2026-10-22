@@ -107,6 +107,37 @@ class AdapterTransactionTest(unittest.TestCase):
         self.run_adapter("apply", success=False)
         self.assertFalse((self.root / "etc/adzero/adapter.json").exists())
 
+    def test_stopped_nailink_manager_does_not_conflict_with_passwall(self):
+        self.select('passwall')
+        inventory=json.loads(self.inventory.read_text())
+        inventory['plugins'].append({'id':'nailink','installed':True,'enabled':True,'runtime':'stopped','manager_runtime':'running','core_checked':True,'active':False})
+        self.inventory.write_text(json.dumps(inventory))
+        self.run_adapter('apply')
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['plugin'],'passwall')
+
+    def test_unknown_nailink_core_blocks_before_any_writes(self):
+        self.inventory.write_text(json.dumps({'plugins':[],'dns':{'uncertain_proxies':['nailink']}}))
+        self.run_adapter('apply',success=False)
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+
+    def test_restoring_stopped_passwall_never_starts_it_even_without_routing(self):
+        counter=self.root/'restarts'
+        self.write('etc/init.d/passwall','#!/bin/sh\necho restart >> '+shlex.quote(str(counter))+'\n')
+        self.run_adapter('apply')
+        inventory=json.loads(self.inventory.read_text());inventory['plugins'][0]['runtime']='stopped'
+        self.inventory.write_text(json.dumps(inventory))
+        self.run_adapter('remove')
+        self.assertEqual(counter.read_text().splitlines(),['restart'])
+
+    def test_disabled_non_procd_passwall_is_not_restarted_on_restore(self):
+        counter=self.root/'restarts'
+        self.write('etc/init.d/passwall','#!/bin/sh\necho restart >> '+shlex.quote(str(counter))+'\n')
+        self.run_adapter('apply')
+        inventory=json.loads(self.inventory.read_text());inventory['plugins'][0].update(runtime='unknown',enabled=False)
+        self.inventory.write_text(json.dumps(inventory))
+        self.run_adapter('remove')
+        self.assertEqual(counter.read_text().splitlines(),['restart'])
+
     def test_passwall_restart_failure_retains_recovery_when_restart_stays_broken(self):
         path = self.write("etc/passwall/rules/block_host", "user.example\n")
         self.write("fail", "fail")

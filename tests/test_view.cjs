@@ -28,7 +28,11 @@ function E(tag, attrs = {}, children = []) {
 const body = E('body'); active = body;
 const doc = { body, contains: n => !!nodes(root, x => x === n).length, get activeElement() { return active; }, getElementById(id) { return nodes(root, n => n.attrs.id === id)[0] || null; } };
 const commands = [];
-let observationFixture={available:false,verification:{state:'idle'}},observationFailure=false;
+let observationFixture={available:false,verification:{state:'idle'}},observationFailure=false,observationReads=0;
+const pollCallbacks=new Set(),listeners=new Map();
+const nativePoll=global.adzeroNativePollFactory?.(doc);
+const poll={add(fn,interval){assert.equal(interval,1);pollCallbacks.add(fn);if(nativePoll)nativePoll.add(fn,interval);else fn();},remove(fn){pollCallbacks.delete(fn);if(nativePoll)nativePoll.remove(fn);},async tick(){if(nativePoll)await nativePoll.tick();else for(const fn of [...pollCallbacks])await fn();}};
+doc.addEventListener=(name,fn)=>listeners.set(name,fn);doc.removeEventListener=(name,fn)=>{if(listeners.get(name)===fn)listeners.delete(name);};
 let state, failAction, failStatus, pending, resolveAction, staleResult, statusPending, resolveStatus;
 const api = { exec: async (program, args) => {
   assert.equal(program, '/usr/libexec/adzero/ctl'); commands.push(args[0]);
@@ -39,7 +43,7 @@ let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked
 const storage = new Map();
 const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
-  if(spec.method==='observation'){if(observationFailure)throw Error('observer unavailable');return {ok:true,data:structuredClone(observationFixture)};}
+  if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');return {ok:true,data:structuredClone(observationFixture)};}
   if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
   assert.equal(spec.object,'adzero'); commands.push(spec.method);
   if (rpcFailure) return {ok:false,message:'typed failure'};
@@ -74,7 +78,7 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
 } };
 const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', 'sessionStorage', 'setTimeout', source)(
-  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, {add:()=>{},remove:()=>{}},session,fn=>queueMicrotask(fn));
+  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, poll,session,fn=>queueMicrotask(fn));
 function reset(overrides = {}) {
   state = { state: 'disabled', managed: false, dns_mode_safe: true, resolver: 'dnsmasq.servers', client_dns_verified: false,
     policy:{allowed:[],pause:null,routing_enabled:false}, force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
@@ -172,7 +176,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(state.state === 'paused' && text(root).includes('15 分钟后'),'pause deadline visible');
   check(find('az-domain').disabled && find('az-update').disabled && !find('az-resume').disabled,'paused controls guarded');
   check(find('az-toggle').attrs['data-action'] === 'resume','paused switch resumes');
-  state.state='configured_unverified'; await app.pausePoll();
+  state.state='configured_unverified'; await poll.tick();
   check(app.currentStatus.state==='configured_unverified' && app.notice===null,'automatic resume clears obsolete paused notice');
   state.state='paused'; app.currentStatus=state;
   await app.runPolicy('resume',[]); check(state.state === 'configured_unverified','resume supported');
@@ -340,6 +344,33 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   observationFailure=true;await app.refreshObservation();
   check(!text(find('az-live-verification')).includes('此设备检测通过'),'lost observation never preserves a current verification claim');
   check(text(find('az-live-metrics')).includes('统计组件尚未就绪'),'stats outage cannot look like a zero-hit result');
+  reset({state:'configured_unverified'});await app.initialObservationRequest;
+  check(pollCallbacks.size===1,'immediate LuCI registration before mount must not cancel automatic refresh');
+  observationFixture={available:true,active:true,queries:20,blocked:4,verification:{state:'idle'}};
+  const inputBefore=find('az-domain');inputBefore.focus();commands.length=0;
+  await poll.tick();
+  check(text(find('az-live-metrics')).includes('20.0%'),'scheduled poll updates counters without page refresh');
+  check(find('az-domain')===inputBefore&&active===inputBefore&&!commands.length,'live poll preserves typing and never calls full status or reload');
+  const startBefore=find('az-test-start');startBefore.focus();await poll.tick();
+  check(find('az-test-start')===startBefore&&active===startBefore,'unchanged detection panel keeps keyboard focus');
+  let scope=nodes(root,n=>(n.attrs.class||'')==='az-stat-scope')[0];scope.open=true;scope.events.toggle({target:scope});
+  observationFixture.verification={state:'expired'};await poll.tick();
+  check(nodes(root,n=>(n.attrs.class||'')==='az-stat-scope')[0].open,'statistics privacy disclosure stays open after detection changes');
+  let reads=observationReads;doc.hidden=true;await poll.tick();
+  check(reads===observationReads,'hidden page stops snapshot requests');
+  doc.hidden=false;listeners.get('visibilitychange')();await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  check(observationReads===reads+1,'returning to visible page refreshes immediately');
+  app.busy='rules';await poll.tick();check(observationReads===reads+2,'snapshot refresh continues while a mutation is pending');app.busy=null;
+  app.rulesOpen=true;reads=observationReads;await poll.tick();check(observationReads===reads,'rules tab has no invisible metric requests');app.rulesOpen=false;
+  observationFailure=true;await poll.tick();observationFailure=false;await poll.tick();
+  check(text(find('az-live-metrics')).includes('20.0%'),'automatic refresh recovers after an RPC failure');
+  root=null;await poll.tick();check(!pollCallbacks.size&&!listeners.size,'leaving mounted page removes poll and visibility listener');
+  reset({compatibility:{dns:{active_proxy_count:2,active_proxies:['nailink','passwall']}}});
+  check(text(root).includes('NaiLink / daed、PassWall')&&find('az-toggle').disabled,'real conflict names both proxies');
+  reset({compatibility:{dns:{active_proxy_count:1,active_proxies:['passwall'],uncertain_proxies:[]}}});
+  check(!find('az-toggle').disabled,'stopped NaiLink manager cannot lock PassWall enable control');
+  reset({compatibility:{dns:{active_proxy_count:1,uncertain_proxies:['nailink']}}});
+  check(text(root).includes('暂时无法确认 NaiLink 内核状态')&&find('az-toggle').disabled,'unknown core is explained rather than reported as multiple active proxies');
   check(nodes(root,n=>n.tag==='details'&&(n.attrs.class||'').includes('az-network-settings')&&!n.open).length===1,'DNS and routing are collapsed by default');
   check(text(root).includes('不代表网页广告个数')&&text(root).includes('加密 DNS'),'statistics explain their actual measurement scope');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
