@@ -1,0 +1,19 @@
+{
+  "source_sha256": "ef10db207f097cd0c9d912f4d150b34b76f31b5835e41eb6b04b0c9190ceb415",
+  "installer_sha256": "f2a50094a82baac5e663bc25322a366aa9ee7362fd147a480ac67f6391b87812",
+  "native_tests": 266,
+  "ui_assertions": 129,
+  "rpc_checks": 44,
+  "nailink_gateway_checks": 14,
+  "source_download_handoff_checks": 8,
+  "sdk_builds": 3,
+  "package_payload_files": 33,
+  "unchanged_reload_seconds_fixture": 0.9672,
+  "unchanged_refresh_seconds_fixture": 1.5942,
+  "unchanged_backend_calls": 0,
+  "unchanged_proxy_reload_calls": 0,
+  "cache_scope": "per-source checked HTTPS snapshots; child-scoped native curl only; corrupt/full cache or custom arguments fall back",
+  "router_and_real_https_and_lan": "not_run",
+  "changed_source_backend_compilation_and_proxy_reload": "retained; actual router improvement unmeasured",
+  "architecture": "existing four adapters retained; independent DNS deferred"
+}

@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { cursor } from 'uci';
 import * as lib from './source-lib.uc';
 import * as progress from './progress-lib.uc';
+import * as snapshots from './source-cache.uc';
 const root = getenv('ADZERO_SOURCES_ROOT') ?? '';
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
 const uci = cursor(root + '/etc/config');
@@ -62,9 +63,19 @@ function list() {
 	}
 	return {catalog:lib.catalog,items,revision:checksum(config),pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
-function download(address,kind) {
-	progress.stage('downloading');
+function download(address,kind,fresh) {
 	lib.url(address);if(kind!='auto')lib.format(kind);
+	let snapshot=snapshots.load(address,root);
+	if(snapshot&&!fresh&&!uci.get('adblock-fast','config','curl_additional_param')){
+		progress.stage('validating');
+		let value=snapshots.parsed(snapshot,kind);
+		if(value)return value;
+		try{return kind=='auto'?lib.detect(fs.readfile(snapshot.path)): {format:kind,names:lib.parse(fs.readfile(snapshot.path),kind)};}catch(e){}
+	}
+	// A failed optional cache write must never replay the old body after an
+	// explicit refresh. Invalidate its proof before requesting fresh bytes.
+	if(fresh)snapshots.invalidate(address,root);
+	progress.stage('downloading');
 	let path=root+'/tmp/adzero-source-check';
 	if (root && !fs.stat(root+'/tmp')) fs.mkdir(root+'/tmp',0700);
 	if (fs.lstat(path)) die('规则校验临时文件已存在，请检查未完成操作。');
@@ -77,16 +88,20 @@ function download(address,kind) {
 		if (system(join(' ',map(argv,quote))+' >/dev/null 2>&1',65000) != 0) {progress.failure('source_download');die('规则下载失败，请检查 HTTPS 地址和网络。');}
 		progress.stage('validating');
 		let raw=fs.readfile(path,25000001),result;
-		try{result=kind=='auto'?lib.detect(raw):{format:kind,names:lib.parse(raw,kind)};}catch(e){progress.failure('source_format');die(e);}
+		try{
+			if(snapshot&&raw==fs.readfile(snapshot.path))result=snapshots.parsed(snapshot,kind);
+			if(!result)result=kind=='auto'?lib.detect(raw):{format:kind,names:lib.parse(raw,kind)};
+		}catch(e){progress.failure('source_format');die(e);}
+		snapshots.save(address,raw,root,kind,result);
 		fs.unlink(path);return result;
 	} catch(e) { fs.unlink(path);die(e); }
 }
-function validate_sources(only) {
+function validate_sources(only,fresh) {
 	let union={}, count=0;
 	for (let s in selected()) if (s.enabled != '0') {
 		if(only && (type(only)=='array' ? index(only,s['.name'])<0 : s['.name']!=only))continue;
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
-		let checked=download(s.url,kind);
+		let checked=download(s.url,kind,fresh);
 		if(!checked){
 			uci.delete('adblock-fast',s['.name'],'adzero_domains');uci.delete('adblock-fast',s['.name'],'adzero_detected_format');
 			if(!uci.set('adblock-fast',s['.name'],'adzero_validation','backend_only')||!uci.set('adblock-fast',s['.name'],'adzero_updated',''+time()))die('无法保存规则检查记录。');
@@ -140,7 +155,7 @@ function begin(action,args) {
 	// An add/enable checks the changed subscription only. The final processed
 	// union is still strictly verified (including its size cap) before apply.
 	// Explicit refresh rechecks every source; removal cannot enlarge the union.
-	if(!removing)validate_sources(action=='refresh'?null:id);
+	if(!removing)validate_sources(action=='refresh'?null:id,action=='refresh');
 	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode & 0777,action};
 	atomic(journal,sprintf('%J',pending));
 	if (!uci.commit('adblock-fast')) die('规则保存失败，恢复记录已保留。');
@@ -203,17 +218,39 @@ function cache_path(){
 	let mode=uci.get('adblock-fast','config','dns');
 	return index(['dnsmasq.servers','dnsmasq.addnhosts'],mode)>=0?root+'/var/run/adblock-fast/'+mode:null;
 }
+function effective_model(){
+	let result=model();
+	for(let s in result)if(s.type=='file_url'){
+		for(let k in keys(s.values))if(k=='name'||k=='size'||substr(k,0,7)=='adzero_')delete s.values[k];
+		if(s.values.enabled!='0'){
+			let snapshot=snapshots.load(s.values.url,root);
+			if(!snapshot||uci.get('adblock-fast','config','curl_additional_param'))return null;
+			s.snapshot=snapshot.proof.body;
+		}
+	}
+	return result;
+}
 function cache_save(){
 	let path=cache_path();if(!path)return;
 	let digest=checksum(path);if(!digest)return;
-	atomic(dir+'/backend-cache.json',sprintf('%J',{schema:1,config:model(),sha256:digest}));
+	atomic(dir+'/backend-cache.json',sprintf('%J',{schema:1,config:model(),effective:effective_model(),sha256:digest}));
 }
-function cache_check(){
+function sync_snapshots(){
+	// Native scheduled updates do not run through our scoped curl wrapper.
+	// If another writer replaced the processed output, its current source
+	// bytes are unknown: never rebuild that output from our older snapshots.
+	let state=null,path=cache_path();try{state=read(dir+'/backend-cache.json');}catch(e){}
+	if(path&&match(state?.sha256??'',/^[a-f0-9]{64}$/)&&checksum(path)==state.sha256)return;
+	uci.foreach('adblock-fast','file_url',s=>{if(s.enabled!='0'&&s.url)snapshots.invalidate(s.url,root);});
+}
+function cache_check(live){
 	let state=read(dir+'/backend-cache.json'),path=cache_path();
-	if(!path||state?.schema!=1||!match(state.sha256??'',/^[a-f0-9]{64}$/)||!same(model(),state.config))return false;
+	if(!path||state?.schema!=1||!match(state.sha256??'',/^[a-f0-9]{64}$/))return false;
+	if(live&&live!='current'){let effective=effective_model();if(!effective||!same(effective,state.effective))return false;}
+	else if(!same(model(),state.config))return false;
 	// Upstream moves the processed file to .cache on stop. Hash the exact
 	// cache that start will restore; never trust config flags or timestamps.
-	return checksum(path+'.cache')==state.sha256;
+	return checksum(path+(live?'':'.cache'))==state.sha256;
 }
 let action=shift(ARGV);if (action == '--') action=shift(ARGV);
 try {
@@ -231,5 +268,8 @@ try {
 	else if (action == 'pending') exit(read(journal) ? 0 : 1);
 	else if(action=='cache-save')cache_save();
 	else if(action=='cache-check')exit(cache_check()?0:1);
+	else if(action=='cache-live')exit(cache_check(true)?0:1);
+	else if(action=='cache-current')exit(cache_check('current')?0:1);
+	else if(action=='cache-sync')sync_snapshots();
 	else die('未知规则操作。');
 } catch(e) { fs.stderr.write('AdZero: '+e.message+'\n');exit(action == 'pending' ? 2 : 1); }

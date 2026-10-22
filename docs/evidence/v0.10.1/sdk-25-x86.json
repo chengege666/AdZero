@@ -1,0 +1,14 @@
+{
+  "firmware_declared": "openwrt",
+  "release_declared": "25.12.5",
+  "target_declared": "x86/64",
+  "target_observed": "x86/64",
+  "package_arch_observed": "x86_64",
+  "package_format": "apk",
+  "sdk_archive_sha256_supplied": "0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c",
+  "source_sha256": "ef10db207f097cd0c9d912f4d150b34b76f31b5835e41eb6b04b0c9190ceb415",
+  "package": "luci-app-adzero-0.10.1-r1.apk",
+  "sha256": "bfcb152f9709efd7462d990950f24be81d045fef80ce8e8ab712a1638e038e71",
+  "sdk_build": "passed",
+  "device_acceptance": "not_run"
+}

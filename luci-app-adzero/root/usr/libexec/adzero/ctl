@@ -128,10 +128,36 @@ backend_restart() {
 	[ "$(get_uci adblock-fast.config.enabled)" = 1 ] || return 0
 	progress processing
 	backend_rc=0
-	"$BACKEND_INIT" "${1:-start}" || backend_rc=$?
+	# Reuse individually verified HTTPS snapshots, only in this backend child.
+	# Unsupported/custom curl invocations transparently retain real curl.
+	PATH="$(dirname "$SOURCES")/cache-curl:$PATH" ADZERO_SOURCE_REPLAY=1 \
+		"$BACKEND_INIT" "${1:-start}" || backend_rc=$?
 	case "$backend_rc" in 0|1) backend_confirm ready || { public_failure backend; return 1; } ;; *) public_failure backend; return 1 ;; esac
 	# Optional optimization only. Missing/corrupt proof falls back to download.
 	"$SOURCES" cache-save >/dev/null 2>&1 || :
+}
+reload_current() {
+	require_active
+	reject_insecure_custom_fetch_flags
+	policy_clean || error '存在未完成恢复记录，请先关闭并恢复。'
+	# No network refresh when the current output is still proven to match
+	# the selected configuration. Adapter.apply independently checks its input.
+	if ! "$SOURCES" cache-current >/dev/null 2>&1 && ! "$SOURCES" cache-live >/dev/null 2>&1; then
+		backend_restart dl || error '重新加载后端失败，恢复记录已保留。'
+	fi
+	"$ADAPTER" apply || error '重新加载代理接入未完成，恢复记录已保留。'
+	printf 'reloaded current configuration\n'
+}
+backend_rebuild_if_changed() {
+	# Exact output + effective options + every enabled source body must match.
+	# Cosmetic metadata and a refresh returning identical bytes need no rebuild.
+	if "$SOURCES" cache-live >/dev/null 2>&1; then
+		# Keep restore metadata current too, so skipping an unchanged refresh
+		# does not defer a needless rebuild to the next disable/enable cycle.
+		"$SOURCES" cache-save >/dev/null 2>&1 || :
+		return 0
+	fi
+	backend_restart dl
 }
 adguardhome_running() {
 	command -v "$PIDOF_BIN" >/dev/null 2>&1 && "$PIDOF_BIN" AdGuardHome >/dev/null 2>&1
@@ -430,6 +456,8 @@ disable_protection() {
 	backend_available || error '后端不可用，所有权标记已保留以便人工恢复。'
 	[ -f "$FORCE_BACKUP" ] || error '缺少 force_dns 备份，拒绝猜测原始配置。'
 	[ -f "$TLS_BACKUP" ] || error '缺少 HTTPS 证书校验备份，拒绝猜测原始配置。'
+	# Preserve a native updater's newer list across disable/enable as well.
+	"$SOURCES" cache-sync >/dev/null 2>&1 || :
 	previous=$(get_uci adblock-fast.config.enabled)
 	[ "$previous" = 1 ] || previous=0
 	if [ "$previous" = 1 ]; then
@@ -476,7 +504,7 @@ change_sources() {
 		[ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ] || error '仍有未完成的恢复记录，请先关闭并恢复。'
 	fi
 	if "$SOURCES" begin "$@"; then
-		if [ "$active" = 0 ] || { backend_restart dl && "$ADAPTER" apply; }; then
+		if [ "$active" = 0 ] || { backend_rebuild_if_changed && "$ADAPTER" apply; }; then
 			"$SOURCES" finish || error '规则已处理，但完成记录清理失败。'
 			return 0
 		fi
@@ -518,9 +546,9 @@ apply_settings() {
 	if "$SOURCES" begin-batch "$1"; then
 		applied=0
 		if [ "$active" = 0 ]; then applied=1
-		elif [ "$routing_changed" = 0 ]; then backend_restart dl && "$ADAPTER" apply && applied=1
-		elif [ "$routing_method" = nailink ]; then backend_restart dl && "$ADAPTER" reconfigure-nailink-rules && applied=1
-		else "$ADAPTER" remove && backend_restart dl && "$ADAPTER" apply && applied=1
+		elif [ "$routing_changed" = 0 ]; then backend_rebuild_if_changed && "$ADAPTER" apply && applied=1
+		elif [ "$routing_method" = nailink ]; then backend_rebuild_if_changed && "$ADAPTER" reconfigure-nailink-rules && applied=1
+		else "$ADAPTER" remove && backend_rebuild_if_changed && "$ADAPTER" apply && applied=1
 		fi
 		if [ "$applied" = 1 ]; then "$SOURCES" finish || error '更改已应用，但完成记录未能清理。'; return 0; fi
 	fi
@@ -589,6 +617,7 @@ require_active() {
 	[ -f "$FORCE_BACKUP" ] && [ -f "$TLS_BACKUP" ] || error '原始配置备份丢失，请先检查恢复记录。'
 	policy_clean || error '上次放行操作尚未恢复，请先关闭并恢复。'
 	backend_confirm ready || error '当前规则未就绪，请重新检测。'
+	"$SOURCES" cache-sync || error '下载快照检查失败，请重新检测。'
 }
 change_allow() {
 	require_active
@@ -645,6 +674,7 @@ case "$1" in
 	source-toggle) acquire_lock source-toggle; shift; change_sources toggle "$@" ;;
 	source-remove) acquire_lock source-remove; shift; change_sources remove "$@" ;;
 	source-refresh) acquire_lock source-refresh; change_sources refresh ;;
+	reload) acquire_lock reload; reload_current ;;
 	settings-apply) acquire_lock settings-apply; apply_settings "$2" ;;
 	enable) acquire_lock enable; enable_protection ;;
 	disable) acquire_lock disable; disable_protection ;;

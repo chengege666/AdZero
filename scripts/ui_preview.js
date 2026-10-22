@@ -46,7 +46,7 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
     sourceData.revision='d'.repeat(64);state.policy.routing_enabled=p.routing_enabled;state.adapter.routing={mode:p.routing_enabled?'proxy':'inactive'};
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }
-  if (['enable','disable','refresh'].includes(spec.method)) {
+  if (['enable','disable','refresh','reload'].includes(spec.method)) {
     state.state = spec.method === 'disable' ? 'disabled' : 'configured_unverified';
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }

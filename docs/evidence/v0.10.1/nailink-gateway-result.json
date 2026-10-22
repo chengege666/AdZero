@@ -1,0 +1,25 @@
+{
+  "source_sha256": "ef10db207f097cd0c9d912f4d150b34b76f31b5835e41eb6b04b0c9190ceb415",
+  "nailink_package_sha256": "666dc4d2313a9954ae8be5ae023f5cbe99a12240de80d2d4ce0afc8f977d9d5b",
+  "nailink_gateway_sha256": "fd28e38c56d44f53b1d6c4a075ba7c715d5a3f028568104a457037bfc32f461f",
+  "checks": [
+    "real CGI + daemon JWT + rpcd authorization",
+    "stale local identity reproduces access denied without key exposure",
+    "authorization preflight rejects before adapter ownership or config writes",
+    "production ctl refuses before backend startup, configuration or ownership changes",
+    "official stopped-service prepare restores access and preserves all database rows",
+    "same procd process identity blocks a second mutation after ambiguous reload",
+    "new process start plus real authorized API allows explicit recovery; reload ack fixture",
+    "HTTP 401 classified without private response",
+    "HTTP 403 classified without private response",
+    "HTTP 502 classified without private response",
+    "HTTP 503 classified without private response",
+    "HTTP 413 classified without private response",
+    "unknown GraphQL error remains private",
+    "actual 30-second CGI timeout with slow upstream fixture retains journal and submits no rollback mutation"
+  ],
+  "runtime": "actual NaiLink 0.6.30 CGI + API-only daemon and actual OpenWrt rpcd/ubusd/ucode",
+  "proxy_kernel_and_router": "not_run",
+  "existing_database_rows_preserved": true,
+  "timeout_fixture": "real CGI 30-second deadline, upstream handler/slow reload and procd inventory fixtures; no claim of actual proxy reload completion"
+}

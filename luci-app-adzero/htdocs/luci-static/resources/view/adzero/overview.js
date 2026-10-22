@@ -6,7 +6,7 @@
 'require poll';
 
 var policyCalls = {};
-[ ['enable', []], ['disable', []], ['refresh', []], ['routing_on', []], ['routing_off', []], ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
+[ ['enable', []], ['disable', []], ['refresh', []], ['reload', []], ['routing_on', []], ['routing_off', []], ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
 	policyCalls[method[0]] = rpc.declare({ object: 'adzero', method: method[0], params: method[1] });
 });
 var sourceCalls = {};
@@ -248,8 +248,8 @@ return view.extend({
 				el('p', { 'class': 'az-card-copy' }, _('更新当前启用的域名列表，并自动同步到当前接入。')),
 				el('div', { 'class': 'az-rule-action' }, [ el('span', {}, _('已有自定义规则时优先沿用。')),
 					el('div',{'class':'az-action-row'},[el('button',{type:'button','class':'az-button az-button-quiet',click:function(){return self.openRules();}},_('管理规则')),
-					el('button', { id: 'az-update', 'class': 'az-button az-button-primary', type: 'button', 'data-action': 'refresh', disabled: locked || !f.enabled || !!self.draftCount() ? true : null,
-						click: function() { return self.runSource('source_refresh',[]); } }, [ icon('refresh'), _('更新规则') ]) ]) ]),
+					el('button', { id: 'az-update', 'class': 'az-button az-button-primary', type: 'button', 'data-action': 'reload', disabled: locked || !f.enabled ? true : null,
+						click: function() { return self.reloadCurrent(); } }, [ icon('refresh'), _('重新加载') ]) ]) ]),
 				el('p', { id: 'az-operation-note', 'class': 'az-operation-note' }, _('开关与更新可能短暂重载 DNS 或当前代理；关闭后恢复原有设置。')) ]),
 			el('section', { 'class': 'az-card az-progress' }, [ el('div', { 'class': 'az-section-heading' }, [ el('h3', {}, _('接入检查')), pill(verified ? _('终端已验证') : _('终端待验证')) ]),
 				el('ol', { 'class': 'az-steps' }, [ step(1, _('载入规则'), ready ? _('后端运行正常') : _('开启后准备'), ready),
@@ -270,7 +270,9 @@ return view.extend({
 		return el('div',{'class':'az-rules-page'},[
 			el('section',{'class':'az-card az-source-header'},[
 				el('div',{},[el('h3',{},_('我的过滤规则')),el('p',{'class':'az-card-copy'},_('先选择、添加或修改规则，再统一应用。选择时不会下载规则或重载网络。'))]),
-				el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},[icon('refresh'),_('更新已应用规则')]) ]),
+				el('div',{'class':'az-action-row'},[
+					el('button',{id:'az-source-reload',type:'button','class':'az-button az-button-primary',disabled:!editable || (!self.draftCount()&&!enabled) ? true:null,click:function(){return self.reloadCurrent();}},[icon('refresh'),_('重新加载')]),
+					el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},_('更新订阅'))]) ]),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
 			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
@@ -374,7 +376,10 @@ return view.extend({
 			el('div',{},[el('strong',{},self.draftCount()+_(' 项更改待应用')),el('p',{},_('当前网络仍使用已应用配置。应用时统一校验并同步；离开页面前请应用或撤销。'))]),
 			el('div',{'class':'az-action-row'},[
 				el('button',{id:'az-draft-discard',type:'button','class':'az-button az-button-quiet',disabled:self.busy||self.jobUncertain?true:null,click:function(){self.draft=null;self.editSource=null;self.notice=null;self.paint();}},_('撤销更改')),
-				el('button',{id:'az-draft-apply',type:'button','class':'az-button az-button-primary',disabled:locked?true:null,click:function(){return self.applyDraft();}},_('应用更改'))])]);
+				el('button',{id:'az-draft-apply',type:'button','class':'az-button az-button-primary',disabled:locked?true:null,click:function(){return self.applyDraft();}},_('应用并重新加载'))])]);
+	},
+	reloadCurrent: function(){
+		return this.draftCount()?this.applyDraft():this.runAction('reload');
 	},
 	applyDraft: function(receipt){
 		var self=this;if(!receipt&&(!self.canStage()||!self.draftCount()))return Promise.resolve();
@@ -506,7 +511,7 @@ return view.extend({
 	},
 	runAction: function(action, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (['enable','disable','refresh'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || (action === 'refresh' && f.enabled)))) return Promise.resolve();
+		if (['enable','disable','refresh','reload'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || ((action === 'refresh'||action === 'reload') && f.enabled)))) return Promise.resolve();
 		self.busy = action; self.notice = null; self.jobProgress=null;self.jobUncertain=false;self.paint();
 		var failure = null;
 		return (receipt ? Promise.resolve(receipt) : policyCalls[action]()).then(function(result) {
@@ -515,7 +520,7 @@ return view.extend({
 			self.currentStatus = s; self.lastChecked = new Date();
 			var expected = action === 'disable' ? 'disabled' : 'configured_unverified';
 			if (failure || s.state !== expected) self.notice = { kind: 'error', text: _('操作未完成，已重新读取当前状态。'), detail: failure || _('当前状态尚未满足操作结果，请检查服务日志后重新检测。') };
-			else self.notice = { kind: 'success', text: action === 'enable' ? _('广告过滤已开启，规则配置已同步。') : action === 'disable' ? _('广告过滤已关闭，原有设置已恢复。') : _('规则已更新，当前配置已同步。') };
+			else self.notice = { kind: 'success', text: action === 'enable' ? _('广告过滤已开启，规则配置已同步。') : action === 'disable' ? _('广告过滤已关闭，原有设置已恢复。') : action==='reload' ? _('当前配置已重新加载，未强制更新订阅。') : _('规则已更新，当前配置已同步。') };
 		}).catch(function(err) {
 			self.currentStatus = { state: 'error', error: String(err) };
 			self.notice = { kind: 'error', text: _('操作结果暂时无法确认，请重新检测。'), detail: failure || String(err) };
@@ -529,7 +534,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.10.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.10.1' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {

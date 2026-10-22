@@ -109,7 +109,7 @@ ubus -s /tmp/ubus.sock call session create '{"timeout":2}' >/tmp/nested.json || 
 case "$1" in
  lookup) printf '{"available":true,"domain":"%s","match":"none"}\\n' "$2";;
 pause) echo source_download > "$ADZERO_JOB_CONTEXT/reason"; exit 1;;
- enable|disable|refresh|routing-on|routing-off)
+ enable|disable|refresh|reload|routing-on|routing-off)
    mkdir /tmp/long-operation.lock || exit 1
    trap 'rmdir /tmp/long-operation.lock' EXIT
    echo $$ > /tmp/long-operation.pid
@@ -183,6 +183,9 @@ esac
             context=base/'tmp/adzero-jobs'/started['job']
             assert (context/'action').read_text().strip()=='source-add'
             assert done['progress']['phase_elapsed']>=0,done
+            assert (context/'finished').exists() and (context/'timeline').read_text().endswith(' finished\n')
+            (context/'finished').write_text(str(int((context/'created').read_text())+1))
+            assert call('job_status',{'job':started['job']})['progress']['elapsed']==1
             (context/'stage').write_text('private-backend-token-not-for-browser')
             (context/'reason').write_text('private-backend-token-not-for-browser')
             (context/'result').write_text('1')
@@ -196,7 +199,7 @@ esac
             assert (base/'tmp/long-operation.lock').is_dir(),'expected orphan after SIGKILL'
             time.sleep(1.2)  # let the fixture child sleep end before cleanup
             (base/'tmp/long-operation.lock').rmdir()
-            for action in ('enable','disable','refresh','routing_on','routing_off'):
+            for action in ('enable','disable','refresh','reload','routing_on','routing_off'):
                 start=time.monotonic()
                 receipt=call(action,{})
                 assert time.monotonic()-start < .9,'launcher crossed one-second rpcd limit'
@@ -213,7 +216,7 @@ esac
             large_status=large_status_check(base,run,ctl)
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':42,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed',
+                    'checks':44,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

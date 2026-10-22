@@ -1,0 +1,162 @@
+{
+  "source_sha256": "ef10db207f097cd0c9d912f4d150b34b76f31b5835e41eb6b04b0c9190ceb415",
+  "rules": 206375,
+  "domestic_domains": 109795,
+  "domestic_cidrs": 10015,
+  "measurements": [
+    {
+      "action": "enable",
+      "seconds": 4.4754,
+      "proxy_reload_calls": 1,
+      "backend_calls": 2,
+      "timeline": [
+        "1792634218 waiting_lock",
+        "1792634218 checking",
+        "1792634218 processing",
+        "1792634218 verifying",
+        "1792634218 processing",
+        "1792634219 verifying",
+        "1792634221 adapting",
+        "1792634222 restarting"
+      ]
+    },
+    {
+      "action": "unchanged_reconcile",
+      "seconds": 0.5225,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792634222 waiting_lock",
+        "1792634222 checking",
+        "1792634223 verifying",
+        "1792634223 adapting"
+      ]
+    },
+    {
+      "action": "routing_on_cold",
+      "seconds": 3.9693,
+      "proxy_reload_calls": 1,
+      "backend_calls": 0,
+      "timeline": [
+        "1792634223 waiting_lock",
+        "1792634223 checking",
+        "1792634223 verifying",
+        "1792634225 adapting",
+        "1792634226 restarting"
+      ]
+    },
+    {
+      "action": "routing_off",
+      "seconds": 1.7271,
+      "proxy_reload_calls": 1,
+      "backend_calls": 0,
+      "timeline": [
+        "1792634227 waiting_lock",
+        "1792634227 checking",
+        "1792634227 verifying",
+        "1792634228 adapting",
+        "1792634228 restarting"
+      ]
+    },
+    {
+      "action": "routing_on_warm",
+      "seconds": 1.7784,
+      "proxy_reload_calls": 1,
+      "backend_calls": 0,
+      "timeline": [
+        "1792634229 waiting_lock",
+        "1792634229 checking",
+        "1792634229 verifying",
+        "1792634230 adapting",
+        "1792634230 restarting"
+      ]
+    },
+    {
+      "action": "lookup",
+      "seconds": 0.8907,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792634230 waiting_lock",
+        "1792634230 checking",
+        "1792634231 verifying"
+      ]
+    },
+    {
+      "action": "enable_extra_source",
+      "seconds": 5.364,
+      "proxy_reload_calls": 1,
+      "backend_calls": 2,
+      "timeline": [
+        "1792634231 waiting_lock",
+        "1792634231 checking",
+        "1792634232 verifying",
+        "1792634232 downloading",
+        "1792634232 validating",
+        "1792634232 processing",
+        "1792634232 verifying",
+        "1792634232 processing",
+        "1792634232 verifying",
+        "1792634234 adapting",
+        "1792634236 restarting"
+      ]
+    },
+    {
+      "action": "refresh_seed",
+      "seconds": 4.5869,
+      "proxy_reload_calls": 0,
+      "backend_calls": 2,
+      "timeline": [
+        "1792634237 waiting_lock",
+        "1792634237 checking",
+        "1792634237 verifying",
+        "1792634237 downloading",
+        "1792634237 validating",
+        "1792634240 downloading",
+        "1792634240 validating",
+        "1792634240 processing",
+        "1792634240 verifying",
+        "1792634240 processing",
+        "1792634241 verifying",
+        "1792634241 adapting"
+      ]
+    },
+    {
+      "action": "reload_unchanged",
+      "seconds": 0.9672,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792634241 waiting_lock",
+        "1792634241 checking",
+        "1792634241 verifying",
+        "1792634242 adapting"
+      ]
+    },
+    {
+      "action": "refresh_unchanged",
+      "seconds": 1.5942,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792634242 waiting_lock",
+        "1792634242 checking",
+        "1792634243 verifying",
+        "1792634243 downloading",
+        "1792634243 validating",
+        "1792634243 downloading",
+        "1792634243 validating",
+        "1792634244 adapting"
+      ]
+    },
+    {
+      "action": "batch_two_sources_and_routing_off",
+      "seconds": 6.2722,
+      "proxy_reload_calls": 1,
+      "precheck_downloads": 2
+    }
+  ],
+  "precheck_downloads": 5,
+  "batch_precheck_downloads": 2,
+  "scope": "real ctl/UCI/ucode; synthetic large rules; backend/download/NaiLink API/reload fixtures; not router or network timings"
+}

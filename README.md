@@ -1,6 +1,6 @@
 # AdZero
 
-当前测试版 **v0.10.0** 将规则增删、编辑、启停与自动分流选择改为“先暂存，再统一应用”。选择时不下载、不改配置、不重载服务；应用后核对实际状态，失败保留选择。修复 adblock-fast 的数字 `file_url.size` 统计被误认作外部编辑、导致更新失败的问题。沿用 NaiLink 授权预检与超时恢复保护，详见 [修复记录](docs/INTERACTION_FIXES.md)。
+当前测试版 **v0.10.1** 增加“重新加载”和按来源缓存：有更改时统一应用，已有快照直接交给后端复用；“更新订阅”才主动联网。内容未变时跳过后端重建和代理重载。保留现有四代理架构及恢复检查，不新增运行依赖。详见 [性能与操作说明](docs/RULE_APPLY_PERFORMANCE.md)。
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
@@ -10,7 +10,7 @@
 
 v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动重编号误判为外部修改；有其他页面尚未保存的后端配置时拒绝提交或覆盖。
 
-![AdZero 批量应用本地预览，使用模拟状态，未连接路由器](docs/images/adzero-v0.10.0-pending.jpg)
+![AdZero 重新加载本地预览，使用模拟状态，未连接路由器](docs/images/adzero-v0.10.1-reload.png)
 
 智能分流的目标是由 AdZero 统一管理广告过滤、DNS 选择和连接去向：有可用代理时，国内默认直连、国外默认走当前代理；无可用代理时，所有未被拦截的请求使用国内 DNS 与本地网络直连。SmartDNS、AdGuard Home 只作为功能与交互参考，不作为新增运行依赖。详见 [修订后的设计与验收约束](docs/SMART_DNS.md)。v0.9.0 已加入四种适配器和无代理路径，实际能力、限制及验证范围见该文档。
 
@@ -18,7 +18,7 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 
 进入「过滤规则」，从 HaGeZi Light / Normal / Pro、anti-AD、AdAway 中按需添加，或填写自己的 HTTPS 地址。支持域名列表、Hosts 和 `||domain^` 基础 DNS Adblock；不支持网页元素、正则、修饰符或高级例外。不限于预置来源，但格式必须适合路由器域名过滤。
 
-每项订阅可启用、停用、编辑名称/地址/格式或删除；这些操作先进入“待应用”，点击一次“应用更改”统一处理。支持撤销全部待应用选择。关闭保护时保留已应用选择；个人放行名单始终保留。建议同系列选一项，数量不代表实际拦截率。应用时一次性预检新增或重新启用/修改的来源，再统一重建后端和同步代理；同批变更不会逐行重复重建。失败时尝试恢复原配置，有并发修改则保留恢复记录。任务在路由器后台运行，离开页面仍会继续，返回同一标签页可查看回执。
+每项订阅可启用、停用、编辑名称/地址/格式或删除；这些操作先进入“待应用”，点击一次“应用并重新加载”统一处理。支持撤销全部待应用选择。关闭保护时保留已应用选择；个人放行名单始终保留。建议同系列选一项，数量不代表实际拦截率。点击“应用并重新加载”集中预检变化来源，复用已校验的下载快照；规则内容改变时统一重建后端并同步代理。内容和配置未变时跳过重建。失败时尝试恢复原配置，有并发修改则保留恢复记录。任务在路由器后台运行，离开页面仍会继续，返回同一标签页可查看回执。
 
 待应用内容只在当前页面内存保留，可在“运行概览/过滤规则”间切换；刷新或离开前浏览器会提醒。不会把订阅令牌存入 sessionStorage。自动分流选择也使用同一个应用按钮；保护总开关、暂停和误杀放行继续即时执行。
 
@@ -31,7 +31,7 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 3. 展开「已放行」可随时撤销。名单保存在 /etc/config/adzero，关闭/暂停和标准 --upgrade 升级时保留；撤销后该域名是否再次被拦截，取决于当前规则。后端原有放行名单保留，关闭时恢复。
 4. 网站或 App 异常时，可先「临时暂停」5、15、30 分钟做对比。暂停会移除 AdZero 自己的代理规则并停止自管过滤后端，保留当前 DNS/代理的原有配置；到期约 5 秒内开始尝试恢复，繁忙操作可能延后。也可「立即恢复」或「保持关闭」取消定时恢复。路由器重启会提前尝试恢复保护。
 
-应用/撤销放行会重新下载和处理当前规则，需要网络，可能重启 DNS 或代理；执行期间请等待状态确认。查询和名单管理在保护已开启且规则就绪时可用。放行只移除 AdZero 自己的拦截，其他插件/订阅的独立规则、浏览器或终端缓存仍可能影响结果。
+应用/撤销放行会重新处理当前规则，优先复用下载快照，缓存缺失时需要网络，可能重启 DNS 或代理；执行期间请等待状态确认。查询和名单管理在保护已开启且规则就绪时可用。放行只移除 AdZero 自己的拦截，其他插件/订阅的独立规则、浏览器或终端缓存仍可能影响结果。
 
 恢复失败会保留暂停/恢复记录并明确显示；不会显示成已开启。计时使用启动时钟而非系统日期，避免校时改变期限。不要手动删除 /etc/adzero 的恢复记录。交互说明见 [UI_DESIGN.md](docs/UI_DESIGN.md)，验收边界见 [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md)。
 
@@ -40,10 +40,10 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.10.0)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.10.1)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -52,7 +52,7 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本使用 --upgrade：先校验安装包、暂停后台调度并等当前任务完成，备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
@@ -63,7 +63,7 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 这是让旧版完成当前任务后进入新版优化的升级过渡，不能加速已经运行的旧任务。锁持续占用则停止安装并保留配置、锁和恢复记录。请提供 `ls -la /tmp/adzero.lock` 与 `ps w | grep -E '[a]dzero/(ctl|watch|adapter|backend)'` 的只读结果，不要直接删除锁。升级期间请等待当前命令完成。升级备份中的 state.tar.gz 可能含原有 DNS 配置，请仅保留在路由器本地。
 
-rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.10.0 地址。
+rockchip/armv8 的固件/SDK 架构名为 aarch64_generic；APK 的 --print-arch 可能返回 CPU 名 aarch64。安装器只对已列入矩阵的该目标接受这组明确别名，仍严格匹配固件、target 和包类型。旧版 v0.5.0 只提供 x86；遇到 target 不支持时请使用上面的 v0.10.1 地址。
 
 v0.5.3 已修正「规则已加载成功却被判失败回滚」；v0.5.2 已修正旧默认规则源；v0.6.0 已解决 LuCI 将 disabled=false 写为实际禁用属性的问题。缺少 gawk、GNU grep/sed、coreutils-sort 仍为后端推荐提示，本版未因此新增依赖。
 
@@ -98,6 +98,7 @@ Mihomo 在普通和 Fake-IP 模式下的 UDP/TCP、A/AAAA 共 40 组本机查询
 ~~~sh
 /usr/libexec/adzero/ctl status
 /usr/libexec/adzero/ctl enable
+/usr/libexec/adzero/ctl reload
 /usr/libexec/adzero/ctl refresh
 /usr/libexec/adzero/ctl disable
 ~~~
@@ -113,6 +114,8 @@ sh scripts/check.sh
 python3 scripts/check_openwrt_runtime.py
 # 在 Linux/WSL 的隔离 chroot 中验证 RPC，需要 root
 python3 scripts/check_rpc.py
+# 在同类隔离环境中检查原生下载函数与快照交接（本地传输夹具）
+python3 scripts/check_source_cache.py
 # 真实 NaiLink CGI 与 API-only daemon 的授权链，不运行代理内核
 python3 scripts/check_nailink_gateway.py
 # 以下三项需要 ADZERO_UCODE 指向真实 ucode 命令（含 -L 模块目录）

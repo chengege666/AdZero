@@ -535,10 +535,21 @@ function rules_signature(plugin) {
 	let sha256=rulecache.fingerprint(root+path);if(!sha256)return null;
 	let configs=['adzero','adblock-fast',plugin=='nailink'?'daed':plugin=='none'?'dhcp':plugin];
 	let dependencies={};
-	let paths=map(configs,c=>'/etc/config/'+c);
+	let paths=map(filter(configs,c=>c!='adblock-fast'),c=>'/etc/config/'+c);
 	if(plugin=='passwall')paths=[...paths,'/usr/share/passwall/app.sh','/usr/share/passwall/rules/chnlist','/usr/share/passwall/rules/chnroute','/usr/share/passwall/rules/gfwlist','/etc/passwall/rules/direct_host','/etc/passwall/rules/proxy_host'];
 	if(plugin=='nikki')push(paths,'/etc/nikki/run/config.yaml');
-	for(let c in configs)if(length(uci.changes(c)?.[c]??[]))return null;
+	for(let c in configs)for(let delta in uci.changes(c)?.[c]??[]){
+		if(c=='adblock-fast'&&delta[0]=='set'&&delta[2]=='size'&&match(''+delta[3],/^[0-9]+$/)&&uci.get(c,delta[1])=='file_url')continue;
+		return null;
+	}
+	// Names, validation timestamps/counts and native download sizes do not
+	// alter the rules. The exact processed output hash above still gates reuse.
+	let backend_options=[];
+	uci.foreach('adblock-fast',null,s=>{
+		let values={};for(let k in sort(keys(s)))if(substr(k,0,1)!='.'&&!(s['.type']=='file_url'&&(k=='name'||k=='size'||substr(k,0,7)=='adzero_')))values[k]=s[k];
+		push(backend_options,{id:s['.name'],type:s['.type'],values});
+	});
+	dependencies['/etc/config/adblock-fast']=backend_options;
 	for(let name in paths){
 		let stat=fs.lstat(root+name);
 		if(!stat){dependencies[name]='missing';continue;}
@@ -546,7 +557,7 @@ function rules_signature(plugin) {
 		if(!stat.size){dependencies[name]='empty';continue;}
 		let hash=rulecache.fingerprint(root+name);if(!hash)return null;dependencies[name]=hash;
 	}
-	return {schema:2,mode,sha256,dependencies};
+	return {schema:3,mode,sha256,dependencies};
 }
 function reconfigure_nailink(with_rules) {
 	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');

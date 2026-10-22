@@ -14,6 +14,7 @@ sh -n luci-app-adzero/root/usr/libexec/adzero/watch
 sh -n luci-app-adzero/root/usr/libexec/adzero/policy
 sh -n luci-app-adzero/root/usr/libexec/adzero/sources
 sh -n luci-app-adzero/root/usr/libexec/adzero/job
+sh -n luci-app-adzero/root/usr/libexec/adzero/cache-curl/curl
 sh -n luci-app-adzero/root/usr/libexec/adzero/routing-data
 sh -n luci-app-adzero/root/etc/init.d/adzero
 sh -n scripts/install.sh

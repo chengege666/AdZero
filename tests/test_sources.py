@@ -58,9 +58,9 @@ class SourcesTest(unittest.TestCase):
         self.run_source('begin','toggle',item['id'],item['url'],'0');self.run_source('finish')
         self.run_source('begin','toggle',item['id'],item['url'],'1');self.run_source('finish')
         self.assertEqual(log.read_text().splitlines()[-1],item['url'])
-        self.assertEqual(len(log.read_text().splitlines()),3)
+        self.assertEqual(len(log.read_text().splitlines()),2)
         self.run_source('begin','refresh');self.run_source('finish')
-        self.assertEqual(len(log.read_text().splitlines()),5)
+        self.assertEqual(len(log.read_text().splitlines()),4)
 
     def test_toggle_and_remove_restore_original_exact_config(self):
         original=(self.root/'etc/config/adblock-fast').read_bytes()
@@ -160,7 +160,7 @@ class SourcesTest(unittest.TestCase):
     def test_format_parsers_are_strict_but_support_common_hosts_headers(self):
         for kind,raw in [('hosts','127.0.0.1 localhost\n255.255.255.255 broadcasthost\nfe80::1%lo0 localhost\n0.0.0.0 ads.example\n'),('adblock','[Adblock Plus 2.0]\n! comment\n||ads.example^\n')]:
             self.body.write_text(raw);self.add(kind=kind);self.run_source('rollback');self.run_source('discard')
-        self.body.write_text('||ads.example^$third-party\n');self.add(kind='adblock',ok=False)
+        self.body.write_text('||ads.example^$third-party\n');self.add(kind='adblock',url='https://invalid.example/list',ok=False)
 
     def test_full_controller_applies_and_rolls_back_rule_changes(self):
         self.fixture.ctl('enable')

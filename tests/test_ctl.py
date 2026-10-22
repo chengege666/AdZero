@@ -121,7 +121,7 @@ class AdZeroTest(unittest.TestCase):
         policy.write_text('''#!/bin/sh
 case "$1" in
  status) echo '{"allowed":[],"pending":false,"pause":null}' ;;
- pending|is-paused|pause-due|has-allowed) exit 1 ;;
+ pending|is-paused|pause-due|has-allowed|cache-live) exit 1 ;;
 esac
 exit 0
 ''')

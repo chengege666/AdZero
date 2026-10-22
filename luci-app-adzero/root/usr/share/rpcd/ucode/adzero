@@ -72,6 +72,7 @@ return {adzero:{
 	enable:{call:r=>job(r,'enable',[])},
 	disable:{call:r=>job(r,'disable',[])},
 	refresh:{call:r=>job(r,'refresh',[])},
+	reload:{call:r=>job(r,'reload',[])},
 	routing_on:{call:r=>job(r,'routing-on',[])},
 	routing_off:{call:r=>job(r,'routing-off',[])},
 	source_list:{call:r=>invoke(r,'sources-list',[],true)},
@@ -88,9 +89,10 @@ return {adzero:{
 		let code=fs.readfile(path+'/result');
 		let phase=trim(fs.readfile(path+'/stage')??'queued');
 		let started=int(trim(fs.readfile(path+'/created')??''));
-		let elapsed=started>0?int(time())-started:0;
+		let finished=int(trim(fs.readfile(path+'/finished')??'')),now=code!=null&&finished>=started?finished:int(time());
+		let elapsed=started>0?now-started:0;
 		let metadata={stage:index(progress.stages,phase)>=0?phase:'checking',elapsed:elapsed>0?elapsed:0};
-		let phase_start=int(trim(fs.readfile(path+'/stage_started')??'')),phase_elapsed=int(time())-phase_start;
+		let phase_start=int(trim(fs.readfile(path+'/stage_started')??'')),phase_elapsed=now-phase_start;
 		if(phase_start>0&&phase_elapsed>=0)metadata.phase_elapsed=phase_elapsed;
 		if (code == null) {
 			let worker=trim(fs.readfile(path+'/worker')??'');

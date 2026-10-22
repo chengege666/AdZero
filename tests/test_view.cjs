@@ -40,7 +40,7 @@ const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable'
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   assert.equal(spec.object,'adzero'); commands.push(spec.method);
   if (rpcFailure) return {ok:false,message:'typed failure'};
-  if (['enable','disable','refresh'].includes(spec.method)) {
+  if (['enable','disable','refresh','reload'].includes(spec.method)) {
     if (pending) await new Promise(r => { resolveAction = r; });
     if (failAction) return {ok:false,message:'<script>untrusted error</script>'};
     if (!staleResult) state.state = spec.method === 'disable' ? 'disabled' : 'configured_unverified';
@@ -233,13 +233,16 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   await app.stageSource('source_toggle',[key,'https://one.example/list',false]);
   app.rulesOpen=false;app.paint();await app.stageRouting(true);
   check(commands.length===0&&find('az-routing').attrs['aria-checked']==='true'&&!state.policy.routing_enabled,'routing is staged without changing live state');
-  check(find('az-update').disabled,'overview refresh also explains pending edits by disabling conflicting update');
+  check(!find('az-update').disabled,'overview reload can apply all pending choices together');
   await app.openRules();
   check(app.draft.items.length===2,'switching internal tabs preserves all pending choices');
-  commands.length=0;await app.applyDraft();
+  commands.length=0;await app.reloadCurrent();
   check(commands.filter(x=>x==='settings_apply').length===1&&!commands.includes('source_toggle')&&!commands.includes('routing_on'),'one typed batch applies all selections');
   check(app.draft===null&&app.notice.kind==='success'&&ruleData.items.length===2&&state.policy.routing_enabled,'only canonical completion clears pending changes');
   check(!JSON.stringify([...storage.values()]).includes('one.example'),'draft URLs are never persisted in browser storage');
+  commands.length=0;await app.reloadCurrent();
+  check(commands.filter(x=>x==='reload').length===1&&!commands.includes('source_refresh')&&!commands.includes('settings_apply'),'unchanged reload is a distinct typed operation without subscription refresh');
+  check(app.notice.kind==='success'&&text(root).includes('未强制更新订阅'),'reload confirms its cache-only intent');
   commands.length=0;await app.stageSource('source_toggle',[ruleData.items[0].id,ruleData.items[0].url,true]);
   find('az-draft-discard').events.click();
   check(app.draft===null&&commands.length===0&&!ruleData.items[0].enabled,'discard makes no server calls and leaves active choices alone');

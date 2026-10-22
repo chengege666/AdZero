@@ -1,0 +1,8 @@
+{
+  "scope": "browser preview with simulated status and RPC, no router connection",
+  "two_new_sources_before_apply_operations": 0,
+  "combined_reload_operation_count": 1,
+  "plain_reload_is_separate_operation": true,
+  "confirmation": "current configuration reloaded without forced subscription refresh",
+  "screenshot": "../../images/adzero-v0.10.1-reload.png"
+}

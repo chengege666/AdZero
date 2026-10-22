@@ -29,6 +29,8 @@ def main():
         bodies={'https://bench.example/large':names,'https://bench.example/extra':['extra-ad.example','extra-track.example'],
                 'https://bench.example/batch0':['batch0-ad.example'],'https://bench.example/batch1':['batch1-ad.example']}
         f.write('source-downloads.json',json.dumps(bodies))
+        backend=Path(f.env['ADZERO_BACKEND_INIT'])
+        backend.write_text(backend.read_text().replace("r=Path(os.environ['ADZERO_POLICY_ROOT']); output=", "r=Path(os.environ['ADZERO_POLICY_ROOT']); log=r/'backend-calls'; log.write_text((log.read_text() if log.exists() else '')+sys.argv[1]+'\\n'); output="))
         cfg=f.root/'etc/config/adblock-fast'
         cfg.write_text(cfg.read_text()+"\nconfig file_url 'large'\n option enabled '1'\n option action 'block'\n option adzero_format 'domains'\n option url 'https://bench.example/large'\nconfig file_url 'extra'\n option enabled '0'\n option action 'block'\n option adzero_format 'domains'\n option url 'https://bench.example/extra'\n")
         for key,names in bodies.items():f.write('body-'+key.rsplit('/',1)[1],'\n'.join(names)+'\n')
@@ -37,21 +39,22 @@ def main():
                                              'cidr_raw':''.join(f'10.{i//256}.{i%256}.0/24\n' for i in range(10015))}))
         f.env.update(ADZERO_SOURCE_FETCH_FIXTURE=str(fetch),ADZERO_ROUTING_DATA_FIXTURE=str(data),ADZERO_ROUTING_DATA_PROGRAM=str(args.libexec/'routing-data'))
         results=[]
-        actions=[('enable',['enable']),('unchanged_reconcile',['reconcile']),('routing_on_cold',['routing-on']),('routing_off',['routing-off']),('routing_on_warm',['routing-on']),('lookup',['lookup','ad000123.example']),('enable_extra_source',['source-toggle','extra','https://bench.example/extra','1'])]
+        actions=[('enable',['enable']),('unchanged_reconcile',['reconcile']),('routing_on_cold',['routing-on']),('routing_off',['routing-off']),('routing_on_warm',['routing-on']),('lookup',['lookup','ad000123.example']),('enable_extra_source',['source-toggle','extra','https://bench.example/extra','1']),('refresh_seed',['source-refresh']),('reload_unchanged',['reload']),('refresh_unchanged',['source-refresh'])]
         for label,argv in actions:
             context=f.root/'tmp'/('job-'+label);context.mkdir(parents=True)
             f.env['ADZERO_JOB_CONTEXT']=str(context)
-            before=json.loads(p.read_text())['runs'];started=time.monotonic()
+            before=json.loads(p.read_text())['runs'];calls=len((f.root/'backend-calls').read_text().splitlines()) if (f.root/'backend-calls').exists() else 0;started=time.monotonic()
             proc=subprocess.run(controls.SHELL+[str(args.libexec/'ctl'),*argv],env=f.env,text=True,capture_output=True,timeout=180)
             if proc.returncode != 0:
                 state=f.ctl('status')
                 raise AssertionError(proc.stderr+'\nIsolated controller state: '+state.stdout)
             after=json.loads(p.read_text())['runs']
-            row={'action':label,'seconds':round(time.monotonic()-started,4),'proxy_reload_calls':after-before}
+            row={'action':label,'seconds':round(time.monotonic()-started,4),'proxy_reload_calls':after-before,'backend_calls':len((f.root/'backend-calls').read_text().splitlines())-calls}
             if (context/'timeline').exists():row['timeline']=(context/'timeline').read_text().splitlines()
             if label=='lookup':assert json.loads(proc.stdout)['match']=='exact'
             if label=='unchanged_reconcile':assert after==before
             if label.startswith('routing_'):assert after-before==1
+            if label in ('reload_unchanged','refresh_unchanged'):assert after==before and row['backend_calls']==0,row
             results.append(row);print(json.dumps(row),flush=True)
         # Two new selections plus a routing change are one production action.
         listing=json.loads(f.ctl('sources-list').stdout)

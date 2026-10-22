@@ -1,0 +1,19 @@
+{
+  "source_sha256": "ef10db207f097cd0c9d912f4d150b34b76f31b5835e41eb6b04b0c9190ceb415",
+  "upstream_sha256": "19727b189472f380b9791b1fc37c4acdec60eea06650f7d845fea8fafbd49315",
+  "upstream_url": "https://raw.githubusercontent.com/openwrt/packages/65493e273e4b9cd7014236b69fd6fdc617b88436/net/adblock-fast/files/lib/adblock-fast/adblock-fast.uc",
+  "checks": [
+    "precheck download reused through real shell PATH wrapper and pinned upstream download function",
+    "repeated backend list download uses the same checked bytes without transport",
+    "explicit refresh fetches once; unchanged bytes are replayed without a second fetch",
+    "changed refresh content reaches backend; stale snapshot is not replayed",
+    "corrupt snapshot falls back to real downloader and successful backend fetch reseeds cache",
+    "previously existing uncached source downloads once, then reuses snapshot",
+    "custom curl configuration retains real downloader behavior on every call",
+    "real curl exit 28 propagates to pinned upstream timeout handling"
+  ],
+  "runtime": "actual OpenWrt 24.10.8 shell/ucode/UCI and shipped curl wrapper in disposable rootfs",
+  "transport": "local curl fixture, no network",
+  "backend_lifecycle_and_proxy_reload": "not_run",
+  "router": "not_touched"
+}

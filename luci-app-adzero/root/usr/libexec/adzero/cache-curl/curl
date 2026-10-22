@@ -1,0 +1,13 @@
+#!/bin/sh
+# Only ctl's backend child sees this PATH entry. All unsupported curl calls
+# retain their original arguments and real curl behavior.
+helper=$(dirname "$0")/../cache-curl.uc
+if [ "$ADZERO_SOURCE_REPLAY" = 1 ] && ucode -S "$helper" -- replay "$@" 2>/dev/null; then
+	exit 0
+fi
+/usr/bin/curl "$@"
+code=$?
+if [ "$code" = 0 ] && [ "$ADZERO_SOURCE_REPLAY" = 1 ]; then
+	ucode -S "$helper" -- store "$@" >/dev/null 2>&1 || :
+fi
+exit "$code"

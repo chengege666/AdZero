@@ -1,0 +1,155 @@
+"""Actual ucode/UCI cache handoff, corruption fallback and reload behavior."""
+import json
+from pathlib import Path
+import subprocess
+import unittest
+import test_sources
+
+@unittest.skipUnless(test_sources.UCODE, 'requires actual OpenWrt runtime')
+class SourceCacheTest(unittest.TestCase):
+    def setUp(self):
+        self.s=test_sources.SourcesTest();self.s.setUp();self.addCleanup(self.s.doCleanups)
+        self.f=self.s.fixture;self.root=self.s.root;self.env=self.s.env
+        fetch=self.f.write('bin/fetch', '#!/bin/sh\necho fetch >> "$ADZERO_SOURCES_ROOT/fetches"\ncp "$ADZERO_SOURCES_ROOT/source-body" "$2"\n',True)
+        self.env['ADZERO_SOURCE_FETCH_FIXTURE']=str(fetch)
+        self.env['ADZERO_SOURCE_REPLAY']='1'
+        self.url='https://rules.example/list.txt?token=private-token'
+        self.s.add(url=self.url);self.s.run_source('finish')
+        self.output=self.f.write('tmp/adblock-fast_tmp.aB123456','')
+
+    def helper(self, action='replay', extra=(), ok=True):
+        argv=test_sources.UCODE+[str(test_sources.PROGRAM.with_name('cache-curl.uc')),'--',action,'-f','--silent','--retry','3',*extra,self.url,'-o','/tmp/'+self.output.name]
+        p=subprocess.run(argv,env=self.env,text=True,capture_output=True,timeout=10)
+        self.assertEqual(p.returncode==0,ok,p.stdout+p.stderr);return p
+
+    def test_precheck_bytes_are_reused_by_the_backend_without_another_download(self):
+        self.helper();self.assertEqual(self.output.read_bytes(),self.s.body.read_bytes())
+        self.assertEqual((self.root/'fetches').read_text().splitlines(),['fetch'])
+        paths=list((self.root/'tmp/adzero-source-cache').iterdir())
+        self.assertEqual({p.suffix for p in paths},{'.proof','.body','.parsed'})
+        self.assertFalse(any('private-token' in p.name or b'private-token' in p.read_bytes() for p in paths))
+
+    def test_reenable_uses_cache_but_explicit_refresh_fetches_new_content(self):
+        item=self.s.data()['items'][0]
+        for value in ('0','1'):
+            self.s.run_source('begin','toggle',item['id'],item['url'],value);self.s.run_source('finish')
+        self.assertEqual(len((self.root/'fetches').read_text().splitlines()),1)
+        self.s.body.write_text('changed.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('finish');self.helper()
+        self.assertEqual(self.output.read_text(),'changed.example\n')
+        self.assertEqual(self.s.data()['items'][0]['domains'],1)
+        self.assertEqual(len((self.root/'fetches').read_text().splitlines()),2)
+
+    def test_corrupt_body_is_a_miss_and_precheck_fetches_again(self):
+        next((self.root/'tmp/adzero-source-cache').glob('*.body')).write_text('corrupt.example\n')
+        self.helper(ok=False);self.assertEqual(self.output.read_text(),'')
+        item=self.s.data()['items'][0]
+        for value in ('0','1'):
+            self.s.run_source('begin','toggle',item['id'],item['url'],value);self.s.run_source('finish')
+        self.helper();self.assertEqual(self.output.read_bytes(),self.s.body.read_bytes())
+        self.assertEqual(len((self.root/'fetches').read_text().splitlines()),2)
+
+    def test_invalid_fresh_download_cannot_fall_back_to_old_snapshot_as_success(self):
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.s.body.write_text('<html>download error</html>')
+        self.s.run_source('begin','refresh',ok=False)
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+        self.helper(ok=False)
+
+    def test_native_update_invalidates_old_source_snapshots_before_reload(self):
+        self.f.ctl('enable')
+        self.helper()
+        # Simulate output replaced by the backend's native scheduled updater.
+        (self.root/'var/run/adblock-fast/dnsmasq.servers').write_text('server=/native-new.example/\n')
+        self.s.run_source('cache-sync')
+        self.helper(ok=False)
+        self.s.run_source('cache-live',ok=False)
+
+    def test_native_update_invalidates_snapshot_on_disable_too(self):
+        self.f.ctl('enable')
+        (self.root/'var/run/adblock-fast/dnsmasq.servers').write_text('server=/native-new.example/\n')
+        self.f.ctl('disable')
+        self.assertFalse(list((self.root/'tmp/adzero-source-cache').glob('*.proof')))
+
+    def test_corrupt_parsed_result_falls_back_to_strict_body_parser(self):
+        next((self.root/'tmp/adzero-source-cache').glob('*.parsed')).write_text('{"names":["injected.example"]}')
+        item=self.s.data()['items'][0]
+        for value in ('0','1'):
+            self.s.run_source('begin','toggle',item['id'],item['url'],value);self.s.run_source('finish')
+        self.assertEqual(self.s.data()['items'][0]['domains'],2)
+        self.assertEqual(len((self.root/'fetches').read_text().splitlines()),1)
+
+    def test_unsupported_flags_disabled_source_and_foreign_output_are_not_intercepted(self):
+        self.helper(extra=('--header','X-Test: private'),ok=False)
+        item=self.s.data()['items'][0]
+        self.s.run_source('begin','toggle',item['id'],item['url'],'0');self.s.run_source('finish')
+        self.helper(ok=False)
+        self.assertEqual(self.output.read_text(),'')
+
+    def test_symlink_and_public_cache_are_rejected(self):
+        self.output.unlink();self.output.symlink_to(self.s.body)
+        self.helper(ok=False);self.assertEqual(self.s.body.read_text(),'new-ads.example\nnew-track.example\n')
+        self.output.unlink();self.output.write_text('');self.output.chmod(0o600)
+        (self.root/'tmp/adzero-source-cache').chmod(0o755)
+        self.helper(ok=False)
+
+    def test_backend_download_can_seed_a_missing_snapshot(self):
+        for p in (self.root/'tmp/adzero-source-cache').iterdir(): p.unlink()
+        self.output.write_text('from-backend.example\n');self.helper('store')
+        self.output.write_text('');self.helper()
+        self.assertEqual(self.output.read_text(),'from-backend.example\n')
+
+    def test_reload_unchanged_configuration_skips_backend_and_proxy_restart(self):
+        for plugin in ('nailink','passwall','openclash','nikki'):
+            with self.subTest(plugin=plugin):
+                self.f.select(plugin);self.f.ctl('enable')
+                backend=Path(self.env['ADZERO_BACKEND_INIT'])
+                original=backend.read_text()
+                backend.write_text('#!/bin/sh\necho unexpected >> "$ADZERO_SOURCES_ROOT/unexpected-restart"\nexit 77\n')
+                self.f.ctl('reload');self.assertFalse((self.root/'unexpected-restart').exists())
+                self.assertEqual(self.f.status()['state'],'configured_unverified')
+                backend.write_text(original);self.f.ctl('disable')
+
+    def test_reload_still_rejects_broken_backend_and_external_owner(self):
+        self.f.ctl('reload',ok=False)
+        self.f.ctl('enable')
+        (self.root/'var/run/adblock-fast/dnsmasq.servers').unlink()
+        self.f.ctl('reload',ok=False)
+
+    def test_reload_after_native_cache_restore_does_not_require_source_snapshots(self):
+        self.f.ctl('enable');self.f.ctl('disable')
+        for p in (self.root/'tmp/adzero-source-cache').iterdir(): p.unlink()
+        self.f.ctl('enable')
+        self.s.run_source('cache-current')
+        self.s.run_source('cache-live',ok=False)
+        backend=Path(self.env['ADZERO_BACKEND_INIT'])
+        backend.write_text('#!/bin/sh\necho unexpected >> "$ADZERO_SOURCES_ROOT/unexpected-restart"\nexit 77\n')
+        self.f.ctl('reload')
+        self.assertFalse((self.root/'unexpected-restart').exists())
+
+    def test_unchanged_refresh_preserves_fast_restore_on_the_next_enable(self):
+        item=self.s.data()['items'][0]
+        for args in (['set',f"adblock-fast.{item['id']}.adzero_updated=1"],['commit','adblock-fast']):
+            subprocess.run([self.env['ADZERO_UCI'],*args],check=True)
+        self.f.ctl('enable');self.f.ctl('source-refresh')
+        self.f.ctl('disable');self.f.ctl('enable')
+        self.assertEqual((self.root/'last-start-method').read_text(),'start')
+
+    def test_unchanged_refresh_skips_rebuild_but_changed_body_does_not(self):
+        self.f.ctl('enable')
+        # Metadata timestamps may change; effective options and every source
+        # snapshot must remain equal before the expensive rebuild is skipped.
+        backend=Path(self.env['ADZERO_BACKEND_INIT']);original=backend.read_text()
+        journal=self.root/'etc/adzero/adapter.json';prior=journal.read_bytes()
+        item=self.s.data()['items'][0]
+        subprocess.run([self.env['ADZERO_UCI'],'set',f"adblock-fast.{item['id']}.size=999"],check=True)
+        backend.write_text('#!/bin/sh\necho restart >> "$ADZERO_SOURCES_ROOT/rebuilds"\nexit 77\n')
+        self.f.ctl('source-refresh')
+        self.assertFalse((self.root/'rebuilds').exists())
+        self.assertEqual(journal.read_bytes(),prior,'unchanged refreshed metadata must not regenerate adapter data')
+        self.s.body.write_text('fresh-new.example\n')
+        self.f.ctl('source-refresh',ok=False)
+        self.assertTrue((self.root/'rebuilds').exists())
+        backend.write_text(original)
+
+if __name__=='__main__': unittest.main()

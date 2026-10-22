@@ -28,6 +28,7 @@
           "enable",
           "disable",
           "refresh",
+          "reload",
           "routing_on",
           "routing_off",
           "allow",

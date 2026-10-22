@@ -58,7 +58,7 @@ def prepare(sdk, package=PACKAGE):
     destination.chmod(0o755)
     for path in destination.rglob("*"):
         path.chmod(0o755 if path.is_dir() else 0o644)
-    for name in ("ctl", "probe", "adapter", "backend", "watch", "policy", "sources", "job", "routing-data"):
+    for name in ("ctl", "probe", "adapter", "backend", "watch", "policy", "sources", "job", "routing-data", "cache-curl/curl"):
         (destination / "root/usr/libexec/adzero" / name).chmod(0o755)
     (destination / "root/etc/init.d/adzero").chmod(0o755)
     ownership.write_text(source_hash(destination) + "\n")
