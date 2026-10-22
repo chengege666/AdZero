@@ -40,7 +40,7 @@ export function load(address,root){
 export function parsed(snapshot,kind){
 	try{
 		let p=snapshot?.proof,path=snapshot.dir+'/'+snapshot.id+'.parsed';
-		if(p.kind!=kind||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		if(p.parser!=2||p.kind!=kind||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
 		let value=json(fs.readfile(path));
 		if(type(value?.names)!='array'||!length(value.names)||length(value.names)>500000)return null;
 		return value;
@@ -65,7 +65,7 @@ export function save(address,raw,root,kind,result){
 			let path=dir+'/'+nonce+suffix,f=fs.open(path,'wx',0600);if(!f)die('cache_open');push(temps,path);
 			let written=f.write(text),closed=f.close();if(written!=length(text)||!closed)die('cache_write');return path;
 		}
-		let body=put('.body',raw),proof={schema:1,body:hash(body),kind:kind??null};
+		let body=put('.body',raw),proof={schema:1,parser:2,body:hash(body),kind:kind??null};
 		if(!proof.body)die('cache_digest');
 		if(parsed){let data=put('.parsed',parsed);proof.parsed=hash(data);if(!proof.parsed||!fs.rename(data,dir+'/'+id+'.parsed'))die('cache_parsed');}
 		let meta=put('.proof',sprintf('%J',proof));

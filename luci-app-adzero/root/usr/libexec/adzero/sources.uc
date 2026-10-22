@@ -59,7 +59,7 @@ function list() {
 		push(items,{id:s['.name'],name:s.name ?? builtin?.name ?? '已有规则',url:s.url,enabled:s.enabled != '0',
 			format:s.adzero_format ?? builtin?.format ?? s.adzero_detected_format ?? 'unknown',catalog_id:builtin?.id ?? null,https:valid,
 			validation:s.adzero_validation ?? (s.adzero_domains?'validated':'unchecked'),
-			domains: s.adzero_domains ? int(s.adzero_domains) : null,updated:s.adzero_updated ? int(s.adzero_updated) : null});
+			domains: s.adzero_domains ? int(s.adzero_domains) : null,skipped:int(s.adzero_skipped??'0'),updated:s.adzero_updated ? int(s.adzero_updated) : null});
 	}
 	return {catalog:lib.catalog,items,revision:checksum(config),pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
@@ -70,7 +70,10 @@ function download(address,kind,fresh) {
 		progress.stage('validating');
 		let value=snapshots.parsed(snapshot,kind);
 		if(value)return value;
-		try{return kind=='auto'?lib.detect(fs.readfile(snapshot.path)): {format:kind,names:lib.parse(fs.readfile(snapshot.path),kind)};}catch(e){}
+		try{
+			let raw=fs.readfile(snapshot.path),checked=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);
+			snapshots.save(address,raw,root,kind,checked);return checked;
+		}catch(e){}
 	}
 	// A failed optional cache write must never replay the old body after an
 	// explicit refresh. Invalidate its proof before requesting fresh bytes.
@@ -90,7 +93,7 @@ function download(address,kind,fresh) {
 		let raw=fs.readfile(path,25000001),result;
 		try{
 			if(snapshot&&raw==fs.readfile(snapshot.path))result=snapshots.parsed(snapshot,kind);
-			if(!result)result=kind=='auto'?lib.detect(raw):{format:kind,names:lib.parse(raw,kind)};
+			if(!result)result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);
 		}catch(e){progress.failure('source_format');die(e);}
 		snapshots.save(address,raw,root,kind,result);
 		fs.unlink(path);return result;
@@ -103,14 +106,14 @@ function validate_sources(only,fresh) {
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
 		let checked=download(s.url,kind,fresh);
 		if(!checked){
-			uci.delete('adblock-fast',s['.name'],'adzero_domains');uci.delete('adblock-fast',s['.name'],'adzero_detected_format');
+			uci.delete('adblock-fast',s['.name'],'adzero_domains');uci.delete('adblock-fast',s['.name'],'adzero_detected_format');uci.delete('adblock-fast',s['.name'],'adzero_skipped');
 			if(!uci.set('adblock-fast',s['.name'],'adzero_validation','backend_only')||!uci.set('adblock-fast',s['.name'],'adzero_updated',''+time()))die('无法保存规则检查记录。');
 			continue;
 		}
 		let names=checked.names;
 		for (let name in names) union[name]=true;
 		if (length(union) > 500000) die('所选规则合计超过 50 万个域名，请减少列表。');
-		if (!uci.set('adblock-fast',s['.name'],'adzero_domains',''+length(names)) || !uci.set('adblock-fast',s['.name'],'adzero_updated',''+time())) die('无法保存规则校验结果。');
+		if (!uci.set('adblock-fast',s['.name'],'adzero_domains',''+length(names)) || !uci.set('adblock-fast',s['.name'],'adzero_skipped',''+checked.skipped) || !uci.set('adblock-fast',s['.name'],'adzero_updated',''+time())) die('无法保存规则校验结果。');
 		if(!uci.set('adblock-fast',s['.name'],'adzero_validation','validated')||(kind=='auto'&&!uci.set('adblock-fast',s['.name'],'adzero_detected_format',checked.format)))die('无法保存规则格式记录。');
 		count++;
 	}
@@ -191,7 +194,7 @@ function begin_batch(path){
 		if(!old||item.format!=old_kind)values.adzero_format=item.format;
 		for(let key in keys(values))if(!uci.set('adblock-fast',id,key,values[key]))die('无法保存待应用规则。');
 		if(item.enabled&&(!old||old.enabled=='0'||old.url!=item.url||old_kind!=item.format))push(checks,id);
-		if(old&&(old.url!=item.url||old_kind!=item.format))for(let key in ['adzero_domains','adzero_updated','adzero_validation','adzero_detected_format'])uci.delete('adblock-fast',id,key);
+		if(old&&(old.url!=item.url||old_kind!=item.format))for(let key in ['adzero_domains','adzero_skipped','adzero_updated','adzero_validation','adzero_detected_format'])uci.delete('adblock-fast',id,key);
 	}
 	if(uci.get('adblock-fast','config','enabled')=='1'&&!length(filter(selected(),s=>s.enabled!='0'))&&!length(uci.get('adblock-fast','config','blocked_domain')??[]))die('至少保留一项启用的规则；暂停全部过滤请使用保护开关。');
 	if(length(checks))validate_sources(checks);

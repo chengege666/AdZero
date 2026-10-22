@@ -1,0 +1,12 @@
+{
+  "source_sha256": "ea1c2d683eb39180009405c79633bfe8bad9f167c82333c830353bf87275a803",
+  "body_sha256": "02e421eda001d52dbbd09bb899dc588ac0263cbd8e49705da8f5684917d5145a",
+  "bytes": 7688870,
+  "format": "domains",
+  "valid_unique_domains": 245052,
+  "excluded_records": 26,
+  "native_upstream_sha256": "19727b189472f380b9791b1fc37c4acdec60eea06650f7d845fea8fafbd49315",
+  "same_sorted_domain_set": true,
+  "parse_seconds_x86_userspace": 6.751,
+  "network_services_proxy_router": "not_run"
+}

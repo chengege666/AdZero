@@ -42,13 +42,14 @@ export function plan(raw) {
 	}
 	return {revision:p.revision,routing_before:p.routing_before,routing_enabled:p.routing_enabled,items};
 };
-export function parse(raw, kind) {
+export function inspect(raw, kind) {
 	format(kind);
 	if (type(raw) != 'string' || length(raw) > 25000000) die('规则文件为空或超过 25 MB。');
-	let names = {}, count=0;
+	let names = {}, count=0, skipped=0;
 	let bom_re=/^\xef\xbb\xbf/, header_re=/^\[Adblock( Plus)?( [0-9.]+)?\]$/, comment_re=/[[:space:]]+#.*$/;
 	let system_re=/^(\S+)\s+(localhost|localhost\.localdomain|local|broadcasthost|ip6-[a-z-]+|localhost6|localhost6\.localdomain6|0\.0\.0\.0)$/;
 	let hosts_re=/^(0\.0\.0\.0|127\.0\.0\.1|::|::1)[[:space:]]+([^[:space:]]+)$/, adblock_re=/^\|\|([a-zA-Z0-9.-]+)\^$/;
+	let domain_record_re=/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/, domain_chars_re=/^[A-Za-z0-9.-]+$/;
 	for (let line in split(raw,'\n')) {
 		line = trim(replace(line,bom_re,''));
 		if (!length(line) || substr(line,0,1) == '#' || substr(line,0,1) == '!' || match(line,header_re)) continue;
@@ -65,6 +66,13 @@ export function parse(raw, kind) {
 			if (!entry) die('仅支持 ||domain^ 基础 DNS 规则；例外、修饰符、正则和网页元素规则不能导入。');
 			line = entry[1];
 		}
+		// Some domain-only publishers include malformed hostnames. Exclude only
+		// records that the native ASCII domain pipeline already discards: a
+		// leading hyphen, or an underscore. Never strip rule syntax, URLs or
+		// exceptions to manufacture a valid hostname from an unsupported rule.
+		if(kind=='domains' && (substr(line,0,1)=='-' || index(line,'_')>=0) &&
+			match(line,domain_record_re)) { skipped++;continue; }
+		if(kind=='domains' && !match(line,domain_chars_re)) die('规则包含不支持的内容，请检查所选格式。');
 		let name;
 		try { name = hostname(line); } catch(e) { die('规则包含不支持的内容，请检查所选格式。'); }
 		if (!names[name]) { names[name]=true;count++; }
@@ -72,14 +80,15 @@ export function parse(raw, kind) {
 	}
 	let result = sort(keys(names));
 	if (!length(result)) die('规则文件没有有效域名。');
-	return result;
+	return {format:kind,names:result,skipped};
 };
+export function parse(raw,kind) { return inspect(raw,kind).names; };
 // Legacy backend subscriptions have no AdZero format field. Detect only our
 // three strict formats; other native formats remain explicitly backend-only.
 export function detect(raw) {
 	if(type(raw)!='string'||length(raw)>25000000)die('规则文件为空或超过 25 MB。');
 	for(let kind in ['domains','hosts','adblock']){
-		try{return {format:kind,names:parse(raw,kind)};}
+		try{return inspect(raw,kind);}
 		catch(e){if(e.message=='单个列表超过 50 万个域名。')die(e);}
 	}
 	return null;

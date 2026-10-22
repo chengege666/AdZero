@@ -118,6 +118,48 @@ class SourcesTest(unittest.TestCase):
         self.assertEqual(item['validation'],'backend_only');self.assertIsNone(item['domains'])
         self.assertEqual(item['format'],'unknown')
 
+    def test_domain_list_counts_valid_records_and_reports_native_discarded_records(self):
+        self.body.write_text('# CNAME list\nads.example\n-broken.net.example\nunder_score.example\ntrack.example\nads.example\n')
+        for legacy in (False,True):
+            with self.subTest(legacy=legacy):
+                if legacy:
+                    p=self.root/'etc/config/adblock-fast'
+                    p.write_text(p.read_text()+"\nconfig file_url 'legacy'\n option enabled '1'\n option url 'https://legacy.example/list'\n")
+                    self.run_source('begin','refresh')
+                else: self.add()
+                item=self.data()['items'][0]
+                self.assertEqual((item['domains'],item['skipped'],item['format'],item['validation']),(2,2,'domains','validated'))
+                self.assertGreater(item['updated'],0)
+                self.run_source('rollback');self.run_source('discard')
+
+    def test_discarding_malformed_hostnames_never_discards_unsupported_rule_semantics(self):
+        for line in ('@@||allowed.example^','||ads.example^$third-party','example.com##.ad',
+                     '*.wild.example','https://address.example/path','server=/ads.example/',
+                     '127.0.0.1','bad-.label.example','<html>error</html>'):
+            with self.subTest(line=line):
+                self.body.write_text('valid.example\n-broken.example\n'+line+'\n')
+                self.add(ok=False)
+                self.assertFalse(self.data()['pending'])
+        self.body.write_text('-bad.example\nunder_score.example\n')
+        self.add(ok=False)  # No valid domains must never become a passing list.
+
+    def test_skipped_metadata_is_cleared_when_legacy_format_becomes_unsupported(self):
+        p=self.root/'etc/config/adblock-fast'
+        p.write_text(p.read_text()+"\nconfig file_url 'legacy'\n option enabled '1'\n option url 'https://legacy.example/list'\n")
+        self.body.write_text('valid.example\n-bad.example\n')
+        self.run_source('begin','refresh');self.run_source('finish')
+        self.assertEqual(self.data()['items'][0]['skipped'],1)
+        self.body.write_text('||ads.example^$third-party\n')
+        self.run_source('begin','refresh');self.run_source('finish')
+        item=self.data()['items'][0]
+        self.assertEqual((item['domains'],item['skipped'],item['validation']),(None,0,'backend_only'))
+
+    def test_hosts_and_adblock_are_not_relaxed_by_domain_only_exclusions(self):
+        for kind,raw in [('hosts','0.0.0.0 valid.example\n0.0.0.0 -bad.example\n'),
+                         ('adblock','||valid.example^\n||-bad.example^\n')]:
+            with self.subTest(kind=kind):
+                self.body.write_text(raw);self.add(kind=kind,ok=False)
+
     def test_legacy_source_full_refresh_keeps_protection_and_populates_metadata(self):
         self.fixture.ctl('enable')
         p=self.root/'etc/config/adblock-fast'

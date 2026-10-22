@@ -1,0 +1,18 @@
+{
+  "source_sha256": "ea1c2d683eb39180009405c79633bfe8bad9f167c82333c830353bf87275a803",
+  "installer_sha256": "4b267371527a34bb9d60a9178910536fd11c8de26853964a2237e7efb055069f",
+  "native_tests": 282,
+  "ui_assertions": 135,
+  "rpc_checks": 44,
+  "nailink_gateway_checks": 18,
+  "source_download_handoff_checks": 8,
+  "subscription_valid_domains": 245052,
+  "subscription_excluded_records": 26,
+  "native_filtered_domain_set_matches": true,
+  "sdk_builds": 3,
+  "package_payload_files": 33,
+  "late_cgi_acknowledgement": "two actual 30-second CGI deadline cases, delayed upstream/version/readiness fixtures",
+  "native_api_version_check": "actual NaiLink 0.6.30 updateDns increments version with identical DNS text",
+  "core_kernel_and_router_and_lan": "not_run",
+  "older_unconfirmed_transactions": "native service restart required; missing proof is not inferred from current running state"
+}

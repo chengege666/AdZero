@@ -281,7 +281,8 @@ return view.extend({
 				el('div',{'class':'az-source-table-heading','aria-hidden':'true'},[el('span',{},_('规则名称 / 地址')),el('span',{},_('校验数量 / 最近检查')),el('span',{},_('操作'))]),
 				items.map(function(item) { return el('div',{'class':'az-source-row'},[
 					el('div',{'class':'az-source-identity'},[el('strong',{},item.name),el('span',{'class':'az-source-url',translate:'no'},item.url),el('small',{},item._new?_('新增 · 待应用'):self.sourceChanged(item)?_('已修改 · 待应用'):item.format==='unknown'?_('后端已有格式'):item.format)]),
-					el('div',{'class':'az-source-metadata'},[el('strong',{},typeof item.domains==='number'?number(item.domains):item.validation==='backend_only'?_('未独立计数'):_('待校验')),el('span',{},item.updated?date(item.updated):item.enabled?_('更新时自动校验'):_('启用后校验'))]),
+					el('div',{'class':'az-source-metadata'},[el('strong',{},typeof item.domains==='number'?number(item.domains):item.validation==='backend_only'?_('格式未识别'):_('待校验')),el('span',{},item.updated?date(item.updated):item.enabled?_('更新时自动校验'):_('启用后校验')),
+						item.skipped>0?el('small',{},_('已排除无效域名记录：')+number(item.skipped)):item.validation==='backend_only'?el('small',{},_('仅由后端处理；更新订阅可重新校验。')):null]),
 					el('div',{'class':'az-source-actions'},[
 						el('button',{type:'button','class':'az-toggle'+(item.enabled?' is-on':''),role:'switch','aria-checked':item.enabled?'true':'false','aria-label':_('启用规则 ')+item.name,disabled:!editable || !item.https && !item.enabled?true:null,
 							click:function(){return self.stageSource('source_toggle',[sourceKey(item),item.url,!item.enabled]);}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))),
@@ -546,7 +547,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.10.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.10.3' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {

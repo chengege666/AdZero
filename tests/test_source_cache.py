@@ -79,6 +79,32 @@ class SourceCacheTest(unittest.TestCase):
         self.assertEqual(self.s.data()['items'][0]['domains'],2)
         self.assertEqual(len((self.root/'fetches').read_text().splitlines()),1)
 
+    def test_old_parser_proof_recounts_the_same_body_without_network_and_upgrades_proof(self):
+        proof=next((self.root/'tmp/adzero-source-cache').glob('*.proof'))
+        parsed=next((self.root/'tmp/adzero-source-cache').glob('*.parsed'))
+        # A checksum-valid result from an older parser is no longer evidence.
+        import hashlib
+        parsed.write_text(json.dumps({'format':'domains','names':['wrong.example']}))
+        old=json.loads(proof.read_text());old.pop('parser',None)
+        old['parsed']=hashlib.sha256(parsed.read_bytes()).hexdigest();proof.write_text(json.dumps(old))
+        item=self.s.data()['items'][0]
+        for value in ('0','1'):
+            self.s.run_source('begin','toggle',item['id'],item['url'],value);self.s.run_source('finish')
+        self.assertEqual(self.s.data()['items'][0]['domains'],2)
+        self.assertEqual(self.s.data()['items'][0]['skipped'],0)
+        self.assertEqual(len((self.root/'fetches').read_text().splitlines()),1)
+        self.assertEqual(json.loads(proof.read_text())['parser'],2)
+        self.assertEqual(json.loads(parsed.read_text())['names'],['new-ads.example','new-track.example'])
+
+    def test_cached_partial_domain_validation_retains_exclusion_count_without_refetch(self):
+        self.s.body.write_text('valid.example\n-bad.example\nunder_score.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('finish')
+        item=self.s.data()['items'][0]
+        for value in ('0','1'):
+            self.s.run_source('begin','toggle',item['id'],item['url'],value);self.s.run_source('finish')
+        self.assertEqual((self.s.data()['items'][0]['domains'],self.s.data()['items'][0]['skipped']),(1,2))
+        self.assertEqual(len((self.root/'fetches').read_text().splitlines()),2)
+
     def test_unsupported_flags_disabled_source_and_foreign_output_are_not_intercepted(self):
         self.helper(extra=('--header','X-Test: private'),ok=False)
         item=self.s.data()['items'][0]

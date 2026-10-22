@@ -224,6 +224,11 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   await app.openRules();check(text(root).includes('待校验')&&text(root).includes('更新时自动校验'),'legacy rules explain missing validation');
   await app.runSource('source_refresh',[]);
   check(app.notice.kind==='success'&&text(root).includes('27')&&!text(root).includes('待校验'),'refresh renders validated count for legacy rules');
+  ruleData.items=[{id:'cname',name:'CNAME',url:'https://rules.example/cname',https:true,enabled:true,format:'domains',validation:'validated',domains:245052,skipped:26,updated:1700000000}];
+  await app.loadSources();
+  check(text(root).includes('245,052')&&text(root).includes('已排除无效域名记录：26'),'source count and excluded malformed records stay distinct');
+  ruleData.items[0]={...ruleData.items[0],format:'unknown',validation:'backend_only',domains:null,skipped:0};await app.loadSources();
+  check(text(root).includes('格式未识别')&&text(root).includes('仅由后端处理；更新订阅可重新校验。')&&!text(root).includes('245,052'),'unsupported native format explains missing count without a fake total');
   reset({state:'configured_unverified'});await app.openRules();commands.length=0;
   await app.stageSource('source_add',['','One','https://one.example/list','domains']);
   await app.stageSource('source_add',['','Two','https://two.example/list','domains']);

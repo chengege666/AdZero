@@ -1,3 +1,16 @@
+# v0.10.3 订阅识别与计数验证
+
+修复截图中 CNAME Trackers 加载成功但显示「未独立计数」的问题，见 [SOURCE_VALIDATION_FIX.md](SOURCE_VALIDATION_FIX.md)。未修改代理架构或增加运行依赖。
+
+- **282 项原生 Python 回归、135 项 UI 断言通过，无原生跳过**，使用校验和固定的 OpenWrt BusyBox/ucode/UCI。新增 6 项回归覆盖域名排除计数、混合高级语法拒绝、旧元数据清理、Hosts/Adblock 严格性、旧解析证明升级及缓存复用。界面检查覆盖数量与排除提示、未识别格式说明。
+- **真实上游下载快照对比通过**：生产解析器识别 245,052 个有效域名、26 条排除记录；完整排序集合与校验和固定的 adblock-fast 1.2.4-r4 域名过滤、ASCII 限制及生产后端解析结果一致。仅在开发机读取和处理文件，未运行 DNS 或代理服务。
+- **44 项实际 rpcd、18 项 NaiLink CGI/API-only、8 项原生下载交接检查通过**。原生 CGI 的 30 秒期限、仅 DAT 变化的版本确认及只提交一次重载保护保留；下载交接的传输仍为本地夹具。未启动实际代理内核。
+- **三个官方 SDK 构建和发行包检查通过**：24.10.8 x86/64 IPK、25.12.5 x86/64 APK、25.12.5 rockchip/armv8 APK。每包 33 个文件的内容/权限及 SDK 打包后的实际 JS 的 135 项断言通过。
+
+本轮修改 `source-lib.uc` 的检查结果、`source-cache.uc` 的解析证明版本、`sources.uc` 的元数据与正文复用、`overview.js` 的状态说明；同时更新安装版本、针对性测试、独立对比脚本及文档。
+
+包目录源码 SHA-256：`ea1c2d683eb39180009405c79633bfe8bad9f167c82333c830353bf87275a803`。全部运行时与 SDK 证据对应同一源码，见 [evidence/v0.10.3](evidence/v0.10.3/)。未连接或修改用户路由器；ARM 真机性能、LAN DNS 流量与实际广告过滤仍须在设备验收。
+
 # v0.10.2 NaiLink 重载完成确认验证
 
 修复背景、流程和旧版恢复顺序见 [NAILINK_RELOAD_CONFIRMATION.md](NAILINK_RELOAD_CONFIRMATION.md)。本轮保留四代理架构与 v0.10.1 的快照、批量应用和重新加载方式。
