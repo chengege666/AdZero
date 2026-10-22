@@ -1,0 +1,1057 @@
+{
+  "status": "passed",
+  "source_sha256": "c995e7c63b4d998d96e6e7bcbcb5611ce711a58fabe9b8debe98fea66d56cfe2",
+  "core": "v1.19.32",
+  "asset_sha256": "ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20",
+  "scope": "production compiler and real core; isolated namespace, local DNS/SOCKS/HTTP fixtures; no router, LAN, TUN or eBPF validation",
+  "checks": [
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "target": "www.cn.example",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "target": "www.foreign.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "target": "override.cn.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "target": "223.5.5.42",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "target": "8.8.8.42",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "target": "[2400:3200::42]",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "default",
+      "mode": "redir-host",
+      "target": "[2606:4700:4700::42]",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "target": "www.cn.example",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "target": "www.foreign.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "target": "override.cn.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "target": "223.5.5.42",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "target": "8.8.8.42",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "target": "[2400:3200::42]",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "default",
+      "mode": "fake-ip",
+      "target": "[2606:4700:4700::42]",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "udp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "transport": "tcp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "target": "www.cn.example",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "target": "www.foreign.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "target": "override.cn.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "target": "223.5.5.42",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "target": "8.8.8.42",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "target": "[2400:3200::42]",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "custom",
+      "mode": "redir-host",
+      "target": "[2606:4700:4700::42]",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "udp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 1,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "www.cn.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "test.real.foreign.example",
+      "rcode": 0
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "deep.sub.ads.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "transport": "tcp",
+      "type": 28,
+      "name": "ads.cn.example",
+      "rcode": 3
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "target": "www.cn.example",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "target": "www.foreign.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "target": "override.cn.example",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "target": "223.5.5.42",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "target": "8.8.8.42",
+      "actual_connection_path": "PROXY"
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "target": "[2400:3200::42]",
+      "actual_connection_path": "DIRECT"
+    },
+    {
+      "profile": "custom",
+      "mode": "fake-ip",
+      "target": "[2606:4700:4700::42]",
+      "actual_connection_path": "PROXY"
+    }
+  ],
+  "dns_records": [
+    {
+      "group": "domestic",
+      "name": "ready.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 28
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    },
+    {
+      "group": "domestic",
+      "name": "ready.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 28
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    },
+    {
+      "group": "domestic",
+      "name": "ready.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 28
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "ready.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    },
+    {
+      "group": "foreign-through-proxy",
+      "name": "test.real.foreign.example",
+      "type": 28
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 1
+    },
+    {
+      "group": "domestic",
+      "name": "www.cn.example",
+      "type": 28
+    }
+  ],
+  "proxy_records": [
+    {
+      "host": "1.1.1.1",
+      "port": 53
+    },
+    {
+      "host": "1.1.1.1",
+      "port": 53
+    },
+    {
+      "host": "www.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "override.cn.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "1.1.1.1",
+      "port": 53
+    },
+    {
+      "host": "1.1.1.1",
+      "port": 53
+    },
+    {
+      "host": "www.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "override.cn.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "8.8.8.8",
+      "port": 53
+    },
+    {
+      "host": "8.8.8.8",
+      "port": 53
+    },
+    {
+      "host": "www.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "override.cn.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "8.8.8.8",
+      "port": 53
+    },
+    {
+      "host": "8.8.8.8",
+      "port": 53
+    },
+    {
+      "host": "www.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "override.cn.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    },
+    {
+      "host": "test.real.foreign.example",
+      "port": 46745
+    }
+  ]
+}

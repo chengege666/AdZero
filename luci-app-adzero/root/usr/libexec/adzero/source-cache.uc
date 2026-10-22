@@ -46,6 +46,16 @@ export function parsed(snapshot,kind){
 		return value;
 	}catch(e){return null;}
 };
+// Read only a small receipt instead of decoding the full domain array again.
+export function summary(snapshot,kind){
+	try{
+		let p=snapshot?.proof,v=p?.summary,path=snapshot.dir+'/'+snapshot.id+'.parsed';
+		if(p.parser!=3||p.kind!=kind||!v||index(['domains','hosts','adblock'],v.format)<0||
+			type(v.domains)!='int'||v.domains<1||v.domains>500000||type(v.skipped)!='int'||v.skipped<0||
+			!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		return {format:v.format,domains:v.domains,skipped:v.skipped};
+	}catch(e){return null;}
+};
 // A digest of a verified normalized result can prove that only comments,
 // order or case changed. Hosts deliberately use byte identity: the native
 // hosts formatter has header/comment behavior beyond hostname normalization.
@@ -63,7 +73,7 @@ export function invalidate(address,root){
 };
 // A fresh HTTP response with exactly the same bytes can keep its verified
 // parsed array. Restore the invalidated proof without serializing/copying MBs.
-export function renew(snapshot,kind){
+export function renew(snapshot,kind,result){
 	let temp=null,renewed=false;
 	try{
 		if(!snapshot||snapshot.proof.kind!=kind||snapshot.proof.parser!=3||
@@ -72,7 +82,9 @@ export function renew(snapshot,kind){
 			hash(snapshot.dir+'/'+snapshot.id+'.parsed')!=snapshot.proof.parsed)return false;
 		let nonce=trim(fs.readfile('/proc/sys/kernel/random/uuid')??'');if(!match(nonce,/^[a-f0-9-]{36}$/))return false;
 		temp=snapshot.dir+'/'+nonce+'.proof';let file=fs.open(temp,'wx',0600);if(!file)die('cache_open');
-		let data=sprintf('%J',snapshot.proof),written=file.write(data),closed=file.close();
+		let proof={...snapshot.proof};
+		if(type(result?.names)=='array'&&length(result.names))proof.summary={format:result.format,domains:length(result.names),skipped:result.skipped??0};
+		let data=sprintf('%J',proof),written=file.write(data),closed=file.close();
 		if(written!=length(data)||!closed||!fs.rename(temp,snapshot.dir+'/'+snapshot.id+'.proof'))die('cache_renew');
 		renewed=true;
 	}catch(e){}
@@ -96,7 +108,7 @@ export function save(address,raw,root,kind,result){
 		}
 		let body=put('.body',raw),proof={schema:1,parser:3,body:hash(body),kind:kind??null};
 		if(!proof.body)die('cache_digest');
-		if(parsed){let data=put('.parsed',parsed);proof.parsed=hash(data);if(!proof.parsed||!fs.rename(data,dir+'/'+id+'.parsed'))die('cache_parsed');}
+		if(parsed){let data=put('.parsed',parsed);proof.parsed=hash(data);proof.summary={format:result.format,domains:length(result.names),skipped:result.skipped??0};if(!proof.parsed||!fs.rename(data,dir+'/'+id+'.parsed'))die('cache_parsed');}
 		let meta=put('.proof',sprintf('%J',proof));
 		if(!fs.rename(body,dir+'/'+id+'.body'))die('cache_commit');
 		fs.rename(meta,dir+'/'+id+'.proof');

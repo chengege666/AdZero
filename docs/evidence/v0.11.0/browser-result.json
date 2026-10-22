@@ -1,0 +1,28 @@
+{
+  "js_sha256": "07d57cdfcea832746f7a7635c9446d150f73d82c2fc6c8ff091d3b0091c725b1",
+  "css_sha256": "d543d1028cc570f8a20990f7770259348a9e795425368c5a8f0bc9d0ba6e48e3",
+  "checks": [
+    {
+      "name": "desktop",
+      "width": 1280,
+      "documentWidth": 1280,
+      "columns": "594px 594px",
+      "dns_batch_writes": 1,
+      "manual_validation": true,
+      "real_luci_dom": true,
+      "router": "not_connected"
+    },
+    {
+      "name": "mobile",
+      "width": 360,
+      "documentWidth": 360,
+      "columns": "310px",
+      "dns_batch_writes": 1,
+      "manual_validation": true,
+      "real_luci_dom": true,
+      "router": "not_connected"
+    }
+  ],
+  "scope": "actual Chromium and saved native LuCI DOM; RPC/status fixtures only",
+  "source_sha256": "c995e7c63b4d998d96e6e7bcbcb5611ce711a58fabe9b8debe98fea66d56cfe2"
+}

@@ -13,6 +13,7 @@ const state_dir = root + '/etc/adzero';
 const journal_path = state_dir + '/adapter.json';
 const uci = cursor(root + '/etc/config');
 const split_enabled = uci.get('adzero','main','routing_enabled') == '1';
+const dns_profile=route.profile(json(uci.get('adzero','main','dns_profile')??'null'));
 let routing_data = null;
 let pending_nikki = null;
 let journal = null;
@@ -368,7 +369,7 @@ function restart(plugin) {
 			!actual.dns?.['nameserver-policy']?.['rule-set:adzero-dns'] ||
 			index(actual.dns?.['fake-ip-filter'] ?? [], journal.filter_rule) < 0)
 			die('Nikki generated configuration did not retain the DNS adapter');
-		if(journal.split && (actual.mode!='rule' || index(actual.rules??[],'RULE-SET,adzero-cn-domain,DIRECT')<0 || actual.dns?.nameserver?.[0]!='tcp://'+route.foreign+':53#'+journal.split.target))die('Nikki 最终配置未保留分流策略。');
+		if(journal.split && (actual.mode!='rule' || index(actual.rules??[],'RULE-SET,adzero-cn-domain,DIRECT')<0 || actual.dns?.nameserver?.[0]!='tcp://'+route.endpoint(dns_profile.foreign.active)+'#'+journal.split.target))die('Nikki 最终配置未保留分流策略。');
 	}
 }
 function apply_plugin(plugin, list) {
@@ -469,7 +470,7 @@ function apply_split(plugin) {
 		let instances=[];uci.foreach('dhcp','dnsmasq',s=>push(instances,s));
 		if(length(instances)!=1 || instances[0].port=='0' || index(['dnsmasq.servers','dnsmasq.addnhosts'],uci.get('adblock-fast','config','dns'))<0)die('无代理自动模式需要一个启用的 dnsmasq 实例。');
 		let s=instances[0],servers=s.server??[];if(type(servers)!='array')servers=[servers];
-		setting('dhcp',s['.name'],'server',[...route.domestic,...filter(servers,v=>substr(v,0,1)=='/')]);
+		setting('dhcp',s['.name'],'server',[dns_profile.domestic.active,...filter(servers,v=>substr(v,0,1)=='/')]);
 		setting('dhcp',s['.name'],'noresolv','1');
 		return;
 	}
@@ -477,11 +478,11 @@ function apply_split(plugin) {
 		country_files(plugin);
 		let current=selected_dns();
 		if(current.id!=journal.dns.id || current.dns.string!=journal.dns.after)die('NaiLink DNS 已变化，拒绝覆盖。');
-		let after=route.dae_dns(current.dns.string);
+		let after=route.dae_dns(current.dns.string,dns_profile);
 		if(after!=current.dns.string){journal.dns.after=after;save();update_dns(current.id,after);changed=true;}
 		let traffic=selected_traffic();
 		if(journal.traffic && (traffic.id!=journal.traffic.id || traffic.text!=journal.traffic.after))die('NaiLink 流量路由已被外部修改。');
-		after=route.dae_routing(traffic.text,traffic.target);
+		after=route.dae_routing(traffic.text,traffic.target,dns_profile);
 		journal.traffic ??= {id:traffic.id,before:traffic.text,after:traffic.text};
 		journal.split.target=traffic.target;
 		if(after!=traffic.text){journal.traffic.after=after;save();if(selected_traffic().text!=traffic.text)die('NaiLink 流量路由存在并发修改。');update_traffic(traffic.id,after);changed=true;}
@@ -495,7 +496,7 @@ function apply_split(plugin) {
 		let mode=uci.get('passwall',section,'dns_mode')??'tcp';
 		if(index(['xray','sing-box','dns2socks','tcp'],mode)<0)die('当前 PassWall DNS 模式需先确认代理传输能力。');
 		if(mode=='tcp'&&!fs.access(root+'/usr/bin/chinadns-ng','x'))die('当前 PassWall 缺少其原生 TCP DNS 转发组件。');
-		for(let entry in [['dns_shunt','dnsmasq'],['chn_list','direct'],['use_default_dns','remote'],['direct_dns_mode','udp'],['direct_dns',route.domestic[0]+':53'],['remote_dns',route.foreign+':53'],['v2ray_dns_mode','tcp']])setting('passwall',section,entry[0],entry[1]);
+		for(let entry in [['dns_shunt','dnsmasq'],['chn_list','direct'],['use_default_dns','remote'],['direct_dns_mode','udp'],['direct_dns',route.endpoint(dns_profile.domestic.active)],['remote_dns',route.endpoint(dns_profile.foreign.active)],['v2ray_dns_mode','tcp']])setting('passwall',section,entry[0],entry[1]);
 		journal.split.target='current-node';return;
 	}
 	let files=country_files(plugin);
@@ -508,7 +509,7 @@ function apply_split(plugin) {
 		config['proxy-groups']??=effective['proxy-groups'];
 		let own=config['nikki-rules']??[],original=config.rules;
 		config.rules=effective.rules??[];
-		let result=route.mihomo(config,files.domains,files.ips);config=result.config;journal.split.target=result.target;
+		let result=route.mihomo(config,files.domains,files.ips,dns_profile);config=result.config;journal.split.target=result.target;
 		// Only prepend owned additions. The subscription's original rules remain.
 		config['nikki-rules']=[...own,...filter(config.rules,r=>index(effective.rules??[],r)<0 && index(own,r)<0)];
 		if(original==null)delete config.rules;else config.rules=original;
@@ -602,10 +603,10 @@ function routing_check(wanted) {
 	if(dns.id!=journal.dns?.id||dns.dns.string!=journal.dns.after)die('NaiLink DNS profile changed externally');
 	// Check syntax and selected target before any restore, download or reload.
 	if(wanted=='1'){
-		route.dae_dns(lib.dae_dns(journal.dns.before));
+		route.dae_dns(lib.dae_dns(journal.dns.before),dns_profile);
 		let traffic=selected_traffic();
 		if(journal.traffic&&(traffic.id!=journal.traffic.id||traffic.text!=journal.traffic.after))die('NaiLink 流量路由已被外部修改。');
-		route.dae_routing(journal.traffic?.before??traffic.text,traffic.target);
+		route.dae_routing(journal.traffic?.before??traffic.text,traffic.target,dns_profile);
 	}
 	return 'nailink';
 }
@@ -635,10 +636,19 @@ rules_signature = function(plugin) {
 		let stat=fs.lstat(root+name);
 		if(!stat){dependencies[name]='missing';continue;}
 		if(stat.type!='file')return null;
+		if(name=='/etc/config/adzero'){
+			let options=[];
+			uci.foreach('adzero',null,s=>{
+				let values={};for(let k in sort(keys(s)))if(substr(k,0,1)!='.'&&k!='dns_profile')values[k]=s[k];
+				if(s['.name']=='main'&&split_enabled)values.dns_profile={domestic:dns_profile.domestic.active,foreign:dns_profile.foreign.active};
+				push(options,{id:s['.name'],type:s['.type'],values});
+			});
+			dependencies[name]=options;continue;
+		}
 		if(!stat.size){dependencies[name]='empty';continue;}
 		let hash=rulecache.fingerprint(root+name);if(!hash)return null;dependencies[name]=hash;
 	}
-	return {schema:3,mode,sha256,dependencies};
+	return {schema:4,mode,sha256,dependencies};
 };
 function reconfigure_nailink(with_rules) {
 	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');
@@ -649,9 +659,9 @@ function reconfigure_nailink(with_rules) {
 		if(with_rules){let list=rules();tracked(root+'/etc/daed/adzero-geosite.dat',lib.geosite(list),'owned',0644);journal.count=length(list);}
 		let dns=selected_dns(),after=lib.dae_dns(journal.dns.before),traffic=null,next=null;
 		if(split_enabled){
-			country_files('nailink');after=route.dae_dns(after);traffic=selected_traffic();
+			country_files('nailink');after=route.dae_dns(after,dns_profile);traffic=selected_traffic();
 			journal.traffic??={id:traffic.id,before:traffic.text,after:traffic.text};
-			next=route.dae_routing(journal.traffic.before,traffic.target);
+			next=route.dae_routing(journal.traffic.before,traffic.target,dns_profile);
 			journal.split={mode:'proxy',target:traffic.target,traffic_verified:false};
 		}else{
 			delete journal.split;
@@ -710,7 +720,7 @@ try {
 		if (config.dns?.enable != true) die('OpenClash DNS is disabled; automatic adapter is unavailable');
 		if (config['rule-providers']?.['adzero-dns'] && config['rule-providers']['adzero-dns'].path != '/etc/openclash/rule_provider/adzero.txt') die('Reserved OpenClash rule provider already exists');
 		config = lib.mihomo(config, '/etc/openclash/rule_provider/adzero.txt', false);
-		if(journal.split){let result=route.mihomo(config,'/etc/openclash/rule_provider/adzero-cn-domains.txt','/etc/openclash/rule_provider/adzero-cn-ips.txt');config=result.config;}
+		if(journal.split){let result=route.mihomo(config,'/etc/openclash/rule_provider/adzero-cn-domains.txt','/etc/openclash/rule_provider/adzero-cn-ips.txt',dns_profile);config=result.config;}
 		let core = root + '/etc/openclash/core/clash_meta';
 		if (!fs.access(core, 'x')) die('OpenClash requires its Mihomo/Meta core');
 		let temporary = root + path + '.adzero-check';

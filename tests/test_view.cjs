@@ -49,7 +49,7 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   if (spec.method === 'source_list') return rpcListFailure ? {ok:false,message:'list unavailable'} : {ok:true,data:structuredClone(ruleData)};
   if (spec.method === 'settings_apply') {
     const p=JSON.parse(args[0]);
-    if(!rpcStale){ruleData.items=p.items.map((i,n)=>({...i,id:i.id||'batch_'+n,https:true}));state.policy.routing_enabled=p.routing_enabled;ruleData.revision='d'.repeat(64);}
+    if(!rpcStale){ruleData.items=p.items.map((i,n)=>({...i,id:i.id||'batch_'+n,https:true}));state.policy.routing_enabled=p.routing_enabled;ruleData.revision='d'.repeat(64);if(p.dns)ruleData.dns=structuredClone(p.dns);}
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }
   if (spec.method === 'job_status') {let next=jobSteps.shift();if(next instanceof Error)throw next;return typeof next==='function'?next():next || {ok:true,pending:false};}
@@ -78,7 +78,8 @@ function reset(overrides = {}) {
     compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', package_manager: 'apk', declared_arch: 'aarch64_generic' },
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
   failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = rpcListFailure = storageBlocked = false; sessionID='b'.repeat(32); commands.length = 0;
-  storage.clear();ruleData={revision:'a'.repeat(64),items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
+  app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
+  storage.clear();ruleData={dns:{domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}},revision:'a'.repeat(64),items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
   app.draft=app.applyingDraft=app.editSource=null;app.draftSequence=0;
   app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
   jobSteps=[];app.currentJob=null;app.jobUncertain=false;app.jobProgress=null;
@@ -290,5 +291,23 @@ function check(value, label) { assert.ok(value, label); assertions++; }
     check(text(root).includes('不会重复重载'),'late acknowledgement explains confirmation rather than resubmission');
     return {ok:true,pending:false};
   }];await app.runAction('reload');
+  reset();await find('az-dns-open').events.click();
+  check(find('az-dns-domestic')&&find('az-dns-foreign'),'resolver editor loads both editable groups');
+  find('az-dns-domestic').events.input({target:{value:'119.29.29.29\n223.5.5.5'}});
+  find('az-dns-foreign').events.input({target:{value:'8.8.8.8\n1.1.1.1'}});
+  commands.length=0;await app.stageDNS();
+  check(commands.length===0&&app.draft.dns.domestic.active==='119.29.29.29'&&app.draft.dns.foreign.active==='8.8.8.8','DNS edits stay local and first address is selected');
+  await app.stageRouting(true);await app.stageSource('source_add',['','DNS batch','https://dnsbatch.example/list','domains']);
+  check(commands.length===0&&app.draftCount()===3,'DNS routing and rules share the same pending batch');
+  await app.applyDraft();
+  check(commands.filter(x=>x==='settings_apply').length===1&&!app.draft&&ruleData.dns.foreign.active==='8.8.8.8','one batch persists DNS and canonical confirmation clears draft');
+  reset();await find('az-dns-open').events.click();find('az-dns-foreign').events.input({target:{value:'https://dns.example/query'}});await app.stageDNS();
+  check(!app.draft&&app.notice.kind==='error','invalid resolver text stays out of pending settings');
+  reset();await app.openRules();ruleData.items=[{id:'local',url:'https://local.example/list',name:'Local',enabled:true,format:'domains'}];await app.loadSources();commands.length=0;
+  await app.runSource('source_verify',[]);
+  check(commands.filter(x=>x==='source_verify').length===1&&!commands.includes('source_refresh')&&!commands.includes('reload'),'manual validation is a distinct operation without refresh or reload');
+  check(app.notice.kind==='success'&&text(root).includes('未下载订阅或重载网络'),'manual validation reports its actual local-only scope');
+  reset();ruleData.dns.foreign.active='8.8.8.8';await find('az-dns-open').events.click();commands.length=0;await find('az-dns-default').events.click();
+  check(commands.length===0&&app.draft.dns.foreign.active==='1.1.1.1'&&!state.policy.routing_enabled,'restore default DNS is staged without enabling routing or sending a mutation');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

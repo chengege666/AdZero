@@ -3,6 +3,31 @@
 
 export const domestic = ['223.5.5.5', '119.29.29.29'];
 export const foreign = '1.1.1.1';
+let ip_bytes;
+export function profile(value) {
+	let defaults={domestic:{servers:[...domestic],active:domestic[0]},foreign:{servers:[foreign,'8.8.8.8'],active:foreign}};
+	if(value==null)return defaults;
+	if(type(value)!='object')die('DNS 设置无效。');
+	let result={};
+	for(let group in ['domestic','foreign']){
+		let item=value[group];
+		if(type(item)!='object'||type(item.servers)!='array'||!length(item.servers)||length(item.servers)>8)die('每组 DNS 请保留 1–8 个 IP 地址。');
+		let servers=[];
+		for(let address in item.servers){
+			if(type(address)!='string'||length(address)>45||address!=trim(address))die('DNS 需要 IPv4 或 IPv6 地址。');
+			address=lc(address);let bytes;try{bytes=ip_bytes(address);}catch(e){die('DNS 需要有效的 IPv4 或 IPv6 地址。');}
+			if(length(bytes)==4&&(ord(bytes,0)==0||ord(bytes,0)==127||ord(bytes,0)>=224)||length(bytes)==16&&(bytes=='\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'||bytes=='\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01'||ord(bytes,0)==255))die('DNS 不能使用未指定、回环或组播地址。');
+			if(length(filter(servers,other=>ip_bytes(other)==bytes)))die('同组 DNS 地址不能重复。');push(servers,address);
+		}
+		if(type(item.active)!='string'||index(servers,lc(item.active))<0)die('请从每组地址中选择当前使用的 DNS。');
+		result[group]={servers,active:lc(item.active)};
+	}
+	if(ip_bytes(result.domestic.active)==ip_bytes(result.foreign.active))die('国内和国外 DNS 请选择不同地址，以便分别指定连接路径。');
+	return result;
+};
+function selected(value){let p=profile(value);return {domestic:[p.domestic.active],foreign:p.foreign.active};}
+export function endpoint(address){return index(address,':')>=0?'['+address+']:53':address+':53';};
+function literal(address){return index(address,':')>=0?sprintf('%J',address):address;}
 const country_record_re=/^server=\/([a-z0-9.-]+)\/[0-9.]+$/, country_name_re=/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/, number_re=/^[0-9.]+$/;
 const octet_re=/^(0|[1-9][0-9]{0,2})$/, ipv6_re=/^[a-f0-9:]+$/, word_re=/^[a-f0-9]{1,4}$/;
 export const sources = [
@@ -26,7 +51,7 @@ export function domain_list(raw) {
 	if (!length(names) || length(names)>200000) die('国内域名库为空或超限。');
 	return names;
 };
-function ip_bytes(value) {
+ip_bytes = function(value) {
 	if (index(value,':')<0) {
 		let parts = split(value,'.');
 		if (length(parts)!=4) die('Invalid IPv4 CIDR');
@@ -54,7 +79,7 @@ function ip_bytes(value) {
 		let n=int(p,16);result+=chr(int(n/256))+chr(n%256);
 	}
 	return result;
-}
+};
 export function cidr_list(raw) {
 	if (type(raw)!='string' || length(raw)>1000000) die('国内 IP 库为空或超过大小限制。');
 	let result={};
@@ -107,7 +132,8 @@ function sections(text) {
 	if(length(stack)||quote)die('Incomplete dae config');return found;
 }
 function owned(name,text) {return '# ADZERO SPLIT '+name+' BEGIN v1\n'+text+'\n# ADZERO SPLIT '+name+' END v1\n';}
-export function dae_dns(raw) {
+export function dae_dns(raw,settings) {
+	let addresses=selected(settings),domestic=addresses.domestic,foreign=addresses.foreign;
 	if(index(raw,'# ADZERO SPLIT ')>=0)return raw; // journal equality is checked by caller
 	let blocks=sections(raw),edits=[],paths=['upstream','routing','routing.request'];
 	for(let path in paths){let hit=filter(blocks,b=>b.path==path);if(length(hit)!=1)die('Expected one dae DNS '+path);}
@@ -117,14 +143,15 @@ export function dae_dns(raw) {
 	// Add no new response policy when none existed. Only protect our upstreams
 	// from an existing response retry chain when the user actually has one.
 	for(let block in blocks){
-		if(block.path=='upstream')push(edits,{at:block.close,text:'\n'+owned('UPSTREAM','adzero_cn: "udp://'+domestic[0]+':53"\nadzero_global: "tcp://'+foreign+':53"')});
+		if(block.path=='upstream')push(edits,{at:block.close,text:'\n'+owned('UPSTREAM','adzero_cn: "udp://'+endpoint(domestic[0])+'"\nadzero_global: "tcp://'+endpoint(foreign)+'"')});
 		if(block.path=='routing.request')push(edits,{at:block.close,text:'\n'+owned('REQUEST','qname(ext:"adzero-cn-geosite.dat:adzero") -> adzero_cn\nqname(regex: ".*") -> adzero_global')});
 		if(block.path=='routing.response')push(edits,{at:block.open+1,text:'\n'+owned('RESPONSE','upstream(adzero_cn, adzero_global) -> accept')});
 	}
 	for(let e in sort(edits,(a,b)=>b.at-a.at))raw=substr(raw,0,e.at)+e.text+substr(raw,e.at);
 	return raw;
 };
-export function dae_routing(raw,target) {
+export function dae_routing(raw,target,settings) {
+	let addresses=selected(settings),domestic=addresses.domestic,foreign=addresses.foreign;
 	if(type(target)!='string'||!length(target)||length(target)>100||match(target,/[[:space:]{}()"'#:,<>;&|=\/\\]/)||index(['direct','must_direct','block','reject'],target)>=0)die('没有可识别的默认代理策略。');
 	if(index(raw,'# ADZERO SPLIT ')>=0)return raw;
 	// Insert before fallback, after the user's explicit rules. DNS upstream
@@ -133,11 +160,12 @@ export function dae_routing(raw,target) {
 	if(!fallback)die('Expected a standalone dae fallback line');
 	let at=index(raw,fallback[0]);
 	let direct='dip('+join(', ',map([...domestic,'127.0.0.0/8','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','::1/128','fc00::/7','fe80::/10'],v=>index(v,':')>=0?sprintf('%J',v):v))+') -> direct';
-	let prefix=owned('TRANSPORT','dip('+foreign+') && dport(53) -> '+target+'\ndip('+join(', ',domestic)+') && dport(53) -> direct');
+	let prefix=owned('TRANSPORT','dip('+literal(foreign)+') && dport(53) -> '+target+'\ndip('+join(', ',map(domestic,literal))+') && dport(53) -> direct');
 	let defaults=owned('ROUTING',direct+'\ndomain(ext:"adzero-cn-geosite.dat:adzero") -> direct\ndip(ext:"adzero-cn-geoip.dat:adzero") -> direct');
 	return prefix+substr(raw,0,at)+'\n'+defaults+substr(raw,at);
 };
-export function mihomo(config,domain_path,ip_path) {
+export function mihomo(config,domain_path,ip_path,settings) {
+	let addresses=selected(settings),domestic=addresses.domestic,foreign=addresses.foreign;
 	if(config.dns?.enable!=true)die('代理 DNS 未开启。');
 	let rules=config.rules??[],matches=filter(rules,r=>match(r,/^MATCH,[^,]+$/));
 	if(length(matches)!=1 || substr(rules[length(rules)-1],0,6)!='MATCH,')die('需要唯一的末尾 MATCH 代理策略。');
@@ -155,12 +183,12 @@ export function mihomo(config,domain_path,ip_path) {
 	rules=filter(rules,r=>index(own,r)<0);pop(rules);config.rules=[...rules,...own,matches[0]];config.mode='rule';
 	let dns=config.dns;
 	dns['default-nameserver']=[...domestic];dns['proxy-server-nameserver']=[...domestic];dns['direct-nameserver']=[...domestic];
-	dns.nameserver=['tcp://'+foreign+':53#'+target];delete dns.fallback;delete dns['fallback-filter'];
+	dns.nameserver=['tcp://'+endpoint(foreign)+'#'+target];delete dns.fallback;delete dns['fallback-filter'];
 	let policies={};
 	// Keep the existing ad reject provider before the China domain provider.
 	if(dns['nameserver-policy']?.['rule-set:adzero-dns'])policies['rule-set:adzero-dns']=dns['nameserver-policy']['rule-set:adzero-dns'];
 	for(let key in keys(dns['nameserver-policy']??{}))if(key!='rule-set:adzero-dns'&&key!='rule-set:adzero-cn-domain')policies[key]=dns['nameserver-policy'][key];
-	policies['rule-set:adzero-cn-domain']=map(domestic,d=>'udp://'+d+':53#DIRECT');dns['nameserver-policy']=policies;
+	policies['rule-set:adzero-cn-domain']=map(domestic,d=>'udp://'+endpoint(d)+'#DIRECT');dns['nameserver-policy']=policies;
 	let fake=dns['fake-ip-filter-mode']=='rule'?'RULE-SET,adzero-cn-domain,real-ip':'rule-set:adzero-cn-domain';
 	dns['fake-ip-filter']=[fake,...filter(dns['fake-ip-filter']??[],f=>f!=fake)];
 	return {config,target};

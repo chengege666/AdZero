@@ -1,5 +1,6 @@
 'use strict';
 import { hostname } from './policy-lib.uc';
+import * as dns from './routing-lib.uc';
 
 export const catalog = [
 	{id:'hagezi-light',name:'HaGeZi Light',group:'综合过滤',format:'domains',description:'轻量广告与跟踪过滤；同系列通常选择一项即可。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt'},
@@ -40,7 +41,12 @@ export function plan(raw) {
 		if(id)ids[id]=true;urls[address]=true;
 		push(items,{id,name,url:address,format:kind,enabled:item.enabled});
 	}
-	return {revision:p.revision,routing_before:p.routing_before,routing_enabled:p.routing_enabled,items};
+	let extra={};
+	if(p.dns_before!=null||p.dns!=null){
+		if(type(p.dns_before)!='object'||type(p.dns)!='object')die('DNS 待应用设置不完整。');
+		extra={dns_before:dns.profile(p.dns_before),dns:dns.profile(p.dns)};
+	}
+	return {revision:p.revision,routing_before:p.routing_before,routing_enabled:p.routing_enabled,items,...extra};
 };
 export function inspect(raw, kind, native) {
 	format(kind);

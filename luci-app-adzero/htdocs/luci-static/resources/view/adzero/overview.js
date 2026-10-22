@@ -10,7 +10,7 @@ var policyCalls = {};
 	policyCalls[method[0]] = rpc.declare({ object: 'adzero', method: method[0], params: method[1] });
 });
 var sourceCalls = {};
-[ ['source_list', []], ['source_add', ['catalog','name','url','format']], ['source_toggle', ['id','expected_url','enabled']], ['source_remove', ['id','expected_url']], ['source_refresh', []], ['settings_apply', ['payload']], ['job_status', ['job']] ].forEach(function(method) {
+[ ['source_list', []], ['source_add', ['catalog','name','url','format']], ['source_toggle', ['id','expected_url','enabled']], ['source_remove', ['id','expected_url']], ['source_refresh', []], ['source_verify', []], ['settings_apply', ['payload']], ['job_status', ['job']] ].forEach(function(method) {
 	sourceCalls[method[0]] = rpc.declare({object:'adzero',method:method[0],params:method[1]});
 });
 function sessionValue(kind, value) {
@@ -149,6 +149,8 @@ function step(n, title, description, done) {
 }
 function sourceChoice(i) { return {id:i._new?null:i.id,name:i.name,url:i.url,format:i.format||'unknown',enabled:i.enabled===true}; }
 function sourceKey(i) { return i._key || i.id; }
+function defaultDNS() {return {domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}};}
+function sameDNS(a,b) {return JSON.stringify(a||defaultDNS())===JSON.stringify(b||defaultDNS());}
 return view.extend({
 	busy: null, currentStatus: null, lastChecked: null, notice: null, domainInput: '', domainResult: null, pauseSeconds: 300,
 	draft: null, applyingDraft: null,
@@ -228,6 +230,7 @@ return view.extend({
 					click:function(){return self.stageRouting(!(self.draft?self.draft.routing_enabled:routingWanted));}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))) ]),
 			el('p',{'class':'az-card-copy'},self.draft&&self.draft.routing_enabled!==routingWanted?_('待应用：')+(self.draft.routing_enabled?_('开启自动分流'):_('关闭自动分流'))+_('。当前网络继续使用已应用配置。'):routingWanted && f.enabled ? routing.mode==='proxy'?_('国内直连 / 国外代理 · 配置已应用') : routing.mode==='direct'?_('国内 DNS / 全部直连 · 配置已应用'):_('分流接入待确认') : f.paused?_('恢复保护后继续应用已保存的选择。'):!f.enabled?_('可先选择分流，应用后在开启保护时生效。'):_('自动识别当前代理，同时配置 DNS 和连接去向。')),
 			el('p',{'class':'az-operation-note'},_('有代理时国内直连、国外走当前代理；无代理时使用国内 DNS 与本地直连。切换可能短暂重载网络，实际出口需在设备上验证。')) ]));
+		nodes.push(self.renderDNS(s));
 		nodes.push(el('section', { 'class': 'az-card az-domain-card' }, [
 			el('div', { 'class': 'az-section-heading' }, [el('h3', {}, _('域名查询与放行')), pill(s.stale ? _('待核对') : allowed.length + _(' 项放行'))]),
 			el('p', { 'class': 'az-card-copy', id: 'az-domain-help' }, _('检查域名是否命中 AdZero 当前规则，误拦截时可放行。支持粘贴网址。')),
@@ -262,6 +265,31 @@ return view.extend({
 		nodes.push(el('footer', { 'class': 'az-footer' }, [ icon('info'), _('DNS 过滤无法覆盖同域视频广告、网页占位或绕过路由器的请求。') ]));
 		return el('div', { 'class': 'az-app' }, nodes);
 	},
+	renderDNS: function(s) {
+		var self=this,data=self.sourcesData,profile=self.draft&&self.draft.dns||data&&data.dns||defaultDNS();
+		var editable=!!data&&self.canStage()&&!self.sourcesLoading&&!data.pending;
+		if(!self.dnsForm){self.dnsForm={};['domestic','foreign'].forEach(function(g){var p=profile[g];self.dnsForm[g]=[p.active].concat(p.servers.filter(function(v){return v!==p.active;})).join('\n');});self.dnsFormBase=JSON.parse(JSON.stringify(data&&data.dns||defaultDNS()));}
+		return el('section',{'class':'az-card az-domain-card'},[
+			el('div',{'class':'az-section-heading'},[el('h3',{},_('DNS 设置')),el('button',{id:'az-dns-open',type:'button','class':'az-button az-button-quiet','aria-expanded':self.dnsOpen?'true':'false',click:function(){self.dnsOpen=!self.dnsOpen;if(self.dnsOpen){self.dnsForm=null;if(!self.sourcesData)return self.loadSources();}self.paint('az-dns-open');}},self.dnsOpen?_('收起'):_('编辑 DNS'))]),
+			el('p',{'class':'az-card-copy'},!data?_('打开编辑后读取已保存的 DNS 设置。'):(self.draft&&self.draft.dns&&!sameDNS(self.draft.dns,self.draft.dns_before)?_('待应用 · '):_('已保存 · '))+_('国内：')+profile.domestic.active+_(' · 国外：')+profile.foreign.active),
+			self.dnsOpen?el('div',{},[
+				el('p',{'class':'az-card-copy'},_('每行一个 IPv4 或 IPv6 地址。第一行为当前使用，其他地址保存为备选；调整顺序即可切换。使用标准 53 端口。')),
+				el('div',{'class':'az-dns-grid'},['domestic','foreign'].map(function(g){return el('label',{'class':'az-dns-field'},[el('span',{},g==='domestic'?_('国内 DNS'):_('国外 DNS')),el('textarea',{id:'az-dns-'+g,rows:4,spellcheck:'false',value:self.dnsForm[g],disabled:!editable?true:null,input:function(e){self.dnsForm[g]=e.target.value;}},self.dnsForm[g])]);})),
+				el('div',{'class':'az-action-row'},[
+					el('button',{id:'az-dns-stage',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.stageDNS();}},_('保存到待应用')),
+					el('button',{id:'az-dns-default',type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){return self.stageDNS(defaultDNS());}},_('恢复默认到待应用'))]),
+				el('p',{'class':'az-operation-note'},_('关闭自动分流时只保存设置。开启后，有代理时分别使用国内和国外 DNS，无代理时仅使用国内 DNS。与其他修改统一应用。'))]) : null]);
+	},
+	stageDNS: function(value){
+		var self=this;if(!self.canStage()||!self.sourcesData)return Promise.resolve();
+		try{
+			if(!self.draft&&!sameDNS(self.dnsFormBase,self.sourcesData.dns))throw new Error(_('DNS 设置已变化，请重新打开编辑。'));
+			var profile=value||{};
+			if(!value)['domestic','foreign'].forEach(function(g){var servers=self.dnsForm[g].split(/\r?\n/).map(function(v){return v.trim().toLowerCase();}).filter(Boolean);if(!servers.length||servers.length>8||servers.some(function(v){return !/^[0-9a-f:.]+$/.test(v);})||new Set(servers).size!==servers.length)throw new Error(_('每组请输入 1–8 个不同的 DNS IP 地址。'));profile[g]={servers:servers,active:servers[0]};});
+			self.ensureDraft();self.draft.dns=profile;self.dnsForm=null;self.notice=null;if(!self.draftCount())self.draft=null;self.paint();
+		}catch(e){self.notice={kind:'error',text:String(e.message||e)};self.paint();}
+		return Promise.resolve();
+	},
 	renderRules: function(s) {
 		var self=this,data=self.sourcesData,items=self.draft?self.draft.items:data ? data.items || [] : [],catalog=data ? data.catalog || [] : [];
 		var enabled=flags(s).enabled, editable=!!data && !self.sourcesError && !self.busy && !self.sourcesLoading && !s.stale && !data.pending && (enabled || s.state==='disabled' && !s.managed);
@@ -273,7 +301,9 @@ return view.extend({
 				el('div',{},[el('h3',{},_('我的过滤规则')),el('p',{'class':'az-card-copy'},_('先选择、添加或修改规则，再统一应用。选择时不会下载规则或重载网络。'))]),
 				el('div',{'class':'az-action-row'},[
 					el('button',{id:'az-source-reload',type:'button','class':'az-button az-button-primary',disabled:!editable || (!self.draftCount()&&!enabled) ? true:null,click:function(){return self.reloadCurrent();}},[icon('refresh'),_('重新加载')]),
-					el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},_('更新订阅'))]) ]),
+					el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},_('更新订阅')),
+					el('button',{id:'az-source-verify',type:'button','class':'az-button az-button-quiet',disabled:!editable||!items.some(function(i){return i.enabled;})||!!self.draftCount()?true:null,click:function(){return self.runSource('source_verify',[]);}},_('手动校验'))]) ]),
+			el('p',{'class':'az-source-footnote'},_('默认沿用上次校验结果；文件未变化时不重新完整解析。手动校验只检查本地快照，不下载、不重载。新文件保留基础格式检查。')),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
 			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : (s.adapter||{}).reload_pending ? _('正在确认上一次代理重载，本批规则已保留。请稍候重新检测，勿重复应用。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
@@ -318,7 +348,7 @@ return view.extend({
 		if(!this.draft)return 0;
 		var d=this.draft,base=d.base || [],count=base.filter(function(i){return !d.items.some(function(v){return v.id===i.id;});}).length;
 		count+=d.items.filter(function(i){var old=base.find(function(v){return v.id===i.id;});return i._new||!old||JSON.stringify(sourceChoice(i))!==JSON.stringify(sourceChoice(old));}).length;
-		return count+(d.routing_enabled!==d.routing_before?1:0);
+		return count+(d.routing_enabled!==d.routing_before?1:0)+(d.dns&&!sameDNS(d.dns,d.dns_before)?1:0);
 	},
 	sourceChanged: function(item) {
 		var old=((this.sourcesData||{}).items||[]).find(function(i){return i.id===item.id;});
@@ -329,7 +359,7 @@ return view.extend({
 		var data=this.sourcesData;
 		if(!data||!Array.isArray(data.items)||!/^[a-f0-9]{64}$/.test(data.revision||''))throw new Error(_('规则列表尚未就绪，请重新读取。'));
 		var items=JSON.parse(JSON.stringify(data.items)),routing=(this.currentStatus.policy||{}).routing_enabled===true;
-		this.draft={revision:data.revision,items:items,base:JSON.parse(JSON.stringify(items)),routing_before:routing,routing_enabled:routing};
+		this.draft={revision:data.revision,items:items,base:JSON.parse(JSON.stringify(items)),routing_before:routing,routing_enabled:routing,dns_before:JSON.parse(JSON.stringify(data.dns||defaultDNS())),dns:JSON.parse(JSON.stringify(data.dns||defaultDNS()))};
 	},
 	canStage: function() { var s=this.currentStatus||{};return !this.busy&&!s.stale&&!this.sourcesError&&(flags(s).enabled||s.state==='disabled'&&!s.managed); },
 	stageRouting: function(value) {
@@ -375,9 +405,9 @@ return view.extend({
 	renderDraft: function(s){
 		var self=this,locked=!!self.busy||s.stale||self.sourcesLoading||!self.canStage();
 		return el('section',{'class':'az-draft-bar',role:'region','aria-label':_('待应用更改')},[
-			el('div',{},[el('strong',{},self.draftCount()+_(' 项更改待应用')),el('p',{},_('当前网络仍使用已应用配置。应用时统一校验并同步；离开页面前请应用或撤销。'))]),
+			el('div',{},[el('strong',{},self.draftCount()+_(' 项更改待应用')),el('p',{},_('当前网络仍使用已应用配置。应用时复用已有规则并统一同步；离开页面前请应用或撤销。'))]),
 			el('div',{'class':'az-action-row'},[
-				el('button',{id:'az-draft-discard',type:'button','class':'az-button az-button-quiet',disabled:self.busy||self.jobUncertain?true:null,click:function(){self.draft=null;self.editSource=null;self.notice=null;self.paint();}},_('撤销更改')),
+				el('button',{id:'az-draft-discard',type:'button','class':'az-button az-button-quiet',disabled:self.busy||self.jobUncertain?true:null,click:function(){self.draft=null;self.dnsForm=null;self.editSource=null;self.notice=null;self.paint();}},_('撤销更改')),
 				el('button',{id:'az-draft-apply',type:'button','class':'az-button az-button-primary',disabled:locked?true:null,click:function(){return self.applyDraft();}},_('应用并重新加载'))])]);
 	},
 	reloadCurrent: function(){
@@ -386,19 +416,19 @@ return view.extend({
 	confirmPendingDraft: function(){
 		var d=this.draft,s=this.currentStatus||{},data=this.sourcesData;
 		if(!d||s.stale||s.state!=='configured_unverified'||!data||data.pending||this.sourcesError)return;
-		if(data.items.length===d.items.length && d.items.every(function(i){return data.items.some(function(v){return v.url===i.url&&v.name===i.name&&v.enabled===i.enabled&&(i.format==='unknown'||v.format===i.format);});}) && (s.policy||{}).routing_enabled===d.routing_enabled){
+		if(data.items.length===d.items.length && d.items.every(function(i){return data.items.some(function(v){return v.url===i.url&&v.name===i.name&&v.enabled===i.enabled&&(i.format==='unknown'||v.format===i.format);});}) && (s.policy||{}).routing_enabled===d.routing_enabled&&(!d.dns||sameDNS(data.dns,d.dns))){
 			this.draft=null;this.notice={kind:'success',text:_('已确认上次重载完成，更改已应用。')};
 		}
 	},
 	applyDraft: function(receipt){
 		var self=this;if(!receipt&&(!self.canStage()||!self.draftCount()))return Promise.resolve();
-		var d=self.draft,p=d?{revision:d.revision,items:d.items.map(sourceChoice),routing_before:d.routing_before,routing_enabled:d.routing_enabled}:null;
+		var d=self.draft,p=d?{revision:d.revision,items:d.items.map(sourceChoice),routing_before:d.routing_before,routing_enabled:d.routing_enabled,...(d.dns?{dns_before:d.dns_before,dns:d.dns}:{})}:null;
 		self.applyingDraft=p;self.busy='rules';self.notice=null;self.paint();
 		return (receipt?Promise.resolve(receipt):sourceCalls.settings_apply(JSON.stringify(p))).then(function(reply){return self.continueSourceJob(reply,'settings');}).then(function(){
 			if(self.notice&&self.notice.kind==='success'){
 				var actual=(self.sourcesData||{}).items||[];
-				var matches=!p||(actual.length===p.items.length&&p.items.every(function(i){return actual.some(function(v){return v.url===i.url&&v.name===i.name&&v.enabled===i.enabled&&(i.format==='unknown'||v.format===i.format);});})&&((self.currentStatus.policy||{}).routing_enabled===p.routing_enabled));
-				if(matches){self.draft=null;self.notice={kind:'success',text:_('更改已统一应用。')};}
+				var matches=!p||(actual.length===p.items.length&&p.items.every(function(i){return actual.some(function(v){return v.url===i.url&&v.name===i.name&&v.enabled===i.enabled&&(i.format==='unknown'||v.format===i.format);});})&&((self.currentStatus.policy||{}).routing_enabled===p.routing_enabled)&&(!p.dns||sameDNS((self.sourcesData||{}).dns,p.dns)));
+				if(matches){self.draft=null;self.dnsForm=null;self.notice={kind:'success',text:_('更改已统一应用。')};}
 				else self.notice={kind:'error',text:_('任务已结束，但配置尚未核对一致。待应用选择已保留。')};
 			}else if(self.draft&&self.sourcesData){
 				// A completed rollback can change metadata while retaining choices.
@@ -408,9 +438,9 @@ return view.extend({
 		}).catch(function(e){self.busy=null;self.notice={kind:'error',text:_('更改尚未应用，选择已保留。'),detail:String(e.message||e)};self.paint();});
 	},
 	loadSources: function() {
-		var self=this;
+		var self=this,hadData=!!self.sourcesData;
 		self.sourcesLoading=true;self.paint();
-		return sourceCalls.source_list().then(function(reply){if (!reply || !reply.ok || !reply.data || !Array.isArray(reply.data.items)) throw new Error(reply && reply.message || _('无法读取规则列表。'));self.sourcesData=reply.data;self.sourcesError=null;})
+		return sourceCalls.source_list().then(function(reply){if (!reply || !reply.ok || !reply.data || !Array.isArray(reply.data.items)) throw new Error(reply && reply.message || _('无法读取规则列表。'));self.sourcesData=reply.data;if(!hadData)self.dnsForm=null;self.sourcesError=null;})
 			.catch(function(e){self.sourcesError=String(e.message || e);}).then(function(){self.sourcesLoading=false;self.paint();});
 	},
 	continueSourceJob: function(reply,kind) {
@@ -429,7 +459,7 @@ return view.extend({
 		var self=this,s=self.currentStatus || {};
 		if (self.busy || s.stale || self.draftCount() || !(flags(s).enabled || s.state==='disabled' && !s.managed)) return Promise.resolve();
 		if (method==='source_add' && !args[0] && (!args[1] || !/^https:\/\//i.test(args[2]))) {self.notice={kind:'error',text:_('请填写名称和 HTTPS 订阅地址。')};self.paint('az-source-name');return Promise.resolve();}
-		if (['source_add','source_toggle','source_remove','source_refresh'].indexOf(method)<0) return Promise.resolve();
+		if (['source_add','source_toggle','source_remove','source_refresh','source_verify'].indexOf(method)<0) return Promise.resolve();
 		self.busy='rules';self.notice=null;self.jobProgress=null;self.jobUncertain=false;self.paint();
 		return sourceCalls[method].apply(null,args).then(function(reply){return self.continueSourceJob(reply);}).then(function(){
 			if (!self.notice || self.notice.kind!=='success') return;
@@ -439,6 +469,7 @@ return view.extend({
 			if (method==='source_remove') matches=!items.some(function(i){return i.id===args[0];});
 			if (!matches || self.sourcesError) self.notice={kind:'error',text:_('任务已结束，但规则选择尚未核对成功。请重新读取列表。')};
 			else if (method==='source_add' && !args[0]) self.customSource={name:'',url:'',format:'domains'};
+			if(method==='source_verify'&&self.notice.kind==='success')self.notice={kind:'success',text:_('已校验启用规则的本地快照，未下载订阅或重载网络。')};
 			self.paint();
 		})
 			.catch(function(e){self.busy=null;self.notice={kind:'error',text:_('规则操作未完成。'),detail:String(e.message || e)};self.paint();});

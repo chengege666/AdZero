@@ -1,3 +1,18 @@
+# v0.11.0 可编辑 DNS 与手动校验验证
+
+操作方式与限制见 [DNS_SETTINGS.md](DNS_SETTINGS.md)。本版复用既有四代理适配和广告后端，没有增加运行依赖或改成另一套 DNS 服务。
+
+- **317 项原生 Python 回归、143 项界面断言通过，无原生跳过**。在 v0.10.4 基础上新增 16 项原生回归及 8 项界面断言；覆盖 DNS 默认值、IPv4/IPv6 地址库、无代理/关闭分流时保存、NaiLink 一次重载且不重启广告后端、备选库修改后巡检不重载、并发保护与失败恢复，以及本地手动校验、检查时间复用、旧回执补齐及下一次启用不重复下载。PassWall、Nikki、OpenClash 的实际配置夹具也增加自定义 DNS 与恢复断言。
+- **47 项实际 rpcd、18 项 NaiLink CGI/API-only、9 项原生下载交接检查通过**。新增独立 source_verify 操作与 DNS 批量载荷的类型检查，保留短执行期限、后台任务和隐私边界。
+- **真实 dae 解析 6 份配置通过**：默认、自定义 IPv4、自定义 IPv6，各覆盖显式 response 与 request-only 形态。未启动 eBPF 内核。
+- **真实 Mihomo 的 108 项查询/连接检查通过**：默认和自定义 DNS 各验证普通/Fake-IP 模式的 UDP/TCP、A/AAAA、广告拦截和实际 DIRECT/PROXY 连接去向。运行于隔离网络命名空间，DNS/SOCKS/HTTP 为本地夹具，不访问家庭路由或公共上游。
+- **实际浏览器检查通过**：当前生产 JS/CSS 配合保存的原生 LuCI DOM；桌面及 360px 深色窄屏完成 DNS 编辑、一次批量提交和手动校验，宽度无溢出。RPC/status 为模拟，截图不表示实际网络已连接。
+- **三个官方 SDK 构建及包检查通过**：24.10.8 x86/64 IPK、25.12.5 x86/64 APK、25.12.5 rockchip/armv8 APK。每包 33 个文件内容/权限及实际打包 JS 的 143 项断言通过。
+
+修改文件集中在 routing-lib.uc、adapter.uc 的 DNS 编译与有效配置指纹，sources.uc、source-cache.uc、source-lib.uc、ctl 的缓存及事务，job/rpcd/ACL 的手动校验入口，overview.js/css 的编辑界面，以及版本、测试和检查脚本。未连接或修改用户路由器；真实上游可达性、代理内核耗时、LAN 查询和广告效果仍需设备验收。
+
+包目录源码 SHA-256：`c995e7c63b4d998d96e6e7bcbcb5611ce711a58fabe9b8debe98fea66d56cfe2`。上述运行时、浏览器 JS/CSS、内核检查及三个 SDK 对应同一份最终代码，证据见 [evidence/v0.11.0](evidence/v0.11.0/)。
+
 # v0.10.4 规则流程与重复重建检查
 
 本轮检查规则库及后端原始配置中的 21 个 HTTPS 地址，详见 [RULE_WORKFLOW_AUDIT.md](RULE_WORKFLOW_AUDIT.md)。保留现有后端和四代理适配，不新增运行依赖。

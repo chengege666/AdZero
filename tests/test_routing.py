@@ -78,7 +78,7 @@ class RoutingCompilerTest(unittest.TestCase):
         self.assertEqual(config['rules'][-1],'MATCH,My Proxy')
         self.assertIn('RULE-SET,adzero-cn-domain,DIRECT',config['rules'])
         self.assertEqual(config['dns']['nameserver'],['tcp://1.1.1.1:53#My Proxy'])
-        self.assertEqual(config['dns']['direct-nameserver'],['223.5.5.5','119.29.29.29'])
+        self.assertEqual(config['dns']['direct-nameserver'],['223.5.5.5'])
         self.assertNotIn('fallback',config['dns'])
         self.assertEqual(config['dns']['nameserver-policy']['+.user.example'],['192.168.1.1'])
         self.assertIn('+.lan',config['dns']['fake-ip-filter'])
@@ -107,6 +107,10 @@ class RoutingAdapterTest(unittest.TestCase):
         self.write('usr/share/passwall/rules/chnlist','cn.example\n')
         self.write('usr/share/passwall/rules/chnroute','223.5.5.0/24\n')
 
+    def custom_dns(self):
+        profile={'domestic':{'servers':['119.29.29.29'],'active':'119.29.29.29'},'foreign':{'servers':['8.8.8.8'],'active':'8.8.8.8'}}
+        p=self.root/'etc/config/adzero';p.write_text(p.read_text()+" option dns_profile '"+json.dumps(profile)+"'\n")
+
     def test_no_proxy_uses_only_domestic_defaults_and_restores_original_dns(self):
         self.select()
         before=(self.root/'etc/config/dhcp').read_text()
@@ -126,6 +130,9 @@ class RoutingAdapterTest(unittest.TestCase):
         self.run_adapter('apply')
         after=(self.root/'etc/config/passwall').read_text()
         for expected in ("option chn_list 'direct'","option use_default_dns 'remote'","option direct_dns '223.5.5.5:53'","option remote_dns '1.1.1.1:53'","option node 'chosen'"):self.assertIn(expected,after)
+        self.run_adapter('remove');self.custom_dns();self.run_adapter('apply')
+        custom=(self.root/'etc/config/passwall').read_text()
+        self.assertIn("option direct_dns '119.29.29.29:53'",custom);self.assertIn("option remote_dns '8.8.8.8:53'",custom)
         self.run_adapter('remove');restored=(self.root/'etc/config/passwall').read_text()
         self.assertIn("option chn_list '0'",restored);self.assertNotIn('use_default_dns',restored)
 
@@ -333,6 +340,9 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.assertLess(after['rules'].index('DOMAIN,user.cn.example,My Proxy'),after['rules'].index('RULE-SET,adzero-cn-domain,DIRECT'))
         self.assertEqual(after['dns']['nameserver-policy']['+.user.example'],['192.168.1.1'])
         self.run_adapter('apply');self.assertEqual(counter.read_text().splitlines(),['restart'])
+        self.run_adapter('remove');self.custom_dns();self.run_adapter('apply')
+        self.assertEqual(json.loads(run.read_text())['dns']['nameserver'],['tcp://8.8.8.8:53#My Proxy'])
+        self.assertEqual(json.loads(run.read_text())['dns']['direct-nameserver'],['119.29.29.29'])
         self.run_adapter('remove');self.assertEqual(mixin.read_bytes(),before)
         self.assertIn("option dns_nameserver '1'",(self.root/'etc/config/nikki').read_text())
 
@@ -357,6 +367,9 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.run_adapter('apply');config=json.loads(run.read_text())
         self.assertEqual(config['mode'],'rule');self.assertIn('RULE-SET,adzero-cn-domain,DIRECT',config['rules'])
         self.assertEqual(config['dns']['nameserver'],['tcp://1.1.1.1:53#My Proxy'])
+        self.run_adapter('remove');self.custom_dns();self.run_adapter('apply')
+        self.assertEqual(json.loads(run.read_text())['dns']['nameserver'],['tcp://8.8.8.8:53#My Proxy'])
+        self.assertEqual(json.loads(run.read_text())['dns']['direct-nameserver'],['119.29.29.29'])
         self.run_adapter('remove');self.assertEqual(json.loads(run.read_text()),json.loads(base.read_text()))
 
 @unittest.skipUnless(UCODE,'requires actual OpenWrt ucode')

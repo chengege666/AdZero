@@ -1,0 +1,14 @@
+{
+  "source_sha256": "c995e7c63b4d998d96e6e7bcbcb5611ce711a58fabe9b8debe98fea66d56cfe2",
+  "native_tests": 317,
+  "ui_assertions": 143,
+  "rpc_checks": 47,
+  "nailink_gateway_checks": 18,
+  "native_download_handoff_checks": 9,
+  "dae_profiles": 6,
+  "mihomo_dns_and_connection_checks": 108,
+  "sdk_builds": 3,
+  "browser_views": 2,
+  "package_payload_files": 33,
+  "router_and_lan": "not_run"
+}

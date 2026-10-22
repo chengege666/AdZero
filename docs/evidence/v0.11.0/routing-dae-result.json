@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "source_sha256": "c995e7c63b4d998d96e6e7bcbcb5611ce711a58fabe9b8debe98fea66d56cfe2",
+  "asset_sha256": "c550af580dc97cc90986260da78c4bf72917f3213c2b5d8b79c45199d9c3dc90",
+  "core": "dae v2.1.1",
+  "profiles": [
+    "default",
+    "custom_ipv4",
+    "custom_ipv6"
+  ],
+  "response_shapes": [
+    "explicit_response",
+    "request_only"
+  ],
+  "configurations": 6,
+  "scope": "real DNS/traffic config parser and v4/v6 GeoIP DAT; no eBPF, router or LAN execution"
+}

@@ -39,6 +39,7 @@
           "source_toggle",
           "source_remove",
           "source_refresh",
+          "source_verify",
           "settings_apply"
         ]
       },

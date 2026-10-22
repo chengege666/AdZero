@@ -1,0 +1,29 @@
+{
+  "source_sha256": "c995e7c63b4d998d96e6e7bcbcb5611ce711a58fabe9b8debe98fea66d56cfe2",
+  "nailink_package_sha256": "666dc4d2313a9954ae8be5ae023f5cbe99a12240de80d2d4ce0afc8f977d9d5b",
+  "nailink_gateway_sha256": "fd28e38c56d44f53b1d6c4a075ba7c715d5a3f028568104a457037bfc32f461f",
+  "checks": [
+    "real CGI + daemon JWT + rpcd authorization",
+    "concurrent root diagnostics use distinct session-scoped request/response files and preserve all responses",
+    "real NaiLink API increments DNS profile version for identical text; no database writes by AdZero",
+    "stale local identity reproduces access denied without key exposure",
+    "authorization preflight rejects before adapter ownership or config writes",
+    "production ctl refuses before backend startup, configuration or ownership changes",
+    "official stopped-service prepare restores access and preserves all database rows",
+    "same procd process identity blocks a second mutation after ambiguous reload",
+    "new process start plus real authorized API allows explicit recovery; reload ack fixture",
+    "HTTP 401 classified without private response",
+    "HTTP 403 classified without private response",
+    "HTTP 502 classified without private response",
+    "HTTP 503 classified without private response",
+    "HTTP 413 classified without private response",
+    "unknown GraphQL error remains private",
+    "unresponsive read-only CGI is bounded to five seconds rather than the 30-second gateway deadline",
+    "actual 30-second CGI timeout followed by native-shaped version and dataplane confirmation succeeds with one reload and no rollback",
+    "DAT-only update advances DNS profile version before a single reload; stale ready state is not accepted"
+  ],
+  "runtime": "actual NaiLink 0.6.30 CGI + API-only daemon and actual OpenWrt rpcd/ubusd/ucode",
+  "proxy_kernel_and_router": "not_run",
+  "existing_database_rows_preserved": true,
+  "timeout_fixture": "real CGI 30-second deadline, delayed upstream/version/readiness and procd inventory fixtures; no claim of actual proxy kernel reload completion"
+}

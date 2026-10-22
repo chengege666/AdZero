@@ -96,7 +96,7 @@ def main():
         os.mknod(base/'dev/null',0o666 | 0o20000,os.makedev(1,3))
         os.mknod(base/'dev/urandom',0o666 | 0o20000,os.makedev(1,9))
         (base/'var/run/ubus/ubus.sock').symlink_to('/tmp/ubus.sock')
-        for relative in ('usr/share/rpcd/ucode/adzero','usr/libexec/adzero/policy-lib.uc','usr/libexec/adzero/source-lib.uc','usr/libexec/adzero/progress-lib.uc','usr/libexec/adzero/job','usr/share/rpcd/acl.d/luci-app-adzero.json'):
+        for relative in ('usr/share/rpcd/ucode/adzero','usr/libexec/adzero/policy-lib.uc','usr/libexec/adzero/source-lib.uc','usr/libexec/adzero/routing-lib.uc','usr/libexec/adzero/progress-lib.uc','usr/libexec/adzero/job','usr/share/rpcd/acl.d/luci-app-adzero.json'):
             target=base/relative; target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(ROOT/'luci-app-adzero/root'/relative,target)
             if relative.endswith('/job'): target.chmod(0o755)
@@ -172,6 +172,13 @@ esac
             assert json.loads((base/'tmp/received-batch.json').read_text())==payload
             assert not (context/'input').exists() and not list((base/'tmp/adzero-requests').iterdir())
             assert 'private-batch-marker' not in json.dumps(receipt)+(context/'log').read_text()
+            assert finished(call('source_verify',{}))['ok']
+            dns={'domestic':{'servers':['119.29.29.29'],'active':'119.29.29.29'},'foreign':{'servers':['8.8.8.8'],'active':'8.8.8.8'}}
+            payload.update(dns_before=dns,dns=dns)
+            assert finished(call('settings_apply',{'payload':json.dumps(payload)}))['ok']
+            assert json.loads((base/'tmp/received-batch.json').read_text())['dns']==dns
+            invalid={**payload,'dns':{**dns,'foreign':{'servers':['127.0.0.1'],'active':'127.0.0.1'}}}
+            assert not call('settings_apply',{'payload':json.dumps(invalid)})['ok']
             assert not call('source_add',{'catalog':'','name':'test','url':'http://example.com/list','format':'domains'})['ok']
             assert not call('source_toggle',{'id':'../../etc','expected_url':'x','enabled':True})['ok']
             start=time.monotonic()
@@ -216,7 +223,7 @@ esac
             large_status=large_status_check(base,run,ctl)
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':44,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
+                    'checks':47,'rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

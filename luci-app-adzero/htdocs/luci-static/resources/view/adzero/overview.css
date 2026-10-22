@@ -294,3 +294,7 @@
   --az-on-accent: #ffffff; --az-warning: #835b21; --az-warning-bg: #faf2df;
   --az-error: #a2413b; --az-error-bg: #fff0ec; --az-focus: #348e73; color-scheme: light;
 }
+
+.az-root .az-dns-field{display:flex;flex:1;min-width:0;flex-direction:column;gap:8px}.az-root .az-dns-field textarea{box-sizing:border-box;width:100%;padding:12px;resize:vertical;font-family:monospace;border:1px solid var(--az-line);border-radius:10px;background:var(--az-card);color:inherit}
+
+.az-root .az-dns-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:14px 0}.az-root .az-dns-field textarea:focus-visible{outline:3px solid var(--az-focus);outline-offset:2px}@media(max-width:640px){.az-root .az-dns-grid{grid-template-columns:1fr}}

@@ -88,7 +88,7 @@ def main():
                 host=socket.inet_ntop(socket.AF_INET,recv_exact(sock,4)) if kind==1 else socket.inet_ntop(socket.AF_INET6,recv_exact(sock,16)) if kind==4 else recv_exact(sock,recv_exact(sock,1)[0]).decode()
                 port=struct.unpack('!H',recv_exact(sock,2))[0];proxy_records.append({'host':host,'port':port})
                 sock.sendall(b'\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x01')
-                if host=='1.1.1.1' and port==53:
+                if host in ('1.1.1.1','8.8.8.8') and port==53:
                     while True:
                         packet=recv_exact(sock,struct.unpack('!H',recv_exact(sock,2))[0]);answer=dns_reply(packet,'foreign-through-proxy');sock.sendall(struct.pack('!H',len(answer))+answer)
                 else:
@@ -133,39 +133,42 @@ def main():
         finally:c.close()
 
     try:
-        for mode in ('redir-host','fake-ip'):
-            with tempfile.TemporaryDirectory(prefix='adzero-routing-core-') as tmp:
-                home=Path(tmp);dns_port,mixed_port=freeport(),freeport()
-                ads=home/'ads.txt';ads.write_text('+.ads.example\n+.ads.cn.example\n')
-                cn=home/'cn.txt';cn.write_text('+.cn.example\n+.sub.ads.example\n')
-                ips=home/'ips.txt';ips.write_text('223.5.5.0/24\n2400:3200::/32\n')
-                config={'mode':'global','log-level':'error','mixed-port':mixed_port,'bind-address':'127.0.0.1','dns':{'enable':True,'listen':f'127.0.0.1:{dns_port}','ipv6':True,'enhanced-mode':mode,'fake-ip-range':'198.18.0.1/16','nameserver':['223.5.5.5'],'fake-ip-filter':['+.real.foreign.example']},'proxies':[{'name':'test-node','type':'socks5','server':'127.0.0.1','port':socks_port}],'proxy-groups':[{'name':'My Proxy','type':'select','proxies':['test-node']}],'rules':['DOMAIN,override.cn.example,My Proxy','MATCH,My Proxy']}
-                config=transform('adapter','mihomo',config,str(ads),False)
-                config=transform('routing','mihomo',config,str(cn),str(ips))['config']
-                path=home/'config.json';path.write_text(json.dumps(config))
-                p=subprocess.run([str(binary),'-t','-d',tmp,'-f',str(path)],text=True,capture_output=True)
-                assert p.returncode==0,p.stdout+p.stderr
-                with (home/'core.log').open('w+') as log:
-                    process=subprocess.Popen([str(binary),'-d',tmp,'-f',str(path)],stdout=log,stderr=log)
-                    try:
-                        for attempt in range(40):
-                            if process.poll() is not None:raise RuntimeError((home/'core.log').read_text())
-                            try:query(dns_port,'ready.cn.example',1,False);break
-                            except OSError:time.sleep(.1)
-                        for tcp in (False,True):
-                            for kind in (1,28):
-                                for name,rcode in [('www.cn.example',0),('test.real.foreign.example',0),('sub.ads.example',3),('deep.sub.ads.example',3),('ads.cn.example',3)]:
-                                    result=query(dns_port,name,kind,tcp)
-                                    assert result[0]==rcode and (rcode!=0 or result[1]>0),(mode,name,kind,tcp,result,(home/'core.log').read_text())
-                                    checks.append({'mode':mode,'transport':'tcp' if tcp else 'udp','type':kind,'name':name,'rcode':result[0]})
-                        for host,expected in [('www.cn.example','DIRECT'),('www.foreign.example','PROXY'),('override.cn.example','PROXY'),('223.5.5.42','DIRECT'),('8.8.8.42','PROXY'),('[2400:3200::42]','DIRECT'),('[2606:4700:4700::42]','PROXY')]:
-                            actual=connection_path(mixed_port,host);assert actual==expected,(mode,host,actual,proxy_records)
-                            checks.append({'mode':mode,'target':host,'actual_connection_path':actual})
-                    finally:process.terminate();process.wait(timeout=5)
+        profiles=[('default',None),('custom',{'domestic':{'servers':['119.29.29.29'],'active':'119.29.29.29'},'foreign':{'servers':['8.8.8.8'],'active':'8.8.8.8'}})]
+        for label,settings in profiles:
+            for mode in ('redir-host','fake-ip'):
+                with tempfile.TemporaryDirectory(prefix='adzero-routing-core-') as tmp:
+                    home=Path(tmp);dns_port,mixed_port=freeport(),freeport()
+                    ads=home/'ads.txt';ads.write_text('+.ads.example\n+.ads.cn.example\n')
+                    cn=home/'cn.txt';cn.write_text('+.cn.example\n+.sub.ads.example\n')
+                    ips=home/'ips.txt';ips.write_text('223.5.5.0/24\n2400:3200::/32\n')
+                    config={'mode':'global','log-level':'error','mixed-port':mixed_port,'bind-address':'127.0.0.1','dns':{'enable':True,'listen':f'127.0.0.1:{dns_port}','ipv6':True,'enhanced-mode':mode,'fake-ip-range':'198.18.0.1/16','nameserver':['223.5.5.5'],'fake-ip-filter':['+.real.foreign.example']},'proxies':[{'name':'test-node','type':'socks5','server':'127.0.0.1','port':socks_port}],'proxy-groups':[{'name':'My Proxy','type':'select','proxies':['test-node']}],'rules':['DOMAIN,override.cn.example,My Proxy','MATCH,My Proxy']}
+                    config=transform('adapter','mihomo',config,str(ads),False)
+                    config=transform('routing','mihomo',config,str(cn),str(ips),settings)['config']
+                    path=home/'config.json';path.write_text(json.dumps(config))
+                    p=subprocess.run([str(binary),'-t','-d',tmp,'-f',str(path)],text=True,capture_output=True)
+                    assert p.returncode==0,p.stdout+p.stderr
+                    with (home/'core.log').open('w+') as log:
+                        process=subprocess.Popen([str(binary),'-d',tmp,'-f',str(path)],stdout=log,stderr=log)
+                        try:
+                            for attempt in range(40):
+                                if process.poll() is not None:raise RuntimeError((home/'core.log').read_text())
+                                try:query(dns_port,'ready.cn.example',1,False);break
+                                except OSError:time.sleep(.1)
+                            for tcp in (False,True):
+                                for kind in (1,28):
+                                    for name,rcode in [('www.cn.example',0),('test.real.foreign.example',0),('sub.ads.example',3),('deep.sub.ads.example',3),('ads.cn.example',3)]:
+                                        result=query(dns_port,name,kind,tcp)
+                                        assert result[0]==rcode and (rcode!=0 or result[1]>0),(mode,name,kind,tcp,result,(home/'core.log').read_text())
+                                        checks.append({'profile':label,'mode':mode,'transport':'tcp' if tcp else 'udp','type':kind,'name':name,'rcode':result[0]})
+                            for host,expected in [('www.cn.example','DIRECT'),('www.foreign.example','PROXY'),('override.cn.example','PROXY'),('223.5.5.42','DIRECT'),('8.8.8.42','PROXY'),('[2400:3200::42]','DIRECT'),('[2606:4700:4700::42]','PROXY')]:
+                                actual=connection_path(mixed_port,host);assert actual==expected,(mode,host,actual,proxy_records)
+                                checks.append({'profile':label,'mode':mode,'target':host,'actual_connection_path':actual})
+                        finally:process.terminate();process.wait(timeout=5)
         assert any(r['group']=='domestic' and r['name']=='www.cn.example' for r in dns_records)
         assert any(r['group']=='foreign-through-proxy' and r['name']=='test.real.foreign.example' for r in dns_records)
         assert not any('ads.example' in r['name'] or 'ads.cn.example' in r['name'] for r in dns_records),dns_records
         assert not any(r['host'] in ('223.5.5.5','119.29.29.29','223.5.5.42','2400:3200::42') for r in proxy_records),proxy_records
+        assert all(any(r['host']==address and r['port']==53 for r in proxy_records) for address in ('1.1.1.1','8.8.8.8'))
         report={'status':'passed','source_sha256':source_hash(ROOT/'luci-app-adzero'),'core':VERSION,'asset_sha256':SHA256,'scope':'production compiler and real core; isolated namespace, local DNS/SOCKS/HTTP fixtures; no router, LAN, TUN or eBPF validation','checks':checks,'dns_records':dns_records,'proxy_records':proxy_records}
         (ROOT/'artifacts/runtime/routing-mihomo-result.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps({'status':report['status'],'checks':len(checks),'scope':report['scope']},indent=2))

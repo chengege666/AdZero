@@ -80,6 +80,7 @@ return {adzero:{
 	source_toggle:{args:{id:'',expected_url:'',enabled:true},call:r=>source_change(r,'source-toggle')},
 	source_remove:{args:{id:'',expected_url:''},call:r=>source_change(r,'source-remove')},
 	source_refresh:{call:r=>job(r,'source-refresh',[])},
+	source_verify:{call:r=>job(r,'source-verify',[])},
 	settings_apply:{args:{payload:''},call:r=>settings(r)},
 	job_status:{args:{job:''},call:function(r) {
 		let id=r.args.job;

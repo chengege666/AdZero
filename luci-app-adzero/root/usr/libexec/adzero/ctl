@@ -555,25 +555,31 @@ apply_settings() {
 		[ "$(get_uci adzero.main.enabled)" = 0 ] && [ "$(get_uci adblock-fast.config.enabled)" = 0 ] || error '后端正由其他服务管理。'
 		[ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ] || error '存在未完成恢复记录。'
 	fi
-	settings_plan=$("$SOURCES" plan-check "$1") || error '待应用配置检查失败。'
-	case "$settings_plan" in '0 0 0'|'0 0 1') printf 'no pending changes\n'; return 0 ;; esac
-	case "$settings_plan" in '0 1 0'|'0 1 1')
-		wanted=${settings_plan##* }
+	settings_file=$1
+	settings_plan=$("$SOURCES" plan-check "$settings_file") || error '待应用配置检查失败。'
+	case "$settings_plan" in [01]' '[01]' '[01]' '[01]) ;; *) error '批量应用计划无效。' ;; esac
+	# Fixed digits emitted by the local validator; no user strings in splitting.
+	set -- $settings_plan
+	rules_changed=$1; routing_changed=$2; wanted=$3; dns_changed=$4
+	if [ "$rules_changed$routing_changed$dns_changed" = 000 ]; then printf 'no pending changes\n'; return 0; fi
+	if [ "$rules_changed$dns_changed" = 00 ]; then
 		if [ "$active" = 1 ]; then change_routing "$wanted"
 		else "$POLICY" routing-begin "$wanted" && "$POLICY" routing-save && "$POLICY" routing-finish || error '分流选择保存失败。'; fi
-		return 0 ;;
-	esac
-	case "$settings_plan" in '1 0 0'|'1 0 1') routing_changed=0 ;; '1 1 0'|'1 1 1') routing_changed=1 ;; *) error '批量应用计划无效。' ;; esac
+		return 0
+	fi
 	routing_method=full
 	if [ "$routing_changed" = 1 ] && [ "$active" = 1 ]; then
-		routing_method=$("$ADAPTER" routing-check "${settings_plan##* }") || error '分流配置预检未通过，尚未应用更改。'
+		routing_method=$("$ADAPTER" routing-check "$wanted") || error '分流配置预检未通过，尚未应用更改。'
 	fi
-	if "$SOURCES" begin-batch "$1"; then
+	if "$SOURCES" begin-batch "$settings_file"; then
 		applied=0
 		if [ "$active" = 0 ]; then applied=1
+		elif [ "$rules_changed$routing_changed" = 00 ]; then applied=1
 		elif [ "$routing_changed" = 0 ]; then backend_rebuild_if_changed && "$ADAPTER" apply && applied=1
-		elif [ "$routing_method" = nailink ]; then backend_rebuild_if_changed && "$ADAPTER" reconfigure-nailink-rules && applied=1
-		else "$ADAPTER" remove && backend_rebuild_if_changed && "$ADAPTER" apply && applied=1
+		elif [ "$routing_method" = nailink ]; then
+			if [ "$rules_changed" = 0 ]; then "$ADAPTER" reconfigure-nailink && applied=1
+			else backend_rebuild_if_changed && "$ADAPTER" reconfigure-nailink-rules && applied=1; fi
+		else "$ADAPTER" remove && { [ "$rules_changed" = 0 ] || backend_rebuild_if_changed; } && "$ADAPTER" apply && applied=1
 		fi
 		if [ "$applied" = 1 ]; then "$SOURCES" finish || error '更改已应用，但完成记录未能清理。'; return 0; fi
 	fi
@@ -582,10 +588,12 @@ apply_settings() {
 		"$SOURCES" rollback || error '批量恢复遇到并发修改，恢复记录已保留。'
 		restored=0
 		if [ "$active" = 0 ]; then restored=1
-		elif [ "$routing_changed" = 1 ] && [ "$routing_method" = nailink ]; then backend_restart dl && "$ADAPTER" reconfigure-nailink-rules && restored=1
+		elif [ "$routing_changed" = 1 ] && [ "$routing_method" = nailink ]; then
+			if [ "$rules_changed" = 0 ]; then "$ADAPTER" reconfigure-nailink && restored=1
+			else backend_restart dl && "$ADAPTER" reconfigure-nailink-rules && restored=1; fi
 		else
 			if [ "$routing_changed" = 1 ]; then "$ADAPTER" remove || error '代理恢复未完成，批量记录已保留。'; fi
-			backend_restart dl && "$ADAPTER" apply && restored=1
+			{ [ "$rules_changed" = 0 ] || backend_restart dl; } && "$ADAPTER" apply && restored=1
 		fi
 		if [ "$restored" = 1 ]; then "$SOURCES" discard || error '旧配置已恢复，但记录未清理。'; error '更改未能应用，已恢复之前的配置。'; fi
 		error '更改与恢复尚未确认，记录已保留。'
@@ -701,6 +709,9 @@ case "$1" in
 	source-add) acquire_lock source-add; shift; change_sources add "$@" ;;
 	source-toggle) acquire_lock source-toggle; shift; change_sources toggle "$@" ;;
 	source-remove) acquire_lock source-remove; shift; change_sources remove "$@" ;;
+	source-verify) acquire_lock source-verify; verify_supported; policy_clean || error '请先完成恢复。';
+		[ -f "$MANAGED_MARKER" ] || { [ "$(get_uci adzero.main.enabled)" = 0 ] && [ "$(get_uci adblock-fast.config.enabled)" = 0 ]; } || error '后端由其他服务管理。';
+		"$SOURCES" verify ;;
 	source-refresh) acquire_lock source-refresh; change_sources refresh ;;
 	reload) acquire_lock reload; reload_current ;;
 	settings-apply) acquire_lock settings-apply; apply_settings "$2" ;;

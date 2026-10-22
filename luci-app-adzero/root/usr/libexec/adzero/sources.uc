@@ -5,6 +5,7 @@ import { cursor } from 'uci';
 import * as lib from './source-lib.uc';
 import * as progress from './progress-lib.uc';
 import * as snapshots from './source-cache.uc';
+import * as dns from './routing-lib.uc';
 const root = getenv('ADZERO_SOURCES_ROOT') ?? '';
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
 const uci = cursor(root + '/etc/config');
@@ -51,6 +52,7 @@ function checksum(path){
 	let output=proc.read('all'),code=proc.close(),digest=split(output??'',' ')[0];
 	return code==0&&match(digest,/^[a-f0-9]{64}$/)?digest:null;
 }
+function dns_profile(){return dns.profile(json(uci.get('adzero','main','dns_profile')??'null'));}
 function list() {
 	let items=[];
 	for (let s in selected()) {
@@ -61,16 +63,24 @@ function list() {
 			validation:s.adzero_validation ?? (s.adzero_domains?'validated':'unchecked'),
 			domains: s.adzero_domains ? int(s.adzero_domains) : null,skipped:int(s.adzero_skipped??'0'),updated:s.adzero_updated ? int(s.adzero_updated) : null});
 	}
-	return {catalog:lib.catalog,items,revision:checksum(config),pending:!!read(journal),last:read(dir+'/sources-last.json')};
+	return {catalog:lib.catalog,items,revision:checksum(config),dns:dns_profile(),pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
-function download(address,kind,fresh) {
+function download(address,kind,fresh,manual) {
 	lib.url(address);if(kind!='auto')lib.format(kind);
 	let snapshot=snapshots.load(address,root);
-	if(snapshot&&!fresh&&!uci.get('adblock-fast','config','curl_additional_param')){
+	if(manual){
+		if(!snapshot)die('没有可用的本地规则快照，请先更新订阅后再校验。');
 		progress.stage('validating');
-		let value=snapshots.parsed(snapshot,kind);
-		if(value)return {...value,bytes:fs.stat(snapshot.path).size};
+		let raw=fs.readfile(snapshot.path),result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);
+		if(!result)die('本地快照无法按支持的格式校验。');
+		snapshots.save(address,raw,root,kind,result);return {...result,bytes:length(raw)};
+	}
+	if(snapshot&&!fresh&&!uci.get('adblock-fast','config','curl_additional_param')){
+		progress.stage('checking');
+		let value=snapshots.summary(snapshot,kind)??snapshots.parsed(snapshot,kind);
+		if(value){if(value.names)snapshots.renew(snapshot,kind,value);return {...value,bytes:fs.stat(snapshot.path).size,reused:true};}
 		try{
+			progress.stage('validating');
 			let raw=fs.readfile(snapshot.path),checked=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);
 			snapshots.save(address,raw,root,kind,checked);return checked?{...checked,bytes:length(raw)}:null;
 		}catch(e){}
@@ -89,22 +99,23 @@ function download(address,kind,fresh) {
 		// Quiet output: a custom subscription URL may contain a private token.
 		let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
 		if (system(join(' ',map(argv,quote))+' >/dev/null 2>&1',65000) != 0) {progress.failure('source_download');die('规则下载失败，请检查 HTTPS 地址和网络。');}
-		progress.stage('validating');
 		let raw=fs.readfile(path,25000001),result,identical=snapshot&&raw==fs.readfile(snapshot.path);
 		try{
-			if(identical)result=snapshots.parsed(snapshot,kind);
-			if(!result)result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);
+			progress.stage(identical?'checking':'validating');
+			if(identical)result=snapshots.summary(snapshot,kind)??snapshots.parsed(snapshot,kind);
+			if(!result){progress.stage('validating');result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);}
 		}catch(e){progress.failure('source_format');die(e);}
-		if(!result||!identical||!snapshots.renew(snapshot,kind))snapshots.save(address,raw,root,kind,result);
-		fs.unlink(path);return result?{...result,bytes:length(raw)}:null;
+		let reused=!!result&&identical&&snapshots.renew(snapshot,kind,result);
+		if(!reused){if(result&&!result.names)result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);snapshots.save(address,raw,root,kind,result);}
+		fs.unlink(path);return result?{...result,bytes:length(raw),reused}:null;
 	} catch(e) { fs.unlink(path);die(e); }
 }
-function validate_sources(only,fresh) {
+function validate_sources(only,fresh,manual) {
 	let union={}, count=0;
 	for (let s in selected()) if (s.enabled != '0') {
 		if(only && (type(only)=='array' ? index(only,s['.name'])<0 : s['.name']!=only))continue;
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
-		let checked=download(s.url,kind,fresh);
+		let checked=download(s.url,kind,fresh,manual);
 		// The backend uses this size to schedule downloads. Without it, a new
 		// source triggers another HEAD request despite already being downloaded.
 		let snapshot=checked?null:snapshots.load(s.url,root),bytes=checked?.bytes??(snapshot?fs.stat(snapshot.path)?.size:null);
@@ -114,10 +125,11 @@ function validate_sources(only,fresh) {
 			if(!uci.set('adblock-fast',s['.name'],'adzero_validation','backend_only')||!uci.set('adblock-fast',s['.name'],'adzero_updated',''+time()))die('无法保存规则检查记录。');
 			continue;
 		}
-		let names=checked.names;
+		let names=checked.names??[];
 		for (let name in names) union[name]=true;
 		if (length(union) > 500000) die('所选规则合计超过 50 万个域名，请减少列表。');
-		if (!uci.set('adblock-fast',s['.name'],'adzero_domains',''+length(names)) || !uci.set('adblock-fast',s['.name'],'adzero_skipped',''+checked.skipped) || !uci.set('adblock-fast',s['.name'],'adzero_updated',''+time())) die('无法保存规则校验结果。');
+		let updated=checked.reused&&s.adzero_updated?s.adzero_updated:''+time();
+		if (!uci.set('adblock-fast',s['.name'],'adzero_domains',''+(checked.domains??length(names))) || !uci.set('adblock-fast',s['.name'],'adzero_skipped',''+checked.skipped) || !uci.set('adblock-fast',s['.name'],'adzero_updated',updated)) die('无法保存规则校验结果。');
 		if(!uci.set('adblock-fast',s['.name'],'adzero_validation','validated')||(kind=='auto'&&!uci.set('adblock-fast',s['.name'],'adzero_detected_format',checked.format)))die('无法保存规则格式记录。');
 		count++;
 	}
@@ -173,6 +185,10 @@ function batch_plan(path){
 	clean_uci();
 	if(length(uci.changes('adzero')?.adzero??[]))die('AdZero 有未提交的外部修改，请先保存或撤销。');
 	if(p.revision!=checksum(config)||(uci.get('adzero','main','routing_enabled')=='1')!=p.routing_before){progress.failure('config_conflict');die('配置已被其他操作修改，请重新读取并核对待应用选择。');}
+	if(p.dns&&!same(p.dns_before,dns_profile())){progress.failure('config_conflict');die('DNS 设置已被其他操作修改，请重新读取。');}
+	p.dns_changed=!!p.dns&&!same(p.dns,p.dns_before);
+	let active_changed=p.dns_changed&&(p.dns.domestic.active!=p.dns_before.domestic.active||p.dns.foreign.active!=p.dns_before.foreign.active);
+	p.routing_changed=p.routing_before!=p.routing_enabled||active_changed&&p.routing_enabled;
 	let existing=selected();
 	for(let item in p.items)if(item.id){
 		let old=filter(existing,s=>s['.name']==item.id)[0];
@@ -204,14 +220,23 @@ function begin_batch(path){
 	if(length(checks))validate_sources(checks);
 	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode&0777,action:'batch',prechecked:length(checks)>0};
 	if(p.routing_before!=p.routing_enabled)pending.routing={before:uci.get('adzero','main','routing_enabled'),after:p.routing_enabled?'1':'0'};
+	if(p.dns_changed)pending.dns={before:uci.get('adzero','main','dns_profile'),after:sprintf('%J',p.dns)};
 	atomic(journal,sprintf('%J',pending));
 	if(!uci.commit('adblock-fast'))die('规则保存失败，恢复记录已保留。');
 	if(pending.routing&&(!uci.set('adzero','main','routing_enabled',pending.routing.after)||!uci.commit('adzero')))die('分流选择保存失败，恢复记录已保留。');
+	if(pending.dns&&(!uci.set('adzero','main','dns_profile',pending.dns.after)||!uci.commit('adzero')))die('DNS 设置保存失败，恢复记录已保留。');
 }
 function rollback() {
 	let pending=read(journal);if (!pending) return;
 	clean_uci();
 	if (pending.schema != 1 || type(pending.before) != 'string' || (!same(model(),pending.after) && !same(model(),pending.prior))) die('配置出现并发变化，已保留规则恢复记录。');
+	if(pending.dns){
+		if(length(uci.changes('adzero')?.adzero??[]))die('DNS 有外部未保存修改，恢复记录已保留。');
+		let p=pending.dns,current=uci.get('adzero','main','dns_profile');
+		if(!same(current,p.before)&&current!=p.after)die('DNS 存在并发变化，恢复记录已保留。');
+		let ok=p.before==null?(current==null||uci.delete('adzero','main','dns_profile')):uci.set('adzero','main','dns_profile',p.before);
+		if(!ok||!uci.commit('adzero'))die('DNS 恢复失败。');
+	}
 	if(pending.routing){
 		if(length(uci.changes('adzero')?.adzero??[]))die('分流配置有外部未保存修改，恢复记录已保留。');
 		let current=uci.get('adzero','main','routing_enabled'),p=pending.routing;
@@ -294,16 +319,31 @@ function cache_check(live){
 	// cache that start will restore; never trust config flags or timestamps.
 	return checksum(path+(live?'':'.cache'))==state.sha256;
 }
+function stamp_verified_metadata(before){
+	let state=read(dir+'/backend-cache.json'),path=cache_path();
+	if(!path||state?.schema!=2||!same(before,state.config))return;
+	if((checksum(path)??checksum(path+'.cache'))!=state.sha256)return;
+	// A manual check changes counters only. Preserve the actual applied inputs,
+	// including snapshots from before any failed/unapplied refresh.
+	state.config=model();atomic(dir+'/backend-cache.json',sprintf('%J',state));
+}
 let action=shift(ARGV);if (action == '--') action=shift(ARGV);
 try {
 	if (action == 'list') print(sprintf('%J\n',list()));
-	else if(action=='plan-check'){let p=batch_plan(shift(ARGV));print((p.rules_changed?'1':'0')+' '+(p.routing_before!=p.routing_enabled?'1':'0')+' '+(p.routing_enabled?'1':'0')+'\n');}
+	else if(action=='plan-check'){let p=batch_plan(shift(ARGV));print((p.rules_changed?'1':'0')+' '+(p.routing_changed?'1':'0')+' '+(p.routing_enabled?'1':'0')+' '+(p.dns_changed?'1':'0')+'\n');}
+	else if(action=='verify'){
+		clean_uci();if(read(journal))die('请先完成待应用操作。');
+		let before=model();
+		if(!validate_sources(null,false,true))die('没有启用的规则可以校验。');
+		if(!uci.commit('adblock-fast'))die('校验记录保存失败。');
+		stamp_verified_metadata(before);
+	}
 	else if(action=='begin-batch')begin_batch(shift(ARGV));
 	else if (action == 'begin') begin(shift(ARGV),ARGV);
 	else if (action == 'rollback') rollback();
 	else if (action == 'confirm') {
 		let p=read(journal);clean_uci();
-		if(p && (p.schema!=1 || !same(model(),p.after) || p.routing && uci.get('adzero','main','routing_enabled')!=p.routing.after))
+		if(p && (p.schema!=1 || !same(model(),p.after) || p.routing && uci.get('adzero','main','routing_enabled')!=p.routing.after || p.dns && uci.get('adzero','main','dns_profile')!=p.dns.after))
 			die('规则在等待重载期间发生变化，恢复记录已保留。');
 	}
 	else if (action == 'finish') {
