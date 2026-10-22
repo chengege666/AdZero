@@ -1,12 +1,12 @@
 include $(TOPDIR)/rules.mk
 
-PKG_VERSION:=0.11.0
+PKG_VERSION:=0.12.0
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 
 LUCI_TITLE:=AdZero - zero-configuration ad blocking
 LUCI_DESCRIPTION:=One-click adblock-fast control with cautious proxy/DNS compatibility diagnostics
-LUCI_DEPENDS:=+luci-base +adblock-fast +curl +rpcd-mod-file +rpcd-mod-ucode +ca-bundle +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-ubus
+LUCI_DEPENDS:=+luci-base +adblock-fast +curl +rpcd-mod-file +rpcd-mod-ucode +ca-bundle +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-ubus +ucode-mod-uloop +tcpdump-mini
 LUCI_PKGARCH:=all
 # Keep scoped CSS custom properties intact across older SDK CSS minifiers.
 LUCI_MINIFY_CSS:=0

@@ -6,6 +6,10 @@
 'require poll';
 
 var policyCalls = {};
+var observationCalls = {
+	read:rpc.declare({object:'adzero',method:'observation',params:[]}),
+	test:rpc.declare({object:'adzero',method:'verification_start',params:[]})
+};
 [ ['enable', []], ['disable', []], ['refresh', []], ['reload', []], ['routing_on', []], ['routing_off', []], ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
 	policyCalls[method[0]] = rpc.declare({ object: 'adzero', method: method[0], params: method[1] });
 });
@@ -153,7 +157,54 @@ function defaultDNS() {return {domestic:{servers:['223.5.5.5','119.29.29.29'],ac
 function sameDNS(a,b) {return JSON.stringify(a||defaultDNS())===JSON.stringify(b||defaultDNS());}
 return view.extend({
 	busy: null, currentStatus: null, lastChecked: null, notice: null, domainInput: '', domainResult: null, pauseSeconds: 300,
+	observation:null, observationBusy:false, verificationCommands:'', verificationNotice:null, networkOpen:false,
 	draft: null, applyingDraft: null,
+	renderMetrics:function(s){
+		var o=this.observation||{},available=o.available===true,ready=flags(s).enabled&&(s.backend||{}).state==='ready';
+		var active=names[(s.adapter||{}).plugin]||_('路由器 DNS'),ratio=available&&o.queries>0?(100*o.blocked/o.queries).toFixed(1)+'%':'—';
+		return el('div',{'class':'az-stats-grid az-live-grid'},[
+			el('section',{'class':'az-card az-stat az-stat-accent'},[el('span',{'class':'az-stat-label'},_('已拦截 DNS 请求')),
+				el('strong',{'class':'az-number'},number(available?o.blocked:null)),el('p',{},available?_('拦截比例 ')+ratio:_('统计组件尚未就绪'))]),
+			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('已观察 DNS 请求')),
+				el('strong',{'class':'az-number'},number(available?o.queries:null)),el('p',{},_('本次开机 · 局域网明文 DNS'))]),
+			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('规则域名')),
+				el('strong',{'class':'az-number'},number(ready?s.backend.domains:null)),el('p',{},_('当前加载的有效域名'))]),
+			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('当前接入')),
+				el('strong',{'class':'az-stat-value az-current-adapter',translate:'no'},flags(s).enabled?active:_('未开启')),el('p',{},flags(s).enabled?_('规则已同步'):_('开启后自动识别'))])
+		]);
+	},
+	renderVerification:function(){
+		var self=this,o=self.observation||{},v=o.verification||{},passed=o.available&&o.active&&flags(self.currentStatus||{}).enabled&&!(self.currentStatus||{}).stale&&v.state==='passed',waiting=o.available&&v.state==='waiting';
+		var title=passed?_('此设备检测通过'):waiting?_('等待电脑发出检测查询'):!o.available?_('统计组件尚未就绪，广告过滤可继续使用。'):!o.active?_('开启或恢复保护后可检测'):v.state==='expired'?_('检测已过期，可重新开始'):_('确认实际过滤效果');
+		return el('section',{'class':'az-card az-verification-card'},[
+			el('div',{'class':'az-section-heading'},[el('div',{},[el('h3',{},_('效果检测')),el('p',{'class':'az-card-copy'},title)]),
+				el('button',{id:'az-test-start',type:'button','class':'az-button '+(passed?'az-button-quiet':'az-button-primary'),disabled:self.observationBusy||self.busy||!flags(self.currentStatus||{}).enabled||!o.available||!o.active||waiting?true:null,click:function(){return self.startVerification();}},self.observationBusy?_('准备中…'):passed?_('再次检测'):_('开始检测'))]),
+			passed?el('p',{'class':'az-test-success'},[icon('check'),_('已收到此设备的拦截应答和正常解析：'),el('span',{translate:'no'},v.client||'')]):null,
+			self.verificationNotice?el('p',{'class':'az-inline-warning',role:'status'},self.verificationNotice):null,
+			self.verificationCommands&&!passed?el('div',{'class':'az-test-instructions'},[
+				el('p',{},_('在连接此路由器的电脑上打开终端，复制并执行以下三条命令。首条检测标记提示不存在属正常；无需暂停保护，页面会自动核对结果。')),
+				el('label',{'for':'az-test-commands','class':'az-sr-only'},_('终端检测命令')),
+				el('textarea',{id:'az-test-commands',readonly:true,rows:3,spellcheck:'false',click:function(e){e.target.select();}},self.verificationCommands),
+				waiting?el('div',{'class':'az-test-steps','aria-live':'polite'},[pill(v.marker?_('已识别设备'):_('等待设备')),pill(v.blocked?_('拦截符合预期'):_('等待拦截样本')),pill(v.normal?_('正常网站可解析'):_('等待正常样本')),el('span',{},number(v.remaining)+_(' 秒内有效'))]):null
+			]):null,
+			el('details',{'class':'az-stat-scope'},[el('summary',{},_('统计范围与隐私')),el('p',{},_('统计记录本次开机的采集期间，局域网 UDP/TCP 53 端口中命中有效规则且收到拦截应答的请求；不代表网页广告个数。加密 DNS、绕过路由器和未观察到的应答不计入。检测仅证明该设备当前 DNS 链路。统计保存在内存，重启路由器清零，不保存浏览记录。'))])
+		]);
+	},
+	refreshObservation:function(){
+		var self=this;if(self.observationReading)return Promise.resolve();self.observationReading=true;
+		return observationCalls.read().then(function(reply){if(!reply||!reply.ok)throw Error('unavailable');if(reply.data&&reply.data.available&&(reply.data.verification||{}).state==='idle'&&self.observation&&(self.observation.verification||{}).state!=='idle')self.verificationCommands='';self.observation=reply.data;},function(){self.observation={available:false,verification:{state:'idle'}};}).catch(function(){self.observation={available:false,verification:{state:'idle'}};}).then(function(){
+			self.observationReading=false;
+			var metrics=document.getElementById('az-live-metrics'),verification=document.getElementById('az-live-verification');
+			if(metrics)dom.content(metrics,[self.renderMetrics(self.currentStatus||{})]);
+			// Preserve command selection while waiting, but always show the final
+			// receipt even if the user leaves that textarea focused after copying.
+			if(verification&&(!document.activeElement||document.activeElement.id!=='az-test-commands'||((self.observation||{}).verification||{}).state!=='waiting'))dom.content(verification,[self.renderVerification()]);
+		});
+	},
+	startVerification:function(){
+		var self=this;if(self.observationBusy)return Promise.resolve();self.observationBusy=true;self.verificationNotice=null;self.paint();
+		return observationCalls.test().then(function(reply){if(!reply||!reply.ok)throw Error(reply&&reply.message||_('检测未能开始。'));self.verificationCommands=reply.commands;return self.refreshObservation();}).catch(function(e){self.verificationNotice=String(e.message||e);}).then(function(){self.observationBusy=false;self.paint('az-test-commands');});
+	},
 	load: function() {
 		// Render first. A slow RPC must not hold LuCI's whole view behind a spinner.
 		return Promise.resolve(readSnapshot() || { state: 'loading' });
@@ -164,7 +215,7 @@ return view.extend({
 		var adapter = s.adapter || {}, backend = s.backend || {}, busy = self.busy, locked = busy || s.stale, loading = s.state === 'loading';
 		var active = names[adapter.plugin] || (adapter.plugin === 'none' ? _('路由器 DNS') : _('接入待确认'));
 		var synced = f.enabled && adapter.stage === 'configured_unverified' && adapter.plugin && adapter.plugin !== 'none';
-		var ready = f.enabled && backend.state === 'ready', verified = s.client_dns_verified === true;
+		var ready = f.enabled && backend.state === 'ready', verified = self.observation&&self.observation.available&&self.observation.active&&(self.observation.verification||{}).state==='passed';
 		var checked = self.lastChecked ? new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(self.lastChecked) : '—';
 		var pause = (s.policy || {}).pause || {}, allowed = (s.policy || {}).allowed || [];
 		var routing = adapter.routing || {}, routingWanted = (s.policy || {}).routing_enabled === true;
@@ -217,20 +268,19 @@ return view.extend({
 			el('div', { 'class': 'az-action-row' }, [ el('label', { 'for': 'az-pause-duration', 'class': 'az-sr-only' }, _('暂停时长')),
 				el('select', { id: 'az-pause-duration', disabled: locked ? true : null, change: function(e) { self.pauseSeconds = Number(e.target.value); } }, [300,900,1800].map(function(seconds) { return el('option', { value: seconds, selected: self.pauseSeconds === seconds ? true : null }, seconds / 60 + _(' 分钟')); })),
 				el('button', { id: 'az-pause', type: 'button', 'class': 'az-button az-button-quiet', disabled: locked ? true : null, click: function() { return self.runPolicy('pause', [self.pauseSeconds]); } }, _('临时暂停')) ]) ]));
-		nodes.push(el('div', { 'class': 'az-stats-grid', 'aria-busy': loading ? 'true' : 'false' }, [
-			el('section', { 'class': 'az-card az-stat' }, [ el('div', { 'class': 'az-stat-heading' }, [ el('span', {}, _('规则域名')), icon('settings') ]),
-				el('strong', { 'class': 'az-number' + (loading ? ' az-placeholder' : '') }, number(ready ? backend.domains : null)), el('p', {}, ready ? _('当前已加载的有效域名') : loading ? _('正在读取规则信息') : _('开启后自动载入')) ]),
-			el('section', { 'class': 'az-card az-stat' }, [ el('div', { 'class': 'az-stat-heading' }, [ el('span', {}, _('当前接入')), icon('shield') ]),
-				el('strong', { 'class': 'az-stat-value', translate: 'no' }, loading ? '—' : f.enabled ? active : _('自动匹配')), el('p', {}, synced ? _('代理规则已同步') : f.enabled && adapter.plugin === 'none' ? _('使用路由器 DNS') : f.enabled ? _('接入状态待确认') : _('开启时自动识别当前代理')) ]),
-			el('section', { 'class': 'az-card az-stat' }, [ el('div', { 'class': 'az-stat-heading' }, [ el('span', {}, _('终端验证')), icon('info') ]),
-				el('strong', { 'class': 'az-stat-value az-verification' }, loading ? '—' : verified ? _('已验证') : _('待验证')), el('p', {}, verified ? _('已有实际查询验证记录') : _('需在手机或电脑上确认效果')) ]) ]));
-		nodes.push(el('section', {'class':'az-card az-domain-card'},[
+		nodes.push(el('div',{id:'az-live-metrics'},[self.renderMetrics(s)]));
+		nodes.push(el('div',{id:'az-live-verification'},[self.renderVerification()]));
+		var network=[];
+		network.push(el('section', {'class':'az-card az-domain-card'},[
 			el('div',{'class':'az-section-heading'},[el('h3',{},_('自动分流')),
 				el('button',{id:'az-routing',type:'button','class':'az-toggle'+((self.draft?self.draft.routing_enabled:routingWanted)?' is-on':''),role:'switch','aria-checked':(self.draft?self.draft.routing_enabled:routingWanted)?'true':'false','aria-label':_('自动分流'),disabled:locked||!(f.enabled||s.state==='disabled'&&!s.managed)?true:null,
 					click:function(){return self.stageRouting(!(self.draft?self.draft.routing_enabled:routingWanted));}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))) ]),
 			el('p',{'class':'az-card-copy'},self.draft&&self.draft.routing_enabled!==routingWanted?_('待应用：')+(self.draft.routing_enabled?_('开启自动分流'):_('关闭自动分流'))+_('。当前网络继续使用已应用配置。'):routingWanted && f.enabled ? routing.mode==='proxy'?_('国内直连 / 国外代理 · 配置已应用') : routing.mode==='direct'?_('国内 DNS / 全部直连 · 配置已应用'):_('分流接入待确认') : f.paused?_('恢复保护后继续应用已保存的选择。'):!f.enabled?_('可先选择分流，应用后在开启保护时生效。'):_('自动识别当前代理，同时配置 DNS 和连接去向。')),
 			el('p',{'class':'az-operation-note'},_('有代理时国内直连、国外走当前代理；无代理时使用国内 DNS 与本地直连。切换可能短暂重载网络，实际出口需在设备上验证。')) ]));
-		nodes.push(self.renderDNS(s));
+		network.push(self.renderDNS(s));
+		nodes.push(el('details',{'class':'az-card az-network-settings',open:self.networkOpen?true:null,toggle:function(e){self.networkOpen=e.target.open;}},[
+			el('summary',{},[el('div',{},[el('strong',{},_('DNS 与分流')),el('p',{},routingWanted?_('自动分流已开启'):_('使用当前网络设置'))]),el('span',{'class':'az-details-hint'},_('展开设置'))]),el('div',{'class':'az-network-body'},network)
+		]));
 		nodes.push(el('section', { 'class': 'az-card az-domain-card' }, [
 			el('div', { 'class': 'az-section-heading' }, [el('h3', {}, _('域名查询与放行')), pill(s.stale ? _('待核对') : allowed.length + _(' 项放行'))]),
 			el('p', { 'class': 'az-card-copy', id: 'az-domain-help' }, _('检查域名是否命中 AdZero 当前规则，误拦截时可放行。支持粘贴网址。')),
@@ -254,12 +304,7 @@ return view.extend({
 					el('div',{'class':'az-action-row'},[el('button',{type:'button','class':'az-button az-button-quiet',click:function(){return self.openRules();}},_('管理规则')),
 					el('button', { id: 'az-update', 'class': 'az-button az-button-primary', type: 'button', 'data-action': 'reload', disabled: locked || !f.enabled ? true : null,
 						click: function() { return self.reloadCurrent(); } }, [ icon('refresh'), _('重新加载') ]) ]) ]),
-				el('p', { id: 'az-operation-note', 'class': 'az-operation-note' }, _('开关与更新可能短暂重载 DNS 或当前代理；关闭后恢复原有设置。')) ]),
-			el('section', { 'class': 'az-card az-progress' }, [ el('div', { 'class': 'az-section-heading' }, [ el('h3', {}, _('接入检查')), pill(verified ? _('终端已验证') : _('终端待验证')) ]),
-				el('ol', { 'class': 'az-steps' }, [ step(1, _('载入规则'), ready ? _('后端运行正常') : _('开启后准备'), ready),
-					step(2, _('网络接入'), synced ? _('代理已同步') : f.enabled && adapter.plugin === 'none' ? _('DNS 已配置') : _('自动识别代理'), !!(f.enabled && (synced || adapter.plugin === 'none'))),
-					step(3, _('终端效果'), verified ? _('查询已验证') : _('尚待实际验证'), verified) ]),
-				el('p', { 'class': 'az-progress-note' }, _('配置完成不等于所有终端的流量都已过滤。')) ]) ]));
+				el('p', { id: 'az-operation-note', 'class': 'az-operation-note' }, _('开关与更新可能短暂重载 DNS 或当前代理；关闭后恢复原有设置。')) ]) ]));
 		if (backend.errors > 0) nodes.push(el('p', { 'class': 'az-inline-warning', role: 'alert' }, _('过滤后端报告错误，请检查服务日志后重新检测。')));
 		if (!s.compatibility && !loading && s.state !== 'error') nodes.push(el('p', { 'class': 'az-inline-warning', role: 'alert' }, _('网络环境检测未完成，请检查插件安装文件后重新检测。')));
 		nodes.push(el('footer', { 'class': 'az-footer' }, [ icon('info'), _('DNS 过滤无法覆盖同域视频广告、网页占位或绕过路由器的请求。') ]));
@@ -578,7 +623,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.10.4' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.12.0' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {
@@ -593,6 +638,15 @@ return view.extend({
 			};
 			poll.add(this.pausePoll, 5);
 		}
+		if(!this.observationPoll){
+			this.observationPoll=function(){
+				if(!document.contains(self.panelNode)){poll.remove(self.observationPoll);self.observationPoll=null;return Promise.resolve();}
+				if(document.hidden||self.busy||self.rulesOpen)return Promise.resolve();
+				return self.refreshObservation();
+			};
+			poll.add(this.observationPoll,3);
+		}
+		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);
 		if (status.state === 'loading' || status.stale) {
 			var pendingJob=sessionValue('job');

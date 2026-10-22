@@ -14,7 +14,8 @@
         "adzero": [
           "lookup",
           "source_list",
-          "job_status"
+          "job_status",
+          "observation"
         ]
       },
       "uci": [
@@ -40,7 +41,8 @@
           "source_remove",
           "source_refresh",
           "source_verify",
-          "settings_apply"
+          "settings_apply",
+          "verification_start"
         ]
       },
       "uci": [

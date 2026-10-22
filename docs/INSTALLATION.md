@@ -1,13 +1,13 @@
 # 安装与恢复
 
-本页适用于 v0.11.0 测试版。先查看 [兼容矩阵](COMPATIBILITY.md)，使用与固件完整版本、设备目标和包管理器对应的安装包。
+本页适用于 v0.12.0 测试版。先查看 [兼容矩阵](COMPATIBILITY.md)，使用与固件完整版本、设备目标和包管理器对应的安装包。
 
 ## 在线安装
 
 以 root 登录路由器 SSH，确保有 `curl`，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.11.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 安装器核对固件版本、设备目标、包架构与 SHA-256，备份配置、安装依赖，然后尝试启用保护。未匹配的固件或架构会停止安装，不要绕过检查跨版本装包。依赖从固件原有的软件源安装，不升级整套固件。
@@ -23,7 +23,7 @@ sh /tmp/adzero-install.sh --no-enable
 已有 AdZero 时使用：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.11.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 升级器先校验安装包，暂停后台调度并等待当前任务完成，再备份配置和恢复记录，调用旧版关闭与恢复，最后安装并重新开启。个人规则选择、放行名单和 DNS 选择会保留。
@@ -34,7 +34,7 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 ## 下载发行包安装
 
-从 [v0.11.0 发行页](https://github.com/slobys/AdZero/releases/tag/v0.11.0) 下载发行归档，在路由器上解压并进入包含 `install.sh` 的目录：
+从 [v0.12.0 发行页](https://github.com/slobys/AdZero/releases/tag/v0.12.0) 下载发行归档，在路由器上解压并进入包含 `install.sh` 的目录：
 
 ```sh
 sh install.sh --local-dir "$(pwd)"

@@ -1,0 +1,7 @@
+dnsmasq: started, version 2.93 cachesize 150
+dnsmasq: compile time options: IPv6 GNU-getopt no-DBus UBus no-i18n no-IDN DHCP no-DHCPv6 no-Lua TFTP no-conntrack no-ipset no-nftset no-auth no-DNSSEC no-ID loop-detect inotify dumpfile
+dnsmasq: warning: no upstream servers configured
+dnsmasq: using only locally-known addresses for adzero.invalid
+dnsmasq: using only locally-known addresses for doubleclick.net
+dnsmasq: cleared cache
+dnsmasq: exiting on receipt of SIGTERM

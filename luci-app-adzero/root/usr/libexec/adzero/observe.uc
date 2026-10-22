@@ -1,0 +1,103 @@
+'use strict';
+import * as fs from 'fs';
+import { cursor } from 'uci';
+import * as state from './observe-state.uc';
+import * as wire from './observe-lib.uc';
+import * as cache from './rules-cache.uc';
+let action=shift(ARGV);if(action=='--')action=shift(ARGV);
+const dir=state.directory,root=state.root;
+if(action=='status'){
+	let value=state.snapshot();delete value.pid;delete value.sample;delete value.generation;delete value.boot;
+	value.client_dns_verified=value.available===true&&value.active===true&&value.verification?.state=='passed';
+	print(sprintf('%J\n',value));exit(0);
+}
+if(action=='start-test'){
+	try{
+		let current=state.snapshot();if(!current.available||!current.active)die('请先开启保护，并等待局域网 DNS 统计就绪。');
+		if(!current.sample)die('当前规则中没有适合自动检测的公开样本。可使用域名查询与暂停对比。');
+		let previous=state.read(dir+'/test.json',2048),now=state.monotime();
+		if(previous&&previous.generation==current.generation&&previous.deadline>now&&current.verification?.state!='passed')die('已有检测正在等待查询，请先完成或等待两分钟后重试。');
+		let nonce=replace(trim(fs.readfile('/proc/sys/kernel/random/uuid')??''),/-/g,'');if(!match(nonce,/^[a-f0-9]{32}$/))die('无法创建检测。');
+		let request={nonce,generation:current.generation,deadline:now+120,sample:current.sample,control:'www.baidu.com'};
+		state.atomic(dir+'/test.json',request);
+		print(sprintf('%J\n',{ok:true,expires:120,commands:'nslookup -type=A '+nonce+'.adzero.invalid\nnslookup -type=A '+request.sample+'\nnslookup -type=A '+request.control}));
+	}catch(e){print(sprintf('%J\n',{ok:false,message:e.message}));}exit(0);
+}
+if(action!='collect')exit(2);
+const device=shift(ARGV),loop=require('uloop'),uci=cursor(root+'/etc/config');
+let tracker=wire.tracker(),generation='',previous='',loaded='',rules={},active=false,verification=null,test=null,sample=null;
+let result={schema:1,available:true,active:false,device,scope:'lan_dns',protocols:['udp','tcp'],pid:fs.readlink('/proc/self'),started:time(),updated:0,
+	queries:0,blocked:0,answered:0,overflow:0,verification:{state:'idle'}};
+const boot=trim(fs.readfile('/proc/sys/kernel/random/boot_id')??'');
+let prior=state.read(dir+'/status.json',16384);
+if(match(boot,/^[a-f0-9-]{36}$/)&&prior?.boot==boot){
+	for(let name in ['queries','blocked','answered','overflow'])if(type(prior[name])=='int'&&prior[name]>=0&&prior[name]<9007199254740991)tracker.counts[name]=prior[name];
+	if(type(prior.started)=='int'&&prior.started>0&&prior.started<=time())result.started=prior.started;
+}
+result.boot=boot;
+const outputs={'dnsmasq.servers':'/var/run/adblock-fast/dnsmasq.servers','dnsmasq.addnhosts':'/var/run/adblock-fast/dnsmasq.addnhosts','smartdns.domainset':'/var/run/adblock-fast/smartdns.domainset','unbound.adb_list':'/var/lib/unbound/adb_list.adblock-fast'};
+function refresh(){
+	uci.unload('adzero');uci.unload('adblock-fast');
+	let mode=uci.get('adblock-fast','config','dns'),path=outputs[mode],file=path?fs.stat(root+path):null,config=fs.stat(root+'/etc/config/adzero');
+	let source=join('|',[path??'',file?.inode??0,file?.mtime??0,file?.size??0]),journal=fs.stat(root+'/etc/adzero/adapter.json');
+	let signature=join('|',[source,config?.inode??0,config?.mtime??0,config?.size??0,journal?.inode??0,journal?.mtime??0,journal?.size??0]);
+	let enabled=uci.get('adzero','main','enabled')=='1'&&uci.get('adblock-fast','config','enabled')=='1'&&!!fs.stat(root+'/etc/adzero/managed')&&!!file?.size;
+	if(journal){let f=fs.open(root+'/etc/adzero/adapter.json','r'),header=f?f.read(1024):'';if(f)f.close();let stage=match(header??'',/"stage"[[:space:]]*:[[:space:]]*"([^"]+)"/);if(stage?.[1]!='configured_unverified')enabled=false;}
+	if(signature!=previous||enabled!=active){
+		if(enabled&&source!=loaded){
+			let list=cache.load(root+path,mode,root);rules={};for(let name in list)rules[name]=true;loaded=source;
+			sample=null;for(let name in ['doubleclick.net','googleadservices.com','googlesyndication.com'])if(wire.rules_match(rules,name)){sample=name;break;}
+		}
+		generation=replace(trim(fs.readfile('/proc/sys/kernel/random/uuid')??''),/-/g,'');previous=signature;active=enabled;
+		verification=null;test=null;tracker.configure(rules,generation,active);
+	}
+}
+function tick(){
+	let now=state.monotime();
+	try{refresh();delete result.reason;}catch(e){active=false;tracker.configure({},'',false);result.reason='rules_unavailable';}
+	let requested=state.read(dir+'/test.json',2048);
+	if(requested?.generation==generation&&match(requested.nonce??'',/^[a-f0-9]{32}$/)&&requested.deadline>now&&requested.deadline<=now+125){
+		if(test?.nonce!=requested.nonce){test=requested;verification=null;tracker.verification(test);}
+	}
+	test=tracker.verification();
+	if(test&&test.generation==generation){
+		if(test.marker&&test.blocked&&test.normal){if(verification?.state!='passed')verification={state:'passed',at:time(),client:test.client};}
+		else if(now>=test.deadline)verification={state:'expired'};
+		else verification={state:'waiting',remaining:int(test.deadline-now),marker:!!test.marker,blocked:!!test.blocked,normal:!!test.normal};
+	}
+	tracker.tick(now);
+	result={...result,...tracker.counts,active,updated:now,generation,sample,verification:active?(verification??{state:'idle'}):{state:'idle'}};
+	state.atomic(dir+'/status.json',result);
+}
+try{
+	loop.init();
+	// OpenWrt 24.10's stdio read discards partial data on EAGAIN. Keep the
+	// framed blocking reader in a small child; uloop owns its IPC and timers.
+	// Fork before loading the domain map so the child does not retain it.
+	let capture=fs.open('/proc/self/fd/0','r');if(!capture)die('capture_input');
+	let reader=loop.task(pipe=>{
+		// uloop.task repurposes stdin for its IPC; preserve the capture FD.
+		let input=capture,decoder=wire.decoder(d=>pipe.send(d));
+		function exact(size){let data='';while(length(data)<size){let part=input.read(size-length(data));if(!part||!length(part))return null;data+=part;}return data;}
+		try{
+			let header=exact(24);if(!header)die('header');decoder.feed(header);
+			let little=ord(header,0)==0xd4||ord(header,0)==0x4d;
+			while(true){
+				let frame=exact(16);if(!frame)break;
+				let size=0;for(let i=0;i<4;i++)size=size*256+ord(frame,8+(little?3-i:i));if(size>262144)die('frame');
+				let data=exact(size);if(data==null)break;decoder.tick(state.monotime());decoder.feed(frame+data);
+			}
+		}catch(e){}
+		pipe.send({capture:'closed'});input.close();
+	},message=>{
+		if(type(message)!='object')return;
+		if(message?.capture=='closed'){result.available=false;result.reason='capture_stopped';state.atomic(dir+'/status.json',result);loop.end();return;}
+		tracker.event(message,state.monotime());
+	});
+	if(!reader)die('capture_reader');
+	capture.close();
+	refresh();tick();
+	let timer;
+	timer=loop.timer(1000,()=>{tick();timer.set(1000);});
+	loop.run();loop.done();
+}catch(e){if(getenv('ADZERO_OBSERVER_DEBUG')=='1')warn(sprintf('%J\n',e));result.available=false;result.reason='capture_failed';result.updated=state.monotime();try{state.atomic(dir+'/status.json',result);}catch(ignore){}exit(1);}

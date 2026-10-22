@@ -15,6 +15,8 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 - **广告过滤**：内置常用规则库，也能添加自己的 HTTPS 规则订阅。
 - **批量应用**：先添加、编辑或开关多项规则，再一次应用，减少重复加载。
+- **拦截统计**：显示局域网可观察范围内的 DNS 拦截请求数与比例，和规则域名数量分别展示。
+- **效果检测**：复制页面提供的查询命令，在电脑执行后自动核对拦截与正常解析。
 - **域名查询与放行**：查询域名是否命中规则，误拦截时可放行。
 - **临时暂停**：网站或 App 异常时，暂停几分钟做对比，到期尝试自动恢复。
 - **可编辑 DNS**：国内、国外 DNS 都有默认地址，可以自行添加、删除和调整顺序。
@@ -24,21 +26,21 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.11.0 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.12.0 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.11.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.11.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.11.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.12.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
@@ -81,6 +83,8 @@ NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。PassWall
 DNS 过滤主要拦截广告和追踪域名，无法保证去除同域视频广告或网页空白。设备使用自己的加密 DNS、外部 DNS 或绕过路由器时，过滤可能不生效。
 
 界面显示「已开启」表示配置已应用，实际过滤效果还需要在手机或电脑上确认。
+
+「效果检测」通过后会显示对应设备。统计保存在内存中，重启路由器后清零；不代表网页广告个数，不保存完整查询日志。范围与操作见 [统计与检测说明](docs/OBSERVATION.md)。
 
 [规则管理](docs/RULE_SOURCES.md) · [DNS 设置](docs/DNS_SETTINGS.md) · [验证记录](docs/LOCAL_VALIDATION.md) · [开发与构建](docs/PACKAGING.md) · [Logo 与设计说明](docs/BRAND.md)
 

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Keep capture and decoder children in one bounded, procd-owned lifecycle.
+set -eu
+umask 077
+case "${1:-status}" in
+ status|start-test) exec ucode -S /usr/libexec/adzero/observe.uc -- "$@" ;;
+ run)
+  command -v tcpdump >/dev/null 2>&1 || exit 1
+  device=$(ubus call network.interface.lan status | jsonfilter -e '@.l3_device')
+  case "$device" in ''|*[!a-zA-Z0-9_.:-]*) exit 1 ;; esac
+  [ -d "/sys/class/net/$device" ] || exit 1
+  run_dir=$(mktemp -d /tmp/adzero-capture.XXXXXX)
+  capture_pid=; decoder_pid=
+  cleanup() {
+   trap - EXIT HUP INT TERM
+   [ -z "$capture_pid" ] || kill "$capture_pid" 2>/dev/null || :
+   [ -z "$decoder_pid" ] || kill "$decoder_pid" 2>/dev/null || :
+   wait 2>/dev/null || :
+   rm -f "$run_dir/packets"; rmdir "$run_dir" 2>/dev/null || :
+  }
+  trap cleanup EXIT
+  trap 'exit 0' HUP INT TERM
+  mkfifo "$run_dir/packets"
+  # No -w file on persistent storage; no promiscuous mode; no payload logging.
+  tcpdump -p -n -U -s 4096 -i "$device" -w - 'port 53 and (udp or tcp)' >"$run_dir/packets" 2>/dev/null &
+  capture_pid=$!
+  ucode -S /usr/libexec/adzero/observe.uc -- collect "$device" <"$run_dir/packets" &
+  decoder_pid=$!
+  wait "$decoder_pid"
+  ;;
+ *) exit 2 ;;
+esac

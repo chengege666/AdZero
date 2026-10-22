@@ -1,0 +1,23 @@
+{
+  "scope": "Production LuCI JS/CSS with simulated RPC, native saved LuCI DOM and Argon shell; no router access",
+  "desktop": {
+    "viewport": 1280,
+    "pageWidth": 1270,
+    "networkSettingsCollapsed": true,
+    "terminalReceiptVisible": true,
+    "receiptUpdatesWhileCommandFieldFocused": true
+  },
+  "mobile": {
+    "viewport": 360,
+    "pageWidth": 345,
+    "columns": 2,
+    "dark": true,
+    "networkSettingsCollapsed": true
+  },
+  "queryInputPreservedDuringPolling": true,
+  "screenshots": [
+    "adzero-v0.12.0-overview.jpg",
+    "adzero-v0.12.0-verified.jpg",
+    "adzero-v0.12.0-mobile-dark.jpg"
+  ]
+}

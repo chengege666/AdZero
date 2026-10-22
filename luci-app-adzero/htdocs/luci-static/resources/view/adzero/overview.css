@@ -298,3 +298,46 @@
 .az-root .az-dns-field{display:flex;flex:1;min-width:0;flex-direction:column;gap:8px}.az-root .az-dns-field textarea{box-sizing:border-box;width:100%;padding:12px;resize:vertical;font-family:monospace;border:1px solid var(--az-line);border-radius:10px;background:var(--az-card);color:inherit}
 
 .az-root .az-dns-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:14px 0}.az-root .az-dns-field textarea:focus-visible{outline:3px solid var(--az-focus);outline-offset:2px}@media(max-width:640px){.az-root .az-dns-grid{grid-template-columns:1fr}}
+
+/* Compact overview: protection -> live evidence -> tools -> optional settings. */
+.az-root .az-app { max-width: 1160px; padding: 24px 16px; }
+.az-root .az-header { margin-bottom: 18px; }
+.az-root .az-live-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }
+.az-root #az-live-metrics, .az-root #az-live-verification { margin-bottom: 16px; }
+.az-root .az-live-grid .az-stat { display: block; padding: 21px 20px; min-width: 0; }
+.az-root .az-stat-label { color: var(--az-muted); font-size: 12px; }
+.az-root .az-live-grid .az-number { font-size: clamp(25px,2.8vw,34px); margin: 12px 0 8px; }
+.az-root .az-live-grid .az-number, .az-root .az-live-grid .az-stat-value { display: block; grid-column: auto; grid-row: auto; }
+.az-root .az-stat-accent { background: var(--az-soft); border-color: var(--az-accent); }
+.az-root .az-current-adapter { font-size: 19px; margin: 16px 0 12px; overflow-wrap: anywhere; }
+.az-root .az-verification-card { padding: 20px 24px; }
+.az-root .az-verification-card .az-operation-note { margin-top: 15px; font-size: 11px; }
+.az-root .az-work-grid { display: block; }
+.az-root .az-stat-scope { margin-top: 12px; }
+.az-root .az-stat-scope > summary { min-height: 36px; padding: 8px 0; display: inline-block; color: var(--az-muted); font-size: 12px; }
+.az-root .az-stat-scope > summary::after { display: inline; content: ' +'; }
+.az-root .az-stat-scope[open] > summary::after { content: ' −'; }
+.az-root .az-stat-scope > p { padding-top: 8px; color: var(--az-muted); font-size: 11px; line-height: 1.8; }
+.az-root .az-test-instructions { display: grid; gap: 12px; margin-top: 18px; font-size: 13px; }
+.az-root .az-test-instructions textarea { box-sizing: border-box; width: 100%; min-height: 104px; padding: 12px; resize: vertical; border: 1px solid var(--az-line); border-radius: 10px; background: var(--az-bg); color: var(--az-text); font: 12px/1.8 ui-monospace,monospace; }
+.az-root .az-test-instructions textarea:focus-visible { outline: 3px solid var(--az-focus); outline-offset: 2px; }
+.az-root .az-test-steps { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: var(--az-muted); font-size: 12px; }
+.az-root .az-test-success { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; color: var(--az-accent); font-size: 13px; }
+.az-root .az-network-settings { padding: 0; }
+.az-root .az-network-settings > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; cursor: pointer; list-style: none; }
+.az-root .az-network-settings > summary::-webkit-details-marker { display: none; }
+.az-root .az-network-settings > summary p { margin-top: 5px; font-size: 12px; color: var(--az-muted); }
+.az-root .az-details-hint { font-size: 12px; color: var(--az-muted); }
+.az-root .az-network-settings[open] .az-details-hint { visibility: hidden; }
+.az-root .az-network-body { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--az-line); }
+.az-root .az-network-body > .az-card { padding: 20px 24px; margin: 0; box-shadow: none; border: 0; border-radius: 0; background: transparent; }
+.az-root .az-network-body > .az-card + .az-card { border-left: 1px solid var(--az-line); }
+@media(max-width:760px) {
+  .az-root .az-app { padding: 18px 8px; }
+  .az-root .az-live-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+  .az-root .az-live-grid .az-stat { padding: 17px 15px; }
+  .az-root .az-current-adapter { font-size: 17px; }
+  .az-root .az-verification-card { padding: 18px; }
+  .az-root .az-network-body { grid-template-columns: 1fr; }
+  .az-root .az-network-body > .az-card + .az-card { border-left: 0; border-top: 1px solid var(--az-line); }
+}

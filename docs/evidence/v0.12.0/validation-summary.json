@@ -1,0 +1,13 @@
+{
+  "source_sha256": "b937e55ae620a9806ff539fd0557017945e2e7ae8a0660ecc5c001596c14f344",
+  "native_tests": 330,
+  "native_skipped": 0,
+  "ui_assertions": 156,
+  "rpc_checks": 52,
+  "observer_runtime": "passed, actual OpenWrt tcpdump/dnsmasq/ucode/uloop; isolated network namespace",
+  "sdk_builds": 3,
+  "package_payload_files": 37,
+  "browser_views": 2,
+  "ui_rpc": "simulated",
+  "router_and_lan": "not_run"
+}

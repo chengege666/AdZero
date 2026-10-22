@@ -28,6 +28,7 @@ function E(tag, attrs = {}, children = []) {
 const body = E('body'); active = body;
 const doc = { body, contains: n => !!nodes(root, x => x === n).length, get activeElement() { return active; }, getElementById(id) { return nodes(root, n => n.attrs.id === id)[0] || null; } };
 const commands = [];
+let observationFixture={available:false,verification:{state:'idle'}},observationFailure=false;
 let state, failAction, failStatus, pending, resolveAction, staleResult, statusPending, resolveStatus;
 const api = { exec: async (program, args) => {
   assert.equal(program, '/usr/libexec/adzero/ctl'); commands.push(args[0]);
@@ -38,6 +39,8 @@ let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked
 const storage = new Map();
 const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
+  if(spec.method==='observation'){if(observationFailure)throw Error('observer unavailable');return {ok:true,data:structuredClone(observationFixture)};}
+  if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
   assert.equal(spec.object,'adzero'); commands.push(spec.method);
   if (rpcFailure) return {ok:false,message:'typed failure'};
   if (['enable','disable','refresh','reload'].includes(spec.method)) {
@@ -79,6 +82,8 @@ function reset(overrides = {}) {
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
   failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = rpcListFailure = storageBlocked = false; sessionID='b'.repeat(32); commands.length = 0;
   app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
+  observationFixture={available:false,verification:{state:'idle'}};observationFailure=false;
+  app.observation=null;app.observationReading=false;app.observationBusy=false;app.verificationCommands='';app.verificationNotice=null;app.networkOpen=false;
   storage.clear();ruleData={dns:{domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}},revision:'a'.repeat(64),items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
   app.draft=app.applyingDraft=app.editSource=null;app.draftSequence=0;
   app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
@@ -99,7 +104,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-update').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
   check(text(root).includes('66,425'), 'real domain count');
-  check(text(root).includes('终端待验证') && !text(root).includes('今日拦截'), 'no invented effectiveness/stats');
+  check(text(root).includes('效果检测') && !text(root).includes('今日拦截'), 'terminal evidence is actionable and no daily count is invented');
   check(active === find('az-toggle'), 'focus restored to initiating control');
   check(!find('az-plugins') && !find('az-diagnostics'), 'technical inventory panels are not rendered');
   check(!text(root).includes('aarch64_generic') && !text(root).includes('PassWall 2'), 'unused platform and plugin inventory is absent');
@@ -309,5 +314,27 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(app.notice.kind==='success'&&text(root).includes('未下载订阅或重载网络'),'manual validation reports its actual local-only scope');
   reset();ruleData.dns.foreign.active='8.8.8.8';await find('az-dns-open').events.click();commands.length=0;await find('az-dns-default').events.click();
   check(commands.length===0&&app.draft.dns.foreign.active==='1.1.1.1'&&!state.policy.routing_enabled,'restore default DNS is staged without enabling routing or sending a mutation');
+  reset({state:'configured_unverified'});await app.initialObservationRequest;
+  check(text(find('az-live-metrics')).includes('统计组件尚未就绪'),'unavailable counter is explained instead of inventing zero');
+  check(find('az-test-start').disabled,'verification needs a live, active observer');
+  observationFixture={available:true,active:true,queries:100,blocked:18,answered:95,verification:{state:'idle'}};
+  await app.refreshObservation();
+  check(text(find('az-live-metrics')).includes('18.0%')&&text(find('az-live-metrics')).includes('66,425'),'blocked-request ratio and rule count are distinct');
+  check(!find('az-test-start').disabled,'live observation enables terminal challenge');
+  commands.length=0;await app.startVerification();
+  check(app.verificationCommands.includes('nslookup')&&find('az-test-commands'),'challenge shows usable terminal commands');
+  check(!commands.length,'starting verification does not reload filtering, proxy or rules');
+  observationFixture.verification={state:'waiting',remaining:110,marker:true,blocked:false,normal:false};await app.refreshObservation();
+  check(text(find('az-live-verification')).includes('等待电脑发出检测查询')&&find('az-test-start').disabled,'pending verification remains pending until both actual results arrive');
+  find('az-test-commands').focus();
+  observationFixture.verification={state:'passed',client:'192.168.2.10'};await app.refreshObservation();
+  check(text(find('az-live-verification')).includes('此设备检测通过')&&text(find('az-live-verification')).includes('192.168.2.10'),'verified device is identified without claiming all clients');
+  const queryInput=find('az-domain');queryInput.focus();await app.refreshObservation();
+  check(find('az-domain')===queryInput&&active===queryInput,'stats polling does not rebuild or steal focus from the query form');
+  observationFailure=true;await app.refreshObservation();
+  check(!text(find('az-live-verification')).includes('此设备检测通过'),'lost observation never preserves a current verification claim');
+  check(text(find('az-live-metrics')).includes('统计组件尚未就绪'),'stats outage cannot look like a zero-hit result');
+  check(nodes(root,n=>n.tag==='details'&&(n.attrs.class||'').includes('az-network-settings')&&!n.open).length===1,'DNS and routing are collapsed by default');
+  check(text(root).includes('不代表网页广告个数')&&text(root).includes('加密 DNS'),'statistics explain their actual measurement scope');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

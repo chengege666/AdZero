@@ -26,9 +26,16 @@ const api = { exec: async (_program, args) => {
   throw Error('Only status uses file.exec');
 } };
 let sourceData={revision:'a'.repeat(64),items:[],catalog:[]},jobTick=0;
+let observerFixture={available:true,active:true,queries:8420,blocked:1154,answered:8403,verification:{state:'idle'}};
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
+  if(spec.method==='observation')return {ok:true,data:{...structuredClone(observerFixture),active:state.state==='configured_unverified'}};
+  if(spec.method==='verification_start'){
+    observerFixture.verification={state:'waiting',remaining:120,marker:false,blocked:false,normal:false};
+    setTimeout(()=>{observerFixture.verification={state:'passed',client:'192.168.2.10',at:Math.floor(Date.now()/1000)};},6000);
+    return {ok:true,commands:'nslookup -type=A example-marker.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
+  }
   if (spec.method === 'source_list') return {ok:true,data:structuredClone(sourceData)};
   if (spec.method === 'job_status') {
     if(document.getElementById('slow-job').checked){
