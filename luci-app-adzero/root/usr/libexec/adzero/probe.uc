@@ -39,24 +39,26 @@ for (let path in fs.glob(root + '/proc/[0-9]*/comm') ?? []) {
 	let name = trim(fs.readfile(path) ?? '');
 	if (index(['dae','daed','mihomo','clash','xray','sing-box','dnsmasq','smartdns','unbound','AdGuardHome'], name) >= 0) processes[name] = true;
 }
-let services = {};
+let services = null;
 const fixture = getenv('ADZERO_PROBE_SERVICE_FIXTURE');
 try {
 	if (fixture && root) services = json(fs.readfile(fixture));
 	else {
 		let bus = connect();
-		if (bus) { services = bus.call('service', 'list', {}) ?? {}; bus.disconnect(); }
+		if (bus) { services = bus.call('service', 'list', {}); bus.disconnect(); }
 	}
-} catch (e) { services = {}; }
+} catch (e) { services = null; }
+const services_checked=type(services)=='object';
 if (type(services) != 'object') services = {};
-function service_state(name) {
+function service_state(name, only) {
 	let instances = services[name]?.instances, stopped = false;
-	if (type(instances) != 'object') return 'unknown';
+	if (type(instances) != 'object') return only&&services_checked&&!services[name]?'stopped':'unknown';
 	for (let id in keys(instances ?? {})) {
+		if(only&&id!=only)continue;
 		if (instances[id].running === true) return 'running';
 		if (instances[id].running === false) stopped = true;
 	}
-	return stopped ? 'stopped' : 'unknown';
+	return stopped||only ? 'stopped' : 'unknown';
 }
 function section(config, type) {
 	let first = null;
@@ -69,7 +71,9 @@ const plugins = [], rows = [
 	['passwall','passwall',section('passwall','global'),'enabled',null,'dns_redirect'],
 	['passwall2','passwall2',section('passwall2','global'),'enabled',null,'dns_redirect'],
 	['openclash','openclash','config','enable',null,'enable_redirect_dns'],
-	['nikki','nikki','config','enabled','proxy','ipv4_dns_hijack']
+	['nikki','nikki','config','enabled','proxy','ipv4_dns_hijack'],
+	['ssrplus','shadowsocksr',section('shadowsocksr','global'),'global_server',null,null],
+	['homeproxy','homeproxy','config','main_node','infra','dns_redirect']
 ];
 let proxy_count = 0, active_proxy_count = 0, uncertain_proxies = [], active_proxies = [];
 for (let row in rows) {
@@ -88,7 +92,11 @@ for (let row in rows) {
 	}
 	let setting = value(service, name, flag);
 	if (setting == '1') enabled = true; else if (setting == '0') enabled = false;
-	if (installed && id != 'nailink') runtime = service_state(service);
+	if(index(['ssrplus','homeproxy'],id)>=0){
+		enabled=setting==null?null:setting!=''&&setting!='nil';
+		if(id=='homeproxy'&&value(service,'config','routing_mode')=='custom')enabled=null;
+	}
+	if (installed && id != 'nailink') runtime = service_state(service,id=='homeproxy'?'sing-box-c':null);
 	if (hint_option) {
 		let setting = value(service, hint_section ?? name, hint_option);
 		if (setting == '0') hint = 'disabled';
@@ -97,8 +105,13 @@ for (let row in rows) {
 	}
 	if (installed) proxy_count++;
 	let plugin = {id, installed, enabled, runtime, dns_hint:hint, integration:'unverified'};
+	plugin.adapter_supported=index(['nailink','passwall','openclash','nikki'],id)>=0;
 	if (id == 'nailink') { plugin.manager_runtime = manager_runtime; plugin.core_checked = core_checked; }
 	plugin.active = proxy.active(plugin);
+	if(id=='homeproxy'&&runtime=='unknown'){
+		plugin.active=false;
+		if(installed&&(enabled===true||value(service,'config','routing_mode')=='custom'))core_checked=false;
+	}
 	if (plugin.active) { active_proxy_count++; push(active_proxies,id); }
 	if (installed && core_checked === false) push(uncertain_proxies,id);
 	push(plugins,plugin);

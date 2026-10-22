@@ -100,6 +100,9 @@ def main():
             target=base/relative; target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(ROOT/'luci-app-adzero/root'/relative,target)
             if relative.endswith('/job'): target.chmod(0o755)
+        for name in ('observe','observe.uc','observe-lib.uc','rules-cache.uc','adapter-lib.uc'):
+            target=base/'usr/libexec/adzero'/name
+            shutil.copyfile(ROOT/'luci-app-adzero/root/usr/libexec/adzero'/name,target);target.chmod(0o755)
         uuid=base/'proc/sys/kernel/random/uuid';uuid.parent.mkdir(parents=True,exist_ok=True)
         uuid.write_text('12345678-1234-1234-1234-123456789012\n')
         ctl=base/'usr/libexec/adzero/ctl'
@@ -230,10 +233,14 @@ esac
                 assert not any(k in observation['data'] for k in ('pid','boot','generation','sample')),observation
             assert max(observed)<.9,'snapshot crossed one-second rpcd limit'
             assert not call('verification_start',{})['ok'],'missing observer cannot claim a test started'
+            assert not call('recent_set',{'enabled':True})['ok'],'missing observer cannot record'
+            assert call('recent_set',{'enabled':False})['ok'],'stop and clear works with observer unavailable'
+            acl=json.loads((base/'usr/share/rpcd/acl.d/luci-app-adzero.json').read_text())['luci-app-adzero']
+            assert 'recent_set' in acl['write']['ubus']['adzero'] and 'recent_set' not in acl['read']['ubus']['adzero']
             assert not (base/'tmp/service-was-called').exists(),'observation invoked network lifecycle'
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':52,'observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
+                    'checks':55,'observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

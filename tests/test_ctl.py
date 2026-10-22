@@ -672,7 +672,7 @@ exit 0
         self.env.update(ADZERO_PROBE=str(CTL.with_name("probe")), ADZERO_PROBE_ROOT=self.tmp.name, ADZERO_OPKG="/missing-opkg", ADZERO_APK="/missing-apk", ADZERO_UBUS="/missing-ubus")
         compatibility = self.status()["compatibility"]
         self.assertEqual(compatibility["schema_version"], 1)
-        self.assertEqual(len(compatibility["plugins"]), 5)
+        self.assertEqual(len(compatibility["plugins"]), 7)
         self.assertEqual(compatibility["dns"]["client_path"], "unverified")
 
     def test_rule_restore_read_failure_retains_recovery_markers(self):

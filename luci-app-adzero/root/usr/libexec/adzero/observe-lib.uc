@@ -91,13 +91,25 @@ export function decoder(callback){
 		tick:function(now){clock=now;for(let key in keys(flows))if(now-flows[key].at>15)delete flows[key];}
 	};
 };
-export function tracker(){
+// Bounded, opt-in recent blockers. No client addresses or raw packets retained.
+export function recent(){
+	let token=null,deadline=0,items=[],total=0;
+	function clear(){token=null;deadline=0;items=[];total=0;}
+	return {
+		configure:function(id,until,now){if(!id||until<=now||until>now+301){clear();return;}if(token!=id){items=[];total=0;}token=id;deadline=until;},
+		event:function(d,now,wall){if(!token||now>=deadline){clear();return;}if(type(d.name)!='string'||length(d.name)>253||!match(d.name,/^[a-z0-9_.-]+$/)||index([1,28],d.qtype)<0)return;let item=filter(items,i=>i.domain==d.name)[0]??{domain:d.name,count:0,qtypes:[]};item.count++;item.at=wall;if(index(item.qtypes,d.qtype)<0)push(item.qtypes,d.qtype);items=[item,...filter(items,i=>i.domain!=d.name)];if(length(items)>30)pop(items);total++;},
+		snapshot:function(now){if(now>=deadline)clear();return {enabled:!!token,remaining:token?int(deadline-now):0,total,items};}
+	};
+};
+export function tracker(onblocked){
 	let pending={},pending_count=0,seen={},seen_count=0,rules={},generation='',active=false,verify=null;
-	let counts={queries:0,blocked:0,answered:0,overflow:0};
+	let counts={queries:0,blocked:0,answered:0,overflow:0,matched:0,matched_answered:0,matched_positive:0};
+	let current={};for(let k in keys(counts))current[k]=0;
+	function count(k){counts[k]++;current[k]++;}
 	function key(d,response){return join('|',[d.protocol,response?d.to:d.from,response?d.from:d.to,response?d.dport:d.sport,response?d.sport:d.dport,d.id,d.name,d.qtype]);}
 	return {
-		counts,
-		configure:function(list,id,on){if(id!=generation){pending={};pending_count=0;seen={};seen_count=0;verify=null;}rules=list;generation=id;active=on;},
+		counts,current,
+		configure:function(list,id,on){if(id!=generation){pending={};pending_count=0;seen={};seen_count=0;verify=null;for(let k in keys(current))current[k]=0;}rules=list;generation=id;active=on;},
 		verification:function(value){if(type(value)=='object')verify=value;return verify;},
 		event:function(d,now){
 			if(!active)return;let id=key(d,d.response),testname=match(d.name,/^([a-f0-9]{32})\.adzero\.invalid$/);
@@ -105,12 +117,13 @@ export function tracker(){
 			if(d.response){
 				let req=pending[id];if(!req||now-req.at>15)return;delete pending[id];pending_count--;seen[id]=now;seen_count++;
 				if(req.test){if(verify&&req.generation==generation){if(d.name==verify.sample&&d.blocked)verify.blocked=true;if(d.name==verify.control&&d.positive)verify.normal=true;}return;}
-				counts.answered++;if(req.blocked&&d.blocked)counts.blocked++;return;
+				count('answered');if(req.blocked){count('matched_answered');if(d.positive)count('matched_positive');if(d.blocked){count('blocked');if(onblocked)onblocked(d,now);}}return;
 			}
 			if(pending[id]||seen[id]!=null&&now-seen[id]<15)return;
-			if(pending_count>=4096||seen_count>=32768){counts.overflow++;return;}
+			if(pending_count>=4096||seen_count>=32768){count('overflow');return;}
 			let test=verify&&verify.marker&&verify.client==d.from&&verify.server==d.to&&now<verify.deadline&&index([verify.sample,verify.control],d.name)>=0;
-			pending[id]={at:now,blocked:rules_match(rules,d.name),test:!!test,generation};pending_count++;if(!test)counts.queries++;
+			let blocked=rules_match(rules,d.name);
+			pending[id]={at:now,blocked,test:!!test,generation};pending_count++;if(!test){count('queries');if(blocked)count('matched');}
 		},
 		tick:function(now){for(let id in keys(pending))if(now-pending[id].at>15){delete pending[id];pending_count--;}for(let id in keys(seen))if(now-seen[id]>15){delete seen[id];seen_count--;}}
 	};

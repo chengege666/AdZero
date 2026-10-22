@@ -45,6 +45,7 @@ const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable'
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');return {ok:true,data:structuredClone(observationFixture)};}
   if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
+  if(spec.method==='recent_set'){observationFixture.recent={enabled:args[0],remaining:args[0]?300:0,items:[]};return {ok:true};}
   assert.equal(spec.object,'adzero'); commands.push(spec.method);
   if (rpcFailure) return {ok:false,message:'typed failure'};
   if (['enable','disable','refresh','reload'].includes(spec.method)) {
@@ -88,6 +89,7 @@ function reset(overrides = {}) {
   app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
   observationFixture={available:false,verification:{state:'idle'}};observationFailure=false;
   app.observation=null;app.observationReading=false;app.observationBusy=false;app.verificationCommands='';app.verificationNotice=null;app.networkOpen=false;
+  app.recentBusy=false;app.recentIntent=null;app.recentNotice=null;app.recentPaintKey=null;
   storage.clear();ruleData={dns:{domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}},revision:'a'.repeat(64),items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
   app.draft=app.applyingDraft=app.editSource=null;app.draftSequence=0;
   app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
@@ -364,6 +366,25 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   app.rulesOpen=true;reads=observationReads;await poll.tick();check(observationReads===reads,'rules tab has no invisible metric requests');app.rulesOpen=false;
   observationFailure=true;await poll.tick();observationFailure=false;await poll.tick();
   check(text(find('az-live-metrics')).includes('20.0%'),'automatic refresh recovers after an RPC failure');
+  observationFixture.connection={plugin:'passwall',stage:'configured_unverified',confirmed:true,domains:246925};
+  commands.length=0;await poll.tick();
+  check(text(find('az-live-metrics')).includes('PassWall')&&text(find('az-live-metrics')).includes('246,925')&&!text(find('az-live-metrics')).includes('NaiLink'),'light snapshot synchronizes adapter and domains after background switch');
+  check(commands.length===0,'proxy card changes without full status, download or reload');
+  observationFixture.current={matched_positive:2};await poll.tick();
+  check(text(find('az-live-health')).includes('2 条命中规则')&&observationFixture.blocked===4,'positive rule hits are diagnosed without inflating blocked counter');
+  observationFixture.current={matched_positive:0};await poll.tick();
+  check(text(find('az-live-health')).includes('收到新的拦截应答'),'idle block count has a clear explanation');
+  await app.setRecent(true);
+  check(!commands.length&&text(find('az-live-recent')).includes('停止并清空'),'recent opt-in does not restart DNS, proxy or filtering');
+  observationFixture.recent={enabled:true,remaining:298,items:[{domain:'ads.example',count:2,qtypes:[1,28]}]};await poll.tick();
+  const recentButton=nodes(find('az-live-recent'),n=>n.tag==='button'&&text(n)==='检查并放行')[0];
+  check(text(find('az-live-recent')).includes('ads.example')&&text(find('az-live-recent')).includes('2 次'),'recent blockers are displayed with aggregate count');
+  recentButton.focus();observationFixture.recent.items[0].count++;await poll.tick();
+  check(active===recentButton&&nodes(find('az-live-recent'),n=>n===recentButton).length===1,'polling preserves focus on a recent-domain control');
+  await recentButton.events.click();
+  check(commands.includes('lookup')&&!commands.includes('allow')&&app.domainInput==='ads.example','recent shortcut checks canonical scope before exposing explicit allow');
+  commands.length=0;await app.setRecent(false);
+  check(!text(find('az-live-recent')).includes('ads.example')&&!commands.length,'stop immediately hides domains without any network lifecycle action');
   root=null;await poll.tick();check(!pollCallbacks.size&&!listeners.size,'leaving mounted page removes poll and visibility listener');
   reset({compatibility:{dns:{active_proxy_count:2,active_proxies:['nailink','passwall']}}});
   check(text(root).includes('NaiLink / daed、PassWall')&&find('az-toggle').disabled,'real conflict names both proxies');

@@ -16,6 +16,7 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 - **广告过滤**：内置常用规则库，也能添加自己的 HTTPS 规则订阅。
 - **批量应用**：先添加、编辑或开关多项规则，再一次应用，减少重复加载。
 - **拦截统计**：每秒自动刷新局域网可观察范围内的 DNS 拦截请求数与比例，和规则域名数量分别展示。
+- **最近拦截**：按需开启 5 分钟的内存记录，查看域名、次数并检查误杀。
 - **效果检测**：复制页面提供的查询命令，在电脑执行后自动核对拦截与正常解析。
 - **域名查询与放行**：查询域名是否命中规则，误拦截时可放行。
 - **临时暂停**：网站或 App 异常时，暂停几分钟做对比，到期尝试自动恢复。
@@ -26,21 +27,21 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.12.3 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.13.0 测试版**。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.13.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.12.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.13.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.12.3) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.13.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
@@ -62,7 +63,7 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 SDK 构建与隔离测试已通过，实际设备的网络与过滤效果仍需验证。ImmortalWrt、iStoreOS、其他版本与架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进，安装器会拒绝尚未匹配的组合。
 
-NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。PassWall 2 目前仅识别；同时开启多个代理或遇到未知代理时，不会自动接管。
+NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。PassWall 2、SSR Plus+ 和 HomeProxy 目前仅识别，不自动写入其配置；同时开启多个代理或遇到未知代理时，不会自动接管。
 
 切换时先停止旧代理、启动新代理，再点击「重新检测」。NaiLink 的管理服务和代理内核分别判断；说明见 [切换代理](docs/PROXY_SWITCHING.md)。
 

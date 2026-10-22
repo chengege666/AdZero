@@ -9,10 +9,16 @@ else if(input.operation=='pcap'){
 	for(let i=0;i<length(raw);i+=size)decoder.feed(substr(raw,i,size));
 	print(sprintf('%J',messages));
 }else if(input.operation=='tracker'){
-	let tracker=lib.tracker(),rules={};for(let name in input.rules)rules[name]=true;
+	let recorded=[],tracker=lib.tracker((d,at)=>push(recorded,{name:d.name,at})),rules={};for(let name in input.rules)rules[name]=true;
 	tracker.configure(rules,'generation',true);let test=input.test;if(test)tracker.verification(test);
 	for(let item in input.events){if(item.configure){tracker.configure(rules,item.generation,item.active);continue;}tracker.tick(item.at);tracker.event(item.dns,item.at);}
-	print(sprintf('%J',{counts:tracker.counts,test}));
+	print(sprintf('%J',{counts:tracker.counts,current:tracker.current,recorded,test}));
+}else if(input.operation=='recent'){
+	let recent=lib.recent(),values=[];
+	for(let item in input.steps){if(item.configure)recent.configure(item.token,item.deadline,item.at);if(item.dns)recent.event(item.dns,item.at,item.wall);if(item.snapshot)push(values,json(sprintf('%J',recent.snapshot(item.at))));}
+	print(sprintf('%J',values));
+}else if(input.operation=='recent-request'){
+	print(sprintf('%J',!!state.recent_request(input.request,input.generation,input.at)));
 }else if(input.operation=='adapter-context'){
 	let reads=0,inspect=state.adapter_context((path,limit)=>{reads++;return fs.readfile(path,limit);}),values=[];
 	let path=state.root+'/etc/adzero/adapter.json';

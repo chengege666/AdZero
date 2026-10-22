@@ -1,0 +1,32 @@
+{
+  "version": "0.13.0",
+  "source_sha256": "2494ba436a29a31e071cf0c356e1a66c76b0f9d8f99f94afd0b28e6fec7025c8",
+  "native_regression_tests": 367,
+  "ui_assertions": 182,
+  "rpc_checks": 55,
+  "cgi_runtime_checks": 7,
+  "sdk_builds": 3,
+  "payload_files_per_package": 38,
+  "release_delivery_checks": 6,
+  "actual_capture": {
+    "queries": 11,
+    "blocked": 6,
+    "positive_rule_hit_diagnosed_not_counted": true,
+    "test_queries_excluded": true,
+    "new_recording_never_shows_old_domains": true
+  },
+  "browser": "Chromium desktop/mobile; production view and native DOM/Poll; simulated RPC",
+  "native_adapters": [
+    "nailink",
+    "passwall",
+    "openclash",
+    "nikki"
+  ],
+  "detection_only": [
+    "passwall2",
+    "ssrplus",
+    "homeproxy"
+  ],
+  "router": "not_connected",
+  "reported_4882_plateau": "root cause awaiting client DNS evidence; not claimed fixed"
+}

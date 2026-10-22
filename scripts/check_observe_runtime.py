@@ -116,7 +116,7 @@ def main():
             raw=state_file.read_text() if state_file.exists() else 'missing'
             raise AssertionError((value,raw,[p.poll() for p in procs],(ROOT/'artifacts/runtime/observe-runtime.log').read_text()))
         try:
-            procs.append(subprocess.Popen(['chroot',temp,'/usr/sbin/dnsmasq','--no-daemon','--conf-file=/dev/null','--no-resolv','--no-hosts','--bind-interfaces','--listen-address=192.168.2.1','--user=root','--server=/doubleclick.net/','--server=/adzero.invalid/','--host-record=www.baidu.com,1.2.3.4'],stdout=log,stderr=log))
+            procs.append(subprocess.Popen(['chroot',temp,'/usr/sbin/dnsmasq','--no-daemon','--conf-file=/dev/null','--no-resolv','--no-hosts','--bind-interfaces','--listen-address=192.168.2.1','--user=root','--server=/doubleclick.net/','--server=/adzero.invalid/','--host-record=www.baidu.com,1.2.3.4','--host-record=allowed-by-path.example,1.2.3.4'],stdout=log,stderr=log))
             time.sleep(.2)
             procs.append(subprocess.Popen(['chroot',temp,'/usr/libexec/adzero/observe','run'],env={**os.environ,'ADZERO_OBSERVER_DEBUG':'1'},stdout=log,stderr=log))
             value=wait_for(lambda s:s.get('available') and s.get('active'))
@@ -150,7 +150,42 @@ def main():
             wait_for(lambda s:s.get('available') and s.get('active'))
             query('doubleclick.net',151);query('www.baidu.com',152)
             value=wait_for(lambda s:s.get('queries')==6 and s.get('blocked')==3)
-            report={'native':'OpenWrt 24.10.8 tcpdump-mini/ucode/uloop/dnsmasq','queries':6,'blocked':3,'udp_tcp':'passed','terminal_challenge':'passed','large_journal_bytes':journal_path.stat().st_size,'stage_offset':stage_offset,'recovery_then_resume_counts':'passed','test_queries_excluded':True,'config_invalidates_receipt':True,'same_boot_restart_preserves_counts':True,'unconfirmed_configuration_not_counted':True,'scope':'isolated namespace; netifd interface discovery fixture; not a router/LAN certificate'}
+            # Background switch metadata arrives through the same small snapshot.
+            journal.update(plugin='passwall',count=246925,split={'mode':'proxy'})
+            replace_journal('configured_unverified')
+            value=wait_for(lambda s:s.get('connection',{}).get('plugin')=='passwall')
+            assert value['connection']['domains']==246925 and value['connection']['confirmed'],value
+            assert value['queries']==6 and value['blocked']==3 and value['current']['matched']==0,value
+            assert json.loads(run('/usr/libexec/adzero/observe','recent-start').stdout)['ok']
+            wait_for(lambda s:s.get('recent',{}).get('enabled'))
+            query('doubleclick.net',201);query('www.baidu.com',202)
+            value=wait_for(lambda s:s.get('queries')==8 and s.get('blocked')==4)
+            assert value['recent']['items'][0]['domain']=='doubleclick.net' and len(value['recent']['items'])==1,value
+            assert json.loads(run('/usr/libexec/adzero/observe','recent-stop').stdout)['ok']
+            assert status()['recent']['items']==[],'stop must hide even a snapshot awaiting its next timer'
+            wait_for(lambda s:not s.get('recent',{}).get('enabled'))
+            query('doubleclick.net',203)
+            value=wait_for(lambda s:s.get('queries')==9 and s.get('blocked')==5)
+            assert value['recent']['items']==[],value
+            assert json.loads(run('/usr/libexec/adzero/observe','recent-start').stdout)['ok']
+            wait_for(lambda s:s.get('recent',{}).get('enabled'))
+            query('doubleclick.net',204)
+            wait_for(lambda s:s.get('queries')==10 and s.get('blocked')==6 and len(s.get('recent',{}).get('items',[]))==1)
+            assert json.loads(run('/usr/libexec/adzero/observe','recent-start').stdout)['ok']
+            assert status()['recent']['items']==[],'a new recording must not expose the previous session while waiting for its first tick'
+            value=wait_for(lambda s:s.get('recent',{}).get('enabled'))
+            assert 'recent_token' not in value,'private recording token must not leave snapshot API'
+            control=base/'tmp/adzero-observe/recent.json';data=json.loads(control.read_text());data['deadline']=0
+            control.write_text(json.dumps(data));control.chmod(0o600)
+            assert not status()['recent']['items'],'expired request cannot expose old domains'
+            # A matching rule with a real positive answer diagnoses bypass; it
+            # is never silently added to the blocked count, including fake-IP.
+            (base/'var/run/adblock-fast/dnsmasq.servers').write_text('server=/doubleclick.net/\nserver=/allowed-by-path.example/\n')
+            wait_for(lambda s:s.get('current',{}).get('queries')==0)
+            query('allowed-by-path.example',205)
+            value=wait_for(lambda s:s.get('queries')==11 and s.get('current',{}).get('matched_positive')==1)
+            assert value['blocked']==6 and value['current']['blocked']==0,value
+            report={'native':'OpenWrt 24.10.8 tcpdump-mini/ucode/uloop/dnsmasq','queries':11,'blocked':6,'udp_tcp':'passed','terminal_challenge':'passed','large_journal_bytes':journal_path.stat().st_size,'stage_offset':stage_offset,'recovery_then_resume_counts':'passed','test_queries_excluded':True,'config_invalidates_receipt':True,'same_boot_restart_preserves_counts':True,'unconfirmed_configuration_not_counted':True,'live_passwall_metadata':'passed','recent_opt_in_stop_expiry':'passed','positive_rule_hit_not_counted_as_block':'passed','scope':'isolated namespace; netifd interface discovery fixture; not a router/LAN certificate'}
             print(json.dumps(report,indent=2));(ROOT/'artifacts/runtime/observe-result.json').write_text(json.dumps(report,indent=2)+'\n')
         finally:
             for p in reversed(procs):p.terminate()

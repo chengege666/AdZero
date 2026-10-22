@@ -21,7 +21,7 @@ rockchip/armv8 的官方 profiles 元数据与用户回报均为 OpenWrt 25.12.5
 
 ## 代理范围
 
-| 环境 | v0.5.0 处理 | 待补证据 |
+| 环境 | 当前处理 | 待补证据 |
 | --- | --- | --- |
 | 无代理 | 当前解析器的 adblock-fast 输出 | 路由器及终端查询 |
 | NaiLink / daed | 本地认证 CGI/API + GeoSite reject | daed API、eBPF、实际 LAN |
@@ -29,6 +29,8 @@ rockchip/armv8 的官方 profiles 元数据与用户回报均为 OpenWrt 25.12.5
 | OpenClash | 原生覆写钩子 + Meta 内核配置检查 | 不同插件/核心版本、订阅刷新、TUN |
 | Nikki | 原生混入 + UCI 数组合并，核对生成配置 | 不同插件/核心版本、重启、TUN |
 | PassWall 2 | 识别，拒绝自动接入 | 独立适配实现 |
+| SSR Plus+ | 按原生 global_server 节点选择识别，尚未自动接入 | 独立 DNS 适配和真实设备 |
+| HomeProxy | 区分 sing-box-c 客户端和服务端/日志实例，仅识别 | 原生 DNS 适配和真实设备 |
 | 多代理/未知代理 | 检测并拒绝自动修改 | 查明 DNS 所有者 |
 
 Mihomo 的本机真实 DNS 检查覆盖普通/Fake-IP、UDP/TCP、A/AAAA；不涉及 LAN 或路由器防火墙。dae 验证覆盖真实配置解析和 DAT 加载，不启动 eBPF。配置/UCI 事务测试中的服务重启是隔离替身。
@@ -56,3 +58,5 @@ v0.12.3 对 NaiLink 单独查询实际代理内核状态，不再把常驻管理
 ## v0.9.0 分流能力边界
 
 现有三项目标 SDK 安装矩阵不扩大。四代理均有生产适配器；Mihomo 真实核心隔离路径与 dae 解析验证分别记录，PassWall 当前只有原生参数/事务验证，真机及原生生成器输出待验收。无代理路径要求单个启用 dnsmasq 与支持的 adblock-fast dnsmasq 模式。不会从 CPU 架构推断 LAN、eBPF/TUN 或任意插件版本的支持。详见 SMART_DNS.md。
+
+v0.13.0 扩展 SSR Plus+、HomeProxy 的只读识别，并明确返回 `adapter_supported`。新增识别不是原生适配认证；四个现有适配器不变。共享内核进程仍不用于猜测代理所有者。

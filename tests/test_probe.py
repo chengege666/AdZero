@@ -157,6 +157,34 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(plugins["nikki"]["dns_hint"], "plugin_redirect")
         self.assertEqual(plugins["openclash"]["runtime"], "stopped")
 
+    def test_ssrplus_selection_is_not_a_boolean_enable_flag(self):
+        self.data['uci']={'shadowsocksr.@global[0].global_server':'node_main'}
+        plugins={p['id']:p for p in self.probe()['plugins']}
+        self.assertTrue(plugins['ssrplus']['active'])
+        self.assertFalse(plugins['ssrplus']['adapter_supported'])
+        self.data['uci']['shadowsocksr.@global[0].global_server']='nil'
+        self.assertFalse(next(p for p in self.probe()['plugins'] if p['id']=='ssrplus')['active'])
+
+    def test_homeproxy_server_or_log_cleaner_is_not_a_client(self):
+        self.data['uci']={'homeproxy.config.main_node':'nil'}
+        self.data['services_raw']=json.dumps({'homeproxy':{'instances':{'sing-box-s':{'running':True},'log-cleaner':{'running':True},'sing-box-c':{'running':False}}}})
+        plugin=next(p for p in self.probe()['plugins'] if p['id']=='homeproxy')
+        self.assertFalse(plugin['active']);self.assertEqual(plugin['runtime'],'stopped')
+        self.data['services_raw']=json.dumps({'homeproxy':{'instances':{'sing-box-c':{'running':True}}}})
+        self.assertTrue(next(p for p in self.probe()['plugins'] if p['id']=='homeproxy')['active'])
+
+    def test_absent_homeproxy_client_overrides_saved_node_and_server_service(self):
+        self.data['uci']={'homeproxy.config.main_node':'saved_node','passwall.@global[0].enabled':'1'}
+        for services in ({},{'homeproxy':{'instances':{'sing-box-s':{'running':True},'log-cleaner':{'running':True}}}}):
+            self.data['services_raw']=json.dumps(services)
+            status=self.probe()
+            self.assertEqual(status['dns']['active_proxies'],['passwall'])
+            self.assertEqual(next(p for p in status['plugins'] if p['id']=='homeproxy')['runtime'],'stopped')
+        self.data['services_raw']='{broken'
+        status=self.probe()
+        self.assertEqual(status['dns']['uncertain_proxies'],['homeproxy'])
+        self.assertEqual(status['dns']['active_proxies'],['passwall'])
+
     def test_nailink_manager_stays_running_after_core_stop_selects_passwall(self):
         self.data.update(running=['daed','xray'], uci={'daed.main.enabled':'1','passwall.@global[0].enabled':'1'})
         Path(self.env['ADZERO_PROBE_NAILINK_FIXTURE']).write_text('{"running":false}')

@@ -12,10 +12,14 @@ export function atomic(path,data){
 	let temp=directory+'/'+nonce,f=fs.open(temp,'wx',0600),raw=sprintf('%J',data);if(!f)die('state_open');
 	let size=f.write(raw),closed=f.close();if(size!=length(raw)||!closed||!fs.rename(temp,path)){fs.unlink(temp);die('state_write');}
 };
+export function recent_request(request,generation,now){return request?.schema==1&&request.enabled===true&&match(request.nonce??'',/^[a-f0-9]{32}$/)&&request.generation==generation&&request.deadline>now&&request.deadline<=now+301;};
 export function snapshot(){
 	let value=read(directory+'/status.json',16384),now=monotime();
 	if(!value||value.schema!=1||value.updated>now||now-value.updated>12)return {available:false,reason:value?'stopped':'not_started',verification:{state:'idle'}};
 	if(!match(value.pid??'',/^[1-9][0-9]*$/)||index(split(fs.readfile('/proc/'+value.pid+'/cmdline')??'','\x00'),root+'/usr/libexec/adzero/observe.uc')<0)return {available:false,reason:'stopped',verification:{state:'idle'}};
+	let request=read(directory+'/recent.json',2048);
+	if(!recent_request(request,value.generation,now)||value.recent_token!=request.nonce)value.recent={enabled:false,remaining:0,items:[]};
+	delete value.recent_token;
 	return value;
 };
 
@@ -38,7 +42,7 @@ export function adapter_context(reader){
 				if(raw!=null&&length(raw)==s.size){
 					let data=json(raw);
 					if(data?.schema==1&&type(data.plugin)=='string'&&length(data.plugin)&&type(data.files)=='array'&&type(data.stage)=='string')
-						value={present:true,stage:data.stage,reason:data.stage=='configured_unverified'?null:'adapter_pending'};
+						value={present:true,plugin:data.plugin,stage:data.stage,domains:type(data.count)=='int'&&data.count>=0?data.count:null,routing_mode:data.split?.mode??'inactive',reason:data.stage=='configured_unverified'?null:'adapter_pending'};
 				}
 			}catch(e){}
 		}

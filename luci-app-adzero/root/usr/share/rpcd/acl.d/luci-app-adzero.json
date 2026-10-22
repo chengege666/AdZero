@@ -42,7 +42,8 @@
           "source_refresh",
           "source_verify",
           "settings_apply",
-          "verification_start"
+          "verification_start",
+          "recent_set"
         ]
       },
       "uci": [

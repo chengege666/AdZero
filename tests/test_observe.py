@@ -121,7 +121,7 @@ class ObserveTest(unittest.TestCase):
 
     def test_queries_alone_and_unrelated_nxdomain_never_count(self):
         result=self.track([self.event(),self.event(domain='other.example',ident=43),self.event(True,domain='other.example',ident=43)])
-        self.assertEqual(result['counts'],{'queries':2,'blocked':0,'answered':1,'overflow':0})
+        self.assertEqual(result['counts'],{'queries':2,'blocked':0,'answered':1,'overflow':0,'matched':1,'matched_answered':0,'matched_positive':0})
 
     def test_duplicate_query_and_response_are_counted_once(self):
         result=self.track([self.event(),self.event(),self.event(True),self.event(True)])
@@ -132,6 +132,28 @@ class ObserveTest(unittest.TestCase):
         result=self.track([self.event(domain='sub.ads.example'),self.event(True,domain='sub.ads.example'),self.event(ident=43),self.event(True,ident=43,blocked=False,positive=True)])
         self.assertEqual(result['counts']['blocked'],1)
         self.assertEqual(result['counts']['answered'],2)
+        self.assertEqual(result['current']['matched_positive'],1)
+        self.assertEqual(result['current']['matched'],2)
+        self.assertEqual(len(result['recorded']),1)
+
+    def test_only_normal_traffic_can_grow_queries_without_growing_blocks(self):
+        events=[]
+        for n in range(10):events.extend([self.event(domain='normal.example',ident=n),self.event(True,domain='normal.example',ident=n,blocked=False,positive=True)])
+        result=self.track(events)
+        self.assertEqual(result['counts']['queries'],10)
+        self.assertEqual(result['counts']['blocked'],0)
+        self.assertEqual(result['current']['matched'],0)
+
+    def test_positive_rule_hit_is_diagnostic_not_fabricated_block(self):
+        result=self.track([self.event(),self.event(True,positive=True,blocked=False)])
+        self.assertEqual(result['counts']['blocked'],0)
+        self.assertEqual(result['current']['matched_positive'],1)
+        self.assertEqual(result['recorded'],[])
+
+    def test_context_change_resets_path_diagnostics_keeps_boot_counts(self):
+        result=self.run_code('tracker',rules=['ads.example'],events=[{'at':1,'dns':self.event()},{'at':2,'dns':self.event(True,positive=True,blocked=False)},{'configure':True,'generation':'passwall','active':True}])
+        self.assertEqual(result['counts']['matched_positive'],1)
+        self.assertEqual(result['current']['matched_positive'],0)
 
     def test_missing_or_wrong_transaction_cannot_count(self):
         result=self.track([self.event(),self.event(True,ident=43),self.event(True,**{'from':'8.8.8.8'})])
@@ -148,9 +170,35 @@ class ObserveTest(unittest.TestCase):
         result=self.track(events,test)
         self.assertTrue(result['test']['marker'] and result['test']['normal'] and result['test']['blocked'])
         self.assertEqual(result['counts']['queries'],0,'test traffic must not inflate counts')
+        self.assertEqual(result['recorded'],[],'verification must not enter recent browsing records')
         events[2]['to']='192.168.2.99'
         result=self.track(events,test)
         self.assertFalse(result['test'].get('blocked',False))
+
+    def test_recent_is_opt_in_bounded_aggregated_and_expires(self):
+        steps=[{'dns':{'name':'ads.example','qtype':1},'at':1,'wall':100,'snapshot':True},
+               {'configure':True,'token':'a'*32,'deadline':305,'at':5}]
+        for n in range(35):steps.append({'dns':{'name':f'ads{n}.example','qtype':1},'at':6+n,'wall':100+n})
+        steps.extend([{'dns':{'name':'ads34.example','qtype':28},'at':50,'wall':200,'snapshot':True},{'at':306,'snapshot':True}])
+        result=self.run_code('recent',steps=steps)
+        self.assertFalse(result[0]['enabled']);self.assertEqual(result[0]['items'],[])
+        self.assertEqual(len(result[1]['items']),30)
+        self.assertEqual(result[1]['items'][0],{'domain':'ads34.example','count':2,'qtypes':[1,28],'at':200})
+        self.assertEqual(result[1]['total'],36)
+        self.assertEqual(result[2]['items'],[]);self.assertFalse(result[2]['enabled'])
+
+    def test_recent_new_token_and_stop_erase_domains(self):
+        steps=[{'configure':True,'token':'a'*32,'deadline':300,'at':1},{'dns':{'name':'ads.example','qtype':1},'at':2,'wall':100},
+               {'configure':True,'token':'b'*32,'deadline':303,'at':3,'snapshot':True},
+               {'configure':True,'token':None,'deadline':0,'at':4,'snapshot':True}]
+        result=self.run_code('recent',steps=steps)
+        self.assertEqual(result[0]['items'],[]);self.assertEqual(result[1]['items'],[])
+
+    def test_recent_request_requires_generation_nonce_and_short_deadline(self):
+        request={'schema':1,'enabled':True,'nonce':'a'*32,'generation':'passwall','deadline':300}
+        self.assertTrue(self.run_code('recent-request',request=request,generation='passwall',at=1))
+        for changes in ({'generation':'old'},{'deadline':0},{'deadline':999},{'nonce':'bad'},{'enabled':False}):
+            self.assertFalse(self.run_code('recent-request',request={**request,**changes},generation='passwall',at=1))
 
     def journal(self,plugin='nailink',stage='configured_unverified'):
         # Same order used by adapter.uc: files precede flags and stage.

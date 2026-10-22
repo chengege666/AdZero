@@ -23,15 +23,26 @@ if(action=='start-test'){
 		print(sprintf('%J\n',{ok:true,expires:120,commands:'nslookup -type=A '+nonce+'.adzero.invalid\nnslookup -type=A '+request.sample+'\nnslookup -type=A '+request.control}));
 	}catch(e){print(sprintf('%J\n',{ok:false,message:e.message}));}exit(0);
 }
+if(action=='recent-start'||action=='recent-stop'){
+	try{
+		let current=state.snapshot(),now=state.monotime(),request={schema:1,enabled:false};
+		if(action=='recent-start'){
+			if(!current.available||!current.active)die('请先开启保护，并等待 DNS 统计就绪。');
+			let nonce=replace(trim(fs.readfile('/proc/sys/kernel/random/uuid')??''),/-/g,'');if(!match(nonce,/^[a-f0-9]{32}$/))die('无法创建临时记录。');
+			request={schema:1,enabled:true,nonce,generation:current.generation,deadline:now+300};
+		}
+		state.atomic(dir+'/recent.json',request);print('{"ok":true}\n');
+	}catch(e){print(sprintf('%J\n',{ok:false,message:e.message}));}exit(0);
+}
 if(action!='collect')exit(2);
 const device=shift(ARGV),loop=require('uloop'),uci=cursor(root+'/etc/config');
-let tracker=wire.tracker(),generation='',previous='',loaded='',rules={},active=false,verification=null,test=null,sample=null;
+let recent=wire.recent(),tracker=wire.tracker((d,now)=>recent.event(d,now,time())),generation='',previous='',loaded='',rules={},active=false,verification=null,test=null,sample=null;
 let result={schema:1,available:true,active:false,device,scope:'lan_dns',protocols:['udp','tcp'],pid:fs.readlink('/proc/self'),started:time(),updated:0,
 	queries:0,blocked:0,answered:0,overflow:0,verification:{state:'idle'}};
 const boot=trim(fs.readfile('/proc/sys/kernel/random/boot_id')??'');
 let prior=state.read(dir+'/status.json',16384);
 if(match(boot,/^[a-f0-9-]{36}$/)&&prior?.boot==boot){
-	for(let name in ['queries','blocked','answered','overflow'])if(type(prior[name])=='int'&&prior[name]>=0&&prior[name]<9007199254740991)tracker.counts[name]=prior[name];
+	for(let name in keys(tracker.counts))if(type(prior[name])=='int'&&prior[name]>=0&&prior[name]<9007199254740991)tracker.counts[name]=prior[name];
 	if(type(prior.started)=='int'&&prior.started>0&&prior.started<=time())result.started=prior.started;
 }
 result.boot=boot;
@@ -44,6 +55,7 @@ function refresh(){
 	let signature=join('|',[source,config?.inode??0,config?.mtime??0,config?.size??0,journal?.inode??0,journal?.mtime??0,journal?.size??0]);
 	let reason=uci.get('adzero','main','enabled')!='1'?'protection_disabled':uci.get('adblock-fast','config','enabled')!='1'?'backend_disabled':!fs.stat(root+'/etc/adzero/managed')?'not_managed':!path?'unsupported_resolver':!file?.size?'rules_unavailable':null;
 	let context=adapter_context();
+	result.connection={plugin:context.present?context.plugin??null:'none',stage:context.present?context.stage??'unknown':'inactive',domains:context.domains??null,routing_mode:context.routing_mode??'inactive',confirmed:context.present&&!context.reason};
 	if(!reason&&context.present)reason=context.reason;
 	let enabled=!reason;
 	if(signature!=previous||enabled!=active){
@@ -59,6 +71,8 @@ function refresh(){
 function tick(){
 	let now=state.monotime();
 	try{let reason=refresh();if(reason)result.reason=reason;else delete result.reason;}catch(e){active=false;tracker.configure({},'',false);result.reason='rules_unavailable';}
+	let recording=state.read(dir+'/recent.json',2048);
+	if(active&&state.recent_request(recording,generation,now))recent.configure(recording.nonce,recording.deadline,now);else recent.configure(null,0,now);
 	let requested=state.read(dir+'/test.json',2048);
 	if(requested?.generation==generation&&match(requested.nonce??'',/^[a-f0-9]{32}$/)&&requested.deadline>now&&requested.deadline<=now+125){
 		if(test?.nonce!=requested.nonce){test=requested;verification=null;tracker.verification(test);}
@@ -70,7 +84,7 @@ function tick(){
 		else verification={state:'waiting',remaining:int(test.deadline-now),marker:!!test.marker,blocked:!!test.blocked,normal:!!test.normal};
 	}
 	tracker.tick(now);
-	result={...result,...tracker.counts,active,updated:now,generation,sample,verification:active?(verification??{state:'idle'}):{state:'idle'}};
+	result={...result,...tracker.counts,active,updated:now,generation,sample,current:tracker.current,recent_token:state.recent_request(recording,generation,now)?recording.nonce:null,recent:recent.snapshot(now),verification:active?(verification??{state:'idle'}):{state:'idle'}};
 	state.atomic(dir+'/status.json',result);
 }
 try{

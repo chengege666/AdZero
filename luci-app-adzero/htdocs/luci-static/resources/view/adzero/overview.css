@@ -342,3 +342,12 @@
   .az-root .az-network-body > .az-card + .az-card { border-left: 0; border-top: 1px solid var(--az-line); }
 }
 .az-root .az-live-caption { color: var(--az-muted, #64786f); font-size: 12px; margin: -8px 4px 0; }
+.az-root #az-live-health { margin: 14px 0 18px; }
+.az-root #az-live-recent { margin: 16px 0; }
+.az-root .az-recent-card { padding: 20px 24px; }
+.az-root .az-recent-card .az-live-caption { margin: 0 0 12px; }
+.az-root .az-recent-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--az-line); }
+.az-root .az-recent-row > div { min-width: 0; overflow-wrap: anywhere; }
+.az-root .az-recent-row .az-button { flex-shrink: 0; }
+.az-root .az-recent-card .az-field-hint { margin-top: 14px; }
+@media(max-width:480px){.az-root .az-recent-card{padding:18px}.az-root .az-recent-row{align-items:flex-start;flex-direction:column;gap:6px}}

@@ -194,7 +194,7 @@ function graphql(query, variables, readiness) {
 function active_plugin() {
 	let inventory = getenv('ADZERO_ADAPTER_INVENTORY');
 	let data = inventory ? json(fs.readfile(inventory)) : json(capture(['/bin/sh', root + '/usr/libexec/adzero/probe']));
-	if (length(data.dns?.uncertain_proxies ?? [])) die('无法确认 NaiLink 内核状态，请检查 NaiLink 后重新检测；尚未修改配置。');
+	if (length(data.dns?.uncertain_proxies ?? [])) die(index(data.dns.uncertain_proxies,'nailink')>=0?'无法确认 NaiLink 内核状态，请检查 NaiLink 后重新检测；尚未修改配置。':'无法确认当前代理内核状态，请检查对应插件后重新检测；尚未修改配置。');
 	let active = filter(data.plugins, proxy.active);
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
 	if (!length(active)) return 'none';
