@@ -97,6 +97,19 @@ touch tmp/openclash.change
         self.assertEqual(self.generated.read_text(),self.source.read_text())
         self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
 
+    def test_core_validation_uses_only_native_safe_paths_without_changing_parent(self):
+        self.env['SAFE_PATHS']='/untrusted/inherited:/tmp'
+        self.write('etc/openclash/core/clash_meta', '''#!/bin/sh
+printf '%s' "$SAFE_PATHS" > "$ADZERO_ADAPTER_ROOT/validation-safe-paths"
+[ "$SAFE_PATHS" = "$ADZERO_ADAPTER_ROOT/usr/share/openclash:$ADZERO_ADAPTER_ROOT/etc/ssl" ]
+''', executable=True)
+        self.run_adapter('apply')
+        self.assertEqual((self.root/'validation-safe-paths').read_text(),
+                         str(self.root)+'/usr/share/openclash:'+str(self.root)+'/etc/ssl')
+        self.assertEqual(self.env['SAFE_PATHS'],'/untrusted/inherited:/tmp')
+        self.run_adapter('remove')
+        self.assertEqual(self.custom.read_text(),self.original)
+
     def test_disabled_native_dns_has_specific_error_and_preserves_native_config(self):
         self.source.write_text(self.source.read_text().replace('enable: true','enable: false'))
         result=self.run_adapter('apply',success=False)

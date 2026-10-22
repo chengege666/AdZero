@@ -84,7 +84,7 @@ def main():
             with tarfile.open(fileobj=io.BytesIO(raw)) as outer:
                 member=next(m for m in outer if m.name.endswith('data.tar.gz'))
                 with tarfile.open(fileobj=io.BytesIO(outer.extractfile(member).read())) as tar:tar.extractall(base,filter='fully_trusted')
-        for name in ('etc/adzero','etc/openclash/config','etc/openclash/custom','etc/openclash/core','tmp','var/run/adblock-fast','dev'):(base/name).mkdir(parents=True,exist_ok=True)
+        for name in ('etc/adzero','etc/openclash/config','etc/openclash/custom','etc/openclash/core','usr/share/openclash/ui','etc/ssl','tmp/untrusted-ui','var/run/adblock-fast','dev'):(base/name).mkdir(parents=True,exist_ok=True)
         os.mknod(base/'dev/null',0o666|0o20000,os.makedev(1,3));os.mknod(base/'dev/urandom',0o666|0o20000,os.makedev(1,9))
         shutil.copytree(ROOT/'luci-app-adzero/root/usr/libexec/adzero',base/'usr/libexec/adzero',dirs_exist_ok=True)
         for path in (base/'usr/libexec/adzero').iterdir():path.chmod(0o755)
@@ -94,6 +94,10 @@ def main():
         (base/'tmp/inventory.json').write_text(json.dumps({'plugins':[{'id':'openclash','installed':True,'enabled':True,'runtime':'running'}]}))
         child={k:v for k,v in os.environ.items() if not k.startswith('ADZERO_') and k not in ('RUBYLIB','RUBYOPT','LD_LIBRARY_PATH')}
         child.update(PATH='/usr/sbin:/usr/bin:/sbin:/bin',ADZERO_ADAPTER_INVENTORY='/tmp/inventory.json')
+        # A broad inherited value must never widen AdZero's validation child.
+        child['SAFE_PATHS']='/'
+        safe_paths='SAFE_PATHS=/usr/share/openclash:/etc/ssl'
+        assert 'procd_set_param env '+safe_paths in native
         def run(*args,success=True):
             result=subprocess.run(['chroot',tmp,*args],env=child,text=True,capture_output=True,timeout=12)
             assert (result.returncode==0)==success,result.stdout+result.stderr
@@ -141,7 +145,7 @@ restart() { start; }
             try:
                 for mode in ('redir-host','fake-ip'):
                     source=base/'etc/openclash/config/test profile.yaml'
-                    config={'mode':'rule','log-level':'error','dns':{'enable':True,'ipv6':True,'listen':'127.0.0.1:12053','enhanced-mode':mode,'nameserver':[f'udp://127.0.0.1:{upstream.getsockname()[1]}']},'rules':['MATCH,DIRECT']}
+                    config={'mode':'rule','log-level':'error','external-ui':'/usr/share/openclash/ui','dns':{'enable':True,'ipv6':True,'listen':'127.0.0.1:12053','enhanced-mode':mode,'nameserver':[f'udp://127.0.0.1:{upstream.getsockname()[1]}']},'rules':['MATCH,DIRECT']}
                     # Exercise the actual strategy labels commonly seen in
                     # subscriptions, rather than only ASCII fixture names.
                     target='🚀 节点选择 🇭🇰'
@@ -149,12 +153,17 @@ restart() { start; }
                     config['rules']=['MATCH,'+target]
                     config['custom-text']='literal \\U0001F680 / 中文 / 🚀'
                     source.write_text(json.dumps(config,ensure_ascii=False))
+                    # Same untouched native config: missing env reproduces the
+                    # user's external-ui rejection; native env passes.
+                    rejected=run('/usr/bin/env','SAFE_PATHS=','/etc/openclash/core/clash_meta','-t','-d','/etc/openclash','-f','/etc/openclash/config/test profile.yaml',success=False)
+                    assert 'SAFE_PATHS' in rejected.stdout+rejected.stderr
+                    run('/usr/bin/env',safe_paths,'/etc/openclash/core/clash_meta','-t','-d','/etc/openclash','-f','/etc/openclash/config/test profile.yaml')
                     for phase in ('enabled','changed','disabled'):
                         if phase=='changed':rules.write_text('server=/ads.example/\nserver=/new.example/\n')
                         # Seed native quick-start cache before each operation.
                         (base/'tmp/openclash.change').write_text('')
                         started=time.monotonic();run('/usr/libexec/adzero/adapter','remove' if phase=='disabled' else 'apply');elapsed=time.monotonic()-started
-                        process=subprocess.Popen(['chroot',tmp,'/etc/openclash/core/clash_meta','-d','/etc/openclash','-f','/etc/openclash/test profile.yaml'],env=child,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                        process=subprocess.Popen(['chroot',tmp,'/usr/bin/env',safe_paths,'/etc/openclash/core/clash_meta','-d','/etc/openclash','-f','/etc/openclash/test profile.yaml'],env=child,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                         try:
                             for attempt in range(40):
                                 try:query(12053,'www.example',1);break
@@ -171,10 +180,18 @@ restart() { start; }
                                     rows.append({'mode':mode,'phase':phase,'protocol':'tcp' if tcp else 'udp','qtype':kind,'blocked':phase!='disabled','added_and_removed_rule_queries':True,'seconds':round(elapsed,3)})
                         finally:process.terminate();process.wait(timeout=5)
                     rules.write_text('server=/ads.example/\nserver=/track.example/\n')
+                # An outside path would pass with the inherited SAFE_PATHS=/.
+                # The actual adapter must override it, reject and restore.
+                config['external-ui']='/tmp/untrusted-ui'
+                source.write_text(json.dumps(config,ensure_ascii=False))
+                rejected=run('/usr/libexec/adzero/adapter','apply',success=False)
+                assert 'OpenClash core rejected the adapted configuration' in rejected.stderr
+                assert not (base/'etc/adzero/adapter.json').exists()
+                assert (base/'etc/openclash/test profile.yaml').read_text()==source.read_text()
             finally:stop.set();thread.join(timeout=2)
         assert not (base/'etc/adzero/adapter.json').exists()
         assert (base/'etc/openclash/custom/openclash_custom_overwrite.sh').read_text()=='#!/bin/sh\n# Retain user custom script\nexit 0\n'
-        output={'source_sha256':source_hash(ROOT/'luci-app-adzero'),'native_init_commit':REF,'native_init_blob':'7bc7e7568c74c197668ddf6372c7013de2baf152','core':VERSION,'checks':len(rows),'unicode_strategy_labels':True,'ruby_json_installed':False,'cases':rows,'scope':'Native rc.common + extracted OpenClash quick-start/hook stages + real Mihomo DNS; no firewall or router test'}
+        output={'source_sha256':source_hash(ROOT/'luci-app-adzero'),'native_init_commit':REF,'native_init_blob':'7bc7e7568c74c197668ddf6372c7013de2baf152','core':VERSION,'checks':len(rows),'native_safe_paths':safe_paths,'missing_safe_paths_reproduced':True,'inherited_safe_paths_overridden':True,'outside_path_rejected_and_restored':True,'unicode_strategy_labels':True,'ruby_json_installed':False,'cases':rows,'scope':'Native rc.common + extracted OpenClash quick-start/hook stages + real Mihomo DNS; no firewall or router test'}
         (ROOT/'artifacts/runtime/openclash-result.json').write_text(json.dumps(output,indent=2)+'\n')
         print(json.dumps(output,indent=2))
 

@@ -1,0 +1,34 @@
+{
+  "checks": 7,
+  "cases": [
+    {
+      "case": "clean",
+      "passed": true
+    },
+    {
+      "case": "enabled",
+      "passed": true
+    },
+    {
+      "case": "pending",
+      "passed": true
+    },
+    {
+      "case": "existing_file",
+      "passed": true
+    },
+    {
+      "case": "symlink",
+      "passed": true
+    },
+    {
+      "case": "other_reference",
+      "passed": true
+    },
+    {
+      "case": "reload_failure",
+      "passed": true
+    }
+  ],
+  "scope": "exact documented shell; official OpenWrt BusyBox/UCI in private chroots; reload is a fixture, no router or real DNS reload"
+}

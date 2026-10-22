@@ -1,0 +1,16 @@
+{
+  "version": "0.14.3",
+  "source_sha256": "f32b971136713bc4fb0500253bb9dd397f53c1bb4844a7260cf5e8248bc7c222",
+  "native_tests": 397,
+  "ui_assertions": 189,
+  "sdk_builds": 3,
+  "payload_files": 39,
+  "delivery_checks": 6,
+  "rpc_checks": 55,
+  "openclash_dns_combinations": 24,
+  "routing_checks": 108,
+  "safe_paths": "Matches pinned native procd value; missing env reproduced; inherited broad value overridden; outside path rejected and rolled back",
+  "router": "not_connected",
+  "production_dns_routing": "not_modified",
+  "dnsmasq_residual": "device confirms exact saved serversfile reference, clean DHCP delta and disabled backend; documented scoped cleanup tested in seven private-chroot cases; not applied to router"
+}

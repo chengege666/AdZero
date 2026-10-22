@@ -1,3 +1,15 @@
+# v0.14.3 OpenClash 校验白名单
+
+对照用户设备报告与固定提交的 OpenClash procd，修复 `adapter.uc` 调用真实内核校验时遗漏 `SAFE_PATHS` 的问题。只为校验子进程设置 `/usr/share/openclash:/etc/ssl`，不放宽至任意目录、不改变原生启动或复制密钥。详情见 [修复说明](OPENCLASH_SAFE_PATHS.md)。
+
+- 397 项 OpenWrt 原生 Python 回归、189 项界面断言通过，无原生跳过。
+- 真实 Mihomo 对同一 external-ui 配置，缺少白名单时失败，正确白名单时通过；适配器拒绝白名单外目录，即使继承 `SAFE_PATHS=/`，并恢复原配置。
+- 官方 OpenWrt rootfs、Ruby、原生 rc.common/钩子阶段与真实内核的 24 组 DNS 检查通过，覆盖启用、更新、停用、Redir-Host/Fake-IP、UDP/TCP 与 A/AAAA。
+- 108 项隔离分流检查、55 项 RPC 检查、三个 SDK 构建、每包 39 文件核对及六项 LF/CRLF 安装交接通过。交接中的包管理/服务为替身。
+- 针对设备已确认的停止后残留，文档清理命令经过七项官方 BusyBox/UCI 隔离检查：保留其他引用与缓存，拒绝活动后端、未提交修改、仍存在的文件/链接或变化的引用，重载失败恢复原值。DNS 重载为替身，未在设备执行。
+
+源码 SHA-256：`f32b971136713bc4fb0500253bb9dd397f53c1bb4844a7260cf5e8248bc7c222`。证据见 [evidence/v0.14.3](evidence/v0.14.3/)。本轮未连接用户路由器；OpenClash 的 DNS 污染、域名误走直连与 dnsmasq 残留引用未在设备上修改，不将上述隔离结果记作公网/透明代理恢复。
+
 # v0.14.2 OpenClash Unicode 配置转换
 
 用户回传 0.14.1 的后台 `invalid string sequence`，本地用 Emoji 策略组名复现：Psych.to_json 可产生 JSON 不接受的 YAML 转义。新增基于安全解析数据的标准 JSON 转换器，保留 Unicode 和字面量反斜杠，无新增运行依赖。详见 [修复说明](OPENCLASH_UNICODE.md)。

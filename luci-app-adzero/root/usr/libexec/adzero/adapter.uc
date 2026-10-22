@@ -847,7 +847,10 @@ try {
 		if (!fs.access(core, 'x')) { openclash_error='core_missing';die(openclash_errors.core_missing); }
 		let temporary = root + path + '.adzero-check';
 		atomic(temporary, sprintf('%J', config) + '\n');
-		let command = join(' ', map([core, '-t', '-d', root + '/etc/openclash', '-f', temporary], quote));
+		// Match OpenClash's procd environment for its UI and CA directories.
+		// Override inherited SAFE_PATHS for this child only; retain core path checks.
+		let command = join(' ', map(['env', 'SAFE_PATHS=' + root + '/usr/share/openclash:' + root + '/etc/ssl',
+			core, '-t', '-d', root + '/etc/openclash', '-f', temporary], quote));
 		let rc = system(command + ' >/dev/null 2>&1', 30000);
 		if (rc != 0) { fs.unlink(temporary);openclash_error='core_rejected';die(openclash_errors.core_rejected); }
 		if (!fs.rename(temporary, root + path)) die('Cannot commit generated OpenClash configuration');

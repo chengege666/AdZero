@@ -1,0 +1,15 @@
+{
+  "runtime": "OpenWrt 24.10.8 x86_64 BusyBox/ash and selected applets under WSL/Linux",
+  "rootfs_url": "https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/openwrt-24.10.8-x86-64-rootfs.tar.gz",
+  "rootfs_sha256": "6c94190246a54088e3984fc0c4cbbb518972abb2b10a28e30a0c41554eea8b9d",
+  "source_sha256": "f32b971136713bc4fb0500253bb9dd397f53c1bb4844a7260cf5e8248bc7c222",
+  "source_stable": true,
+  "exit_code": 0,
+  "python_tests": 397,
+  "device_acceptance": "not_run",
+  "ucode": "official rootfs interpreter and modules",
+  "optional_parsers": {
+    "ruby": true,
+    "yq": true
+  }
+}
