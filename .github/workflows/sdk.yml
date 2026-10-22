@@ -58,6 +58,7 @@ jobs:
           else
             python3 scripts/check_sdk_packages.py "dist/sdk/$package"
           fi
+          node scripts/check_luci_poll.cjs "$sdk/feeds/luci/modules/luci-base/htdocs/luci-static/resources/luci.js"
       - uses: actions/upload-artifact@v4
         with:
           name: 'adzero-openwrt-${{ matrix.release }}-${{ matrix.label }}'

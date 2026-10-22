@@ -2,7 +2,8 @@
 """Real OpenWrt tcpdump, ucode and dnsmasq in a private network/mount namespace.
 
 Run as root under Linux/WSL. Only disposable chroot files and namespace-local
-addresses/processes are used. No real router, household traffic or WAN access.
+addresses/processes are used. Dependencies are downloaded before isolation;
+the isolated capture test has no real router, household traffic or WAN access.
 """
 import base64
 import hashlib
@@ -32,9 +33,24 @@ EXTRAS={
 }
 
 
+def prepare_extras(download):
+    files=[]
+    for filename,digest in EXTRAS.items():
+        cache=ROOT/'artifacts/runtime/observe-extras'/filename
+        if not cache.exists():
+            if not download:raise RuntimeError('Prepare observer dependencies before network isolation')
+            with urllib.request.urlopen('https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base/'+filename,timeout=30) as response:data=response.read()
+            if hashlib.sha256(data).hexdigest()!=digest:raise ValueError('Observer dependency SHA-256 mismatch')
+            cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(data)
+        if hashlib.sha256(cache.read_bytes()).hexdigest()!=digest:raise ValueError('Cached observer dependency SHA-256 mismatch')
+        files.append(cache)
+    return files
+
+
 def main():
     if os.geteuid()!=0:raise SystemExit('Run as root in Linux/WSL')
     if '--inside' not in sys.argv:
+        prepare_extras(download=True)
         return subprocess.call(['unshare','--net','--mount','--propagation','private',sys.executable,__file__,'--inside'])
     subprocess.run(['ip','link','set','lo','up'],check=True)
     for ip in ('192.168.2.1','192.168.2.10'):subprocess.run(['ip','addr','add',ip+'/32','dev','lo'],check=True)
@@ -43,10 +59,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='adzero-observe-') as temp:
         base=Path(temp)
         with tarfile.open(archive) as tar:tar.extractall(base,filter='fully_trusted')
-        for filename,digest in EXTRAS.items():
-            cache=ROOT/'artifacts/runtime/observe-extras'/filename;cache.parent.mkdir(parents=True,exist_ok=True)
-            if not cache.exists():cache.write_bytes(urllib.request.urlopen('https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base/'+filename,timeout=30).read())
-            assert hashlib.sha256(cache.read_bytes()).hexdigest()==digest
+        for cache in prepare_extras(download=False):
             with tarfile.open(cache) as outer:
                 member=next(m for m in outer.getmembers() if m.name.endswith('data.tar.gz'))
                 with tarfile.open(fileobj=io.BytesIO(outer.extractfile(member).read())) as tar:tar.extractall(base,filter='fully_trusted')
