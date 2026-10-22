@@ -97,6 +97,27 @@ touch tmp/openclash.change
         self.assertEqual(self.generated.read_text(),self.source.read_text())
         self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
 
+    def test_switch_from_stopped_openclash_to_passwall_then_disable(self):
+        self.run_adapter('apply')
+        self.write('inventory.json',json.dumps({'plugins':[
+            {'id':'openclash','installed':True,'enabled':False,'runtime':'stopped','active':False},
+            {'id':'passwall','installed':True,'enabled':True,'runtime':'unknown','active':True}]}))
+        self.write('etc/config/passwall',"config global\n option enabled '1'\n option use_block_list '0'\n")
+        blocked=self.write('etc/passwall/rules/block_host','user.example\n')
+        self.write('etc/init.d/passwall',"#!/bin/sh\necho restart >> "+shlex.quote(str(self.root/'passwall-restarts'))+'\n')
+        self.run_adapter('apply')
+        current=json.loads(self.run_adapter('status').stdout)
+        self.assertEqual((current['plugin'],current['stage']),('passwall','configured_unverified'))
+        self.assertEqual(self.custom.read_text(),self.original)
+        self.assertFalse((self.root/'etc/openclash/rule_provider/adzero.txt').exists())
+        self.assertEqual((self.root/'restarts').read_text().splitlines(),['restart'],'stopped OpenClash must not be started during the switch')
+        self.assertIn('ads.example',blocked.read_text())
+        self.assertEqual((self.root/'passwall-restarts').read_text().splitlines(),['restart'])
+        self.run_adapter('remove')
+        self.assertEqual(blocked.read_text(),'user.example\n')
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+        self.assertEqual((self.root/'restarts').read_text().splitlines(),['restart'])
+
     def test_core_validation_uses_only_native_safe_paths_without_changing_parent(self):
         self.env['SAFE_PATHS']='/untrusted/inherited:/tmp'
         self.write('etc/openclash/core/clash_meta', '''#!/bin/sh

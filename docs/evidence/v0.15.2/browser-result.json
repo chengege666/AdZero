@@ -1,0 +1,38 @@
+{
+  "source_sha256": "7ad6223cafea0f254462c3e40f9cb0802150de202bd05709b08da74c627cd82f",
+  "checks": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "documentWidth": 1440,
+      "recovery_without_refresh": true,
+      "single_disable": true,
+      "reenable_passwall": true,
+      "reset_only_statistics": true,
+      "controls_separate": true,
+      "batch_once": true,
+      "search": true,
+      "scope_visible": true,
+      "typing_preserved": true,
+      "hidden_suspended": true,
+      "leave_cleanup": true
+    },
+    {
+      "name": "mobile",
+      "width": 360,
+      "documentWidth": 360,
+      "recovery_without_refresh": true,
+      "single_disable": true,
+      "reenable_passwall": true,
+      "reset_only_statistics": true,
+      "controls_separate": true,
+      "batch_once": true,
+      "search": true,
+      "scope_visible": true,
+      "typing_preserved": true,
+      "hidden_suspended": true,
+      "leave_cleanup": true
+    }
+  ],
+  "scope": "Production LuCI view/CSS and native DOM/Poll; simulated RPC; not router acceptance"
+}

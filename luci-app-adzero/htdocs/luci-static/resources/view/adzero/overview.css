@@ -112,6 +112,7 @@
 .az-root .az-notice, .az-root .az-working { display: flex; align-items: flex-start; gap: 10px; padding: 13px 16px; border-radius: 11px; margin-bottom: 18px; font-size: 13px; }
 .az-root .az-notice-success { color: var(--az-accent); background: var(--az-soft); border: 1px solid var(--az-line); }
 .az-root .az-notice-error { color: var(--az-error); background: var(--az-error-bg); border: 1px solid currentColor; }
+.az-root .az-notice-warning { color: var(--az-text); background: var(--az-soft); border: 1px solid var(--az-line); }
 .az-root .az-notice strong { font-weight: 550; }
 .az-root .az-working { align-items: center; background: var(--az-card); color: var(--az-text); }
 .az-root .az-working > span:last-child { color: var(--az-muted); font-size: 11px; }
