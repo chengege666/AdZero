@@ -4,12 +4,15 @@ import * as fs from 'fs';
 import { cursor } from 'uci';
 import * as lib from './policy-lib.uc';
 import * as rulecache from './rules-cache.uc';
+import * as progress from './progress-lib.uc';
 
 const root = getenv('ADZERO_POLICY_ROOT') ?? '';
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
 const uci = cursor(root + '/etc/config');
 const mirror_path = dir + '/allow-state.json', pending_path = dir + '/allow-pending.json', pause_path = dir + '/pause.json';
 const routing_path=dir+'/routing-pending.json';
+const block_mirror_path=dir+'/block-state.json';
+let query_rules=null;
 function same(a,b) { return sprintf('%J', a) == sprintf('%J', b); }
 function read(path) { let data = fs.readfile(path); return data == null ? null : json(data); }
 function atomic(path, data) {
@@ -30,6 +33,11 @@ function backend(value) {
 	if (!ok || !uci.commit('adblock-fast')) die('无法保存过滤后端的放行配置。');
 }
 function own() { return lib.list(uci.get('adzero','main','allowed_domain')); }
+function own_blocked() { return lib.list(uci.get('adzero','main','blocked_domain')); }
+function backend_block(value) {
+	let ok=value==null?(uci.get('adblock-fast','config','blocked_domain')==null||uci.delete('adblock-fast','config','blocked_domain')):uci.set('adblock-fast','config','blocked_domain',value);
+	if(!ok||!uci.commit('adblock-fast'))die('无法保存过滤后端的拦截配置。');
+}
 function merged(original, allowed) {
 	let result = original == null ? [] : type(original) == 'array' ? [...original] : [original];
 	for (let name in allowed) if (index(result,name) < 0) push(result,name);
@@ -42,23 +50,45 @@ function validate() {
 	let state = read(mirror_path), current = uci.get('adblock-fast','config','allowed_domain');
 	if (state && (!same(current,state.after) || !same(state.after,merged(state.before,own())))) die('后端放行配置已被外部修改。');
 	if (!state && length(own()) && uci.get('adblock-fast','config','enabled') == '1') die('个人放行名单尚未同步。');
+	let block=read(block_mirror_path),actual=uci.get('adblock-fast','config','blocked_domain');
+	if(block&&(!same(actual,block.after)||!same(block.after,merged(block.before,own_blocked()))))die('后端拦截配置已被外部修改。');
+	if(!block&&length(own_blocked())&&uci.get('adblock-fast','config','enabled')=='1')die('个人拦截名单尚未同步。');
+}
+function apply_block() {
+	let blocked=own_blocked(),state=read(block_mirror_path),current=uci.get('adblock-fast','config','blocked_domain');
+	if(state&&!same(current,state.after)&&!same(current,state.before))die('后端拦截配置被其他操作修改，请先检查恢复记录。');
+	if(!state&&!length(blocked))return;
+	state??={schema:1,before:current};state.after=length(blocked)?merged(state.before,blocked):state.before;
+	atomic(block_mirror_path,state);backend_block(state.after);
+	if(!length(blocked))fs.unlink(block_mirror_path);
 }
 function apply() {
 	let allowed = own(), state = read(mirror_path), current = uci.get('adblock-fast','config','allowed_domain');
 	if (state && (!same(current,state.after) && !same(current,state.before))) die('后端放行配置被其他操作修改，请先检查恢复记录。');
-	if (!state && !length(allowed)) return;
+	if (!state && !length(allowed)) { apply_block();return; }
 	state ??= {schema:1,before:current};
 	state.after = length(allowed) ? merged(state.before,allowed) : state.before;
 	atomic(mirror_path,state); // Save intended change before changing UCI.
 	backend(state.after);
 	if (!length(allowed)) fs.unlink(mirror_path);
+	apply_block();
 }
 function rollback() {
 	let pending = read(pending_path);
 	if (!pending) return;
 	let current = uci.get('adzero','main','allowed_domain'), state = read(mirror_path), actual = uci.get('adblock-fast','config','allowed_domain');
-	if (!same(current,pending.before) && !same(current,pending.after)) die('个人放行名单已被其他操作修改。');
-	if (!same(actual,pending.backend_before) && !same(actual,state?.after)) die('并发修改阻止恢复放行配置。');
+	if (!same(current,pending.before) && !same(own(),pending.after)) die('个人放行名单已被其他操作修改。');
+	let allow_base=pending.mirror_before?pending.mirror_before.before:pending.backend_before;
+	let allow_intended=length(pending.after)?merged(allow_base,pending.after):allow_base;
+	if (!same(actual,pending.backend_before) && !same(actual,state?.after) && !same(actual,allow_intended)) die('并发修改阻止恢复放行配置。');
+	if(pending.controls){
+		let blocked=uci.get('adzero','main','blocked_domain'),mirror=read(block_mirror_path),live=uci.get('adblock-fast','config','blocked_domain');
+		let block_base=pending.block_mirror_before?pending.block_mirror_before.before:pending.block_backend_before;
+		let block_intended=length(pending.blocked_after)?merged(block_base,pending.blocked_after):block_base;
+		if(!same(blocked,pending.blocked_before)&&!same(own_blocked(),pending.blocked_after)||!same(live,pending.block_backend_before)&&!same(live,mirror?.after)&&!same(live,block_intended))die('并发修改阻止恢复访问控制。');
+		set('adzero','blocked_domain',pending.blocked_before);backend_block(pending.block_backend_before);
+		if(pending.block_mirror_before==null)fs.unlink(block_mirror_path);else atomic(block_mirror_path,pending.block_mirror_before);
+	}
 	set('adzero','allowed_domain',pending.before);
 	backend(pending.backend_before);
 	if (pending.mirror_before == null) fs.unlink(mirror_path); else atomic(mirror_path,pending.mirror_before);
@@ -96,16 +126,24 @@ function routing_finish(){
 	if(!same(uci.get('adzero','main','routing_enabled'),expected))die('分流切换结果未确认。');
 	if(!fs.unlink(routing_path))die('分流已应用，但完成记录未能清理。');
 }
-function restore(){if(read(routing_path)){routing_rollback();fs.unlink(routing_path);}restore_allow();}
+function restore(){if(read(routing_path)){routing_rollback();fs.unlink(routing_path);}restore_allow();let block=read(block_mirror_path);if(block){let current=uci.get('adblock-fast','config','blocked_domain');if(!same(current,block.before)&&!same(current,block.after))die('后端拦截配置已变化，恢复记录已保留。');backend_block(block.before);fs.unlink(block_mirror_path);}}
 function query(value) {
 	let name = lib.hostname(value), mode = uci.get('adblock-fast','config','dns');
 	let output = mode == 'unbound.adb_list' ? '/var/lib/unbound/adb_list.adblock-fast' : '/var/run/adblock-fast/' + mode;
 	if (index(['dnsmasq.servers','dnsmasq.addnhosts','smartdns.domainset','unbound.adb_list'],mode) < 0) die('当前过滤模式无法查询。');
-	let raw = fs.readfile(root + output,25000001);
-	if (!length(raw)) return {domain:name,available:false,match:'unavailable',scope:null};
-	let rules = rulecache.load(root + output,mode,root), adapter = read(dir + '/adapter.json');
+	if (!(fs.stat(root + output)?.size>0)) return {domain:name,available:false,match:'unavailable',scope:null};
+	let rules = query_rules??=rulecache.load(root + output,mode,root), adapter = read(dir + '/adapter.json');
 	let result = lib.lookup(name,rules,own(),mode != 'dnsmasq.addnhosts' || !!adapter);
 	return {...result,available:true,scope_includes_subdomains:true,source:'processed_rules'};
+}
+function controls_plan(path){
+	if(fs.lstat(path)?.type!='file')die('访问控制请求无效。');
+	if(length(uci.changes('adzero')??{}))die('存在未提交的外部修改，请先保存或撤销。');
+	for(let change in uci.changes('adblock-fast')?.['adblock-fast']??[])if(!(change[0]=='set'&&change[2]=='size'&&match(''+change[3],/^[0-9]+$/)&&uci.get('adblock-fast',change[1])=='file_url'))die('后端存在未提交的外部修改，请先保存或撤销。');
+	let p=lib.controls(fs.readfile(path,100001));
+	if(!same(p.before,{allowed:own(),blocked:own_blocked()})){progress.failure('config_conflict');die('访问控制已被其他操作修改，请重新读取名单。');}
+	if(uci.get('adzero','main','enabled')=='1')for(let name in p.after.allowed)if(index(p.before.allowed,name)<0){let q=query(name);if(q.match=='parent'&&q.scope!=name){progress.failure('control_scope');die('该域名由父域规则拦截，请先确认并放行规则范围：'+q.scope);}}
+	return p;
 }
 function pause_info() {
 	let state = read(pause_path);
@@ -119,16 +157,27 @@ function pause_info() {
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 try {
-	if (action == 'status') print(sprintf('%J\n',{allowed:own(),pending:!!read(pending_path),pause:pause_info(),routing_enabled:uci.get('adzero','main','routing_enabled')=='1',routing_pending:!!read(routing_path)}));
+	if (action == 'status') print(sprintf('%J\n',{allowed:own(),blocked:own_blocked(),pending:!!read(pending_path),pause:pause_info(),routing_enabled:uci.get('adzero','main','routing_enabled')=='1',routing_pending:!!read(routing_path)}));
 	else if (action == 'lookup') print(sprintf('%J\n',query(shift(ARGV))));
 	else if (action == 'apply') { if (read(pending_path)) die('放行事务尚未恢复。'); apply(); }
 	else if (action == 'validate') validate();
 	else if (action == 'confirm') {
 		validate();let p=read(pending_path),r=read(routing_path);
-		if(p && !same(own(),p.after) || r && (r.stage!='applied' || uci.get('adzero','main','routing_enabled')!=r.after))
+		if(p && (!same(own(),p.after)||p.controls&&!same(own_blocked(),p.blocked_after)) || r && (r.stage!='applied' || uci.get('adzero','main','routing_enabled')!=r.after))
 			die('策略在等待重载期间发生变化，恢复记录已保留。');
 	}
 	else if (action == 'restore') restore();
+	else if(action=='controls-check'){let p=controls_plan(shift(ARGV));print(same(p.before,p.after)?'0\n':'1\n');}
+	else if(action=='begin-controls'){
+		if(read(pending_path))die('上一项访问控制尚未恢复。');
+		let p=controls_plan(shift(ARGV));validate();
+		atomic(pending_path,{schema:1,controls:true,before:uci.get('adzero','main','allowed_domain'),after:p.after.allowed,
+			blocked_before:uci.get('adzero','main','blocked_domain'),blocked_after:p.after.blocked,
+			backend_before:uci.get('adblock-fast','config','allowed_domain'),mirror_before:read(mirror_path),
+			block_backend_before:uci.get('adblock-fast','config','blocked_domain'),block_mirror_before:read(block_mirror_path)});
+		set('adzero','allowed_domain',length(p.after.allowed)?p.after.allowed:null);set('adzero','blocked_domain',length(p.after.blocked)?p.after.blocked:null);
+		if(uci.get('adzero','main','enabled')=='1')apply();
+	}
 	else if (action == 'begin-allow' || action == 'begin-revoke') {
 		if (read(pending_path)) die('上一项放行操作尚未恢复，请先关闭并恢复。');
 		let domain = lib.hostname(shift(ARGV)), scope = lib.hostname(shift(ARGV)), before = uci.get('adzero','main','allowed_domain'), after = own();
@@ -165,7 +214,7 @@ try {
 	else if (action == 'pause-clear') { if (fs.stat(pause_path) && !fs.unlink(pause_path)) die('无法清理暂停恢复记录。'); }
 	else if (action == 'is-paused') { let p = pause_info(); exit(p?.stage == 'paused' ? 0 : 1); }
 	else if (action == 'pause-due') { let p = pause_info(); exit(p?.stage == 'paused' && p.expired && !p.retry_remaining ? 0 : 1); }
-	else if (action == 'has-allowed') exit(length(own()) ? 0 : 1);
+	else if (action == 'has-allowed') exit(length(own())||length(own_blocked()) ? 0 : 1);
 	else if (action == 'pending') exit(read(pending_path)||read(routing_path) ? 0 : 1);
 	else if (action == 'routing-begin') routing_begin(shift(ARGV));
 	else if (action == 'routing-save') routing_save();

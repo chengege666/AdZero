@@ -1,7 +1,7 @@
 'use strict';
 // Typed methods, no command or environment arguments exposed to the browser.
 import { connect } from 'ubus';
-import { hostname } from '../../../libexec/adzero/policy-lib.uc';
+import { hostname, controls } from '../../../libexec/adzero/policy-lib.uc';
 import * as fs from 'fs';
 import * as sources from '../../../libexec/adzero/source-lib.uc';
 import * as progress from '../../../libexec/adzero/progress-lib.uc';
@@ -52,10 +52,10 @@ function source_change(r,action) {
 		return job(r,action,action == 'source-toggle' ? [id,a.expected_url,a.enabled ? '1':'0'] : [id,a.expected_url]);
 	} catch(e) { return {ok:false,message:e.message}; }
 }
-function settings(r){
+function settings(r,control){
 	let path;
 	try{
-		let p=sources.plan(r.args.payload),dir='/tmp/adzero-requests';
+		let p=control?controls(r.args.payload):sources.plan(r.args.payload),dir='/tmp/adzero-requests';
 		if(!fs.lstat(dir)&&!fs.mkdir(dir,0700))die('无法准备批量任务。');
 		if(fs.lstat(dir)?.type!='directory'||(fs.stat(dir).mode&0777)!=0700||fs.stat(dir).uid!=0)die('批量任务目录无效。');
 		let id=trim(fs.readfile('/proc/sys/kernel/random/uuid')??'');
@@ -64,12 +64,14 @@ function settings(r){
 		let file=fs.open(path,'wx',0600),raw=sprintf('%J',p);
 		if(!file)die('无法保存批量请求。');
 		let size=file.write(raw),closed=file.close();if(size!=length(raw)||!closed)die('批量请求保存不完整。');
-		let result=job(r,'settings-apply',[path]);
+		let result=job(r,control?'controls-apply':'settings-apply',[path]);
 		if(!result.ok)fs.unlink(path);
 		return result;
 	}catch(e){if(path)fs.unlink(path);return {ok:false,message:e.message};}
 }
 return {adzero:{
+	stats_reset:{call:r=>bus.defer('file','exec',{command:'/usr/libexec/adzero/observe',params:['reset-stats']},function(code,result){let value={ok:false,message:'清零请求未完成，请稍后重试。'};if(code==0&&result?.code==0)try{value=json(result.stdout);}catch(e){}r.reply(value);})},
+	controls_apply:{args:{payload:''},call:r=>settings(r,true)},
 	observation:{call:r=>{let value=observation.snapshot();delete value.pid;delete value.sample;delete value.generation;delete value.boot;return {ok:true,data:value};}},
 	recent_set:{args:{enabled:true},call:r=>bus.defer('file','exec',{command:'/usr/libexec/adzero/observe',params:[r.args.enabled?'recent-start':'recent-stop']},function(code,result){let value={ok:false,message:'临时记录操作未完成，请稍后重试。'};if(code==0&&result?.code==0)try{value=json(result.stdout);}catch(e){}r.reply(value);})},
 	verification_start:{call:r=>bus.defer('file','exec',{command:'/usr/libexec/adzero/observe',params:['start-test']},function(code,result){

@@ -109,6 +109,7 @@ export function tracker(onblocked){
 	function key(d,response){return join('|',[d.protocol,response?d.to:d.from,response?d.from:d.to,response?d.dport:d.sport,response?d.sport:d.dport,d.id,d.name,d.qtype]);}
 	return {
 		counts,current,
+		reset:function(){let keep={};for(let id in keys(pending))if(pending[id].test)keep[id]=pending[id];pending=keep;pending_count=length(keep);seen={};seen_count=0;for(let k in keys(counts)){counts[k]=0;current[k]=0;}},
 		configure:function(list,id,on){if(id!=generation){pending={};pending_count=0;seen={};seen_count=0;verify=null;for(let k in keys(current))current[k]=0;}rules=list;generation=id;active=on;},
 		verification:function(value){if(type(value)=='object')verify=value;return verify;},
 		event:function(d,now){

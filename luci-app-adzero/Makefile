@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 
-PKG_VERSION:=0.14.3
+PKG_VERSION:=0.15.0
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 

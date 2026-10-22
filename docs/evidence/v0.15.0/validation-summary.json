@@ -1,0 +1,16 @@
+{
+  "version": "0.15.0",
+  "source_sha256": "243742c80e0f395985e07c82a102ba97cd32ba99566be730ee50219085638dec",
+  "native_tests": 410,
+  "ui_assertions": 200,
+  "sdk_builds": 3,
+  "payload_files": 39,
+  "delivery_cases": 6,
+  "rpc_checks": 61,
+  "openclash_dns_combinations": 24,
+  "statistics_reset": "real collector reset, new UDP/TCP queries and same-boot restart passed; no collector/network restart for reset",
+  "custom_domain_controls": "real UCI/ucode/controller with backend/proxy fixtures; batch once, no-op, disable/enable, rollback and conflicts covered",
+  "browser": "production view/CSS + native DOM/Poll, simulated RPC; desktop and 360px dark",
+  "router": "not_connected",
+  "runtime_dependencies_added": false
+}

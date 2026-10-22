@@ -7,7 +7,7 @@ ctl=${ADZERO_JOB_CTL:-$(dirname "$0")/ctl}
 case "$1" in
  start)
 	shift
-	case "$1" in enable|disable|refresh|reload|allow|revoke|pause|resume|routing-on|routing-off|source-add|source-toggle|source-remove|source-refresh|source-verify|settings-apply) ;; *) exit 1 ;; esac
+	case "$1" in enable|disable|refresh|reload|allow|revoke|pause|resume|routing-on|routing-off|source-add|source-toggle|source-remove|source-refresh|source-verify|settings-apply|controls-apply) ;; *) exit 1 ;; esac
 	[ ! -L "$jobs" ] || exit 1
 	mkdir -p "$jobs" || exit 1
 	id=$(cat /proc/sys/kernel/random/uuid) || exit 1
@@ -17,12 +17,12 @@ case "$1" in
 	cat "$jobs/$id/created" > "$jobs/$id/stage_started"
 	printf '%s\n' "$1" > "$jobs/$id/action"
 	printf '%s\n' queued > "$jobs/$id/stage"
-	if [ "$1" = settings-apply ]; then
+	if [ "$1" = settings-apply ] || [ "$1" = controls-apply ]; then
 		# RPC supplies a private file, never subscription JSON in argv or logs.
 		case "$2" in /tmp/adzero-requests/*) ;; *) exit 1 ;; esac
 		[ -f "$2" ] && [ ! -L "$2" ] || exit 1
 		mv "$2" "$jobs/$id/input" || exit 1
-		set -- settings-apply "$jobs/$id/input"
+		set -- "$1" "$jobs/$id/input"
 	fi
 	"$0" run "$id" "$@" </dev/null >"$jobs/$id/log" 2>&1 &
 	printf '{"job":"%s"}\n' "$id"
@@ -35,7 +35,7 @@ case "$1" in
 	printf '%s\n' "$$" > "$jobs/$id/worker"
 	code=0
 	"$ctl" "$@" || code=$?
-	[ "$1" != settings-apply ] || rm -f "$jobs/$id/input"
+	case "$1" in settings-apply|controls-apply) rm -f "$jobs/$id/input" ;; esac
 	date +%s > "$jobs/$id/finished"
 	[ -L "$jobs/$id/timeline" ] || printf '%s finished\n' "$(cat "$jobs/$id/finished")" >> "$jobs/$id/timeline"
 	printf '%s\n' "$code" > "$jobs/$id/result.new" && mv "$jobs/$id/result.new" "$jobs/$id/result"

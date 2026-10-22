@@ -128,6 +128,21 @@ class ObserveTest(unittest.TestCase):
         self.assertEqual(result['counts']['queries'],1)
         self.assertEqual(result['counts']['blocked'],1)
 
+    def test_reset_clears_all_period_counters_and_drops_inflight_old_answers(self):
+        result=self.run_code('tracker',rules=['ads.example'],events=[
+            {'at':1,'dns':self.event()}, {'reset':True}, {'at':2,'dns':self.event(True)},
+            {'at':3,'dns':self.event(ident=43)}, {'at':4,'dns':self.event(True,ident=43)}])
+        self.assertEqual(result['counts']['queries'],1)
+        self.assertEqual(result['counts']['blocked'],1)
+        self.assertEqual(result['counts']['answered'],1)
+        self.assertEqual(result['counts'],result['current'])
+
+    def test_reset_request_rejects_stale_future_wrong_boot_or_untyped_time(self):
+        request={'schema':1,'nonce':'a'*32,'boot':'boot-one','requested':100.5}
+        self.assertTrue(self.run_code('reset-request',request=request,boot='boot-one',at=101))
+        for change in [{'requested':85},{'requested':102},{'requested':'100.5'},{'boot':'boot-two'},{'nonce':'bad'},{'schema':2}]:
+            self.assertFalse(self.run_code('reset-request',request={**request,**change},boot='boot-one',at=101))
+
     def test_parent_rule_and_actual_positive_answer(self):
         result=self.track([self.event(domain='sub.ads.example'),self.event(True,domain='sub.ads.example'),self.event(ident=43),self.event(True,ident=43,blocked=False,positive=True)])
         self.assertEqual(result['counts']['blocked'],1)
@@ -174,6 +189,19 @@ class ObserveTest(unittest.TestCase):
         events[2]['to']='192.168.2.99'
         result=self.track(events,test)
         self.assertFalse(result['test'].get('blocked',False))
+
+    def test_statistics_reset_preserves_inflight_effect_verification(self):
+        test={'nonce':'a'*32,'sample':'ads.example','control':'www.baidu.com','deadline':120}
+        result=self.run_code('tracker',rules=['ads.example'],test=test,events=[
+            {'at':1,'dns':self.event(domain='a'*32+'.adzero.invalid')},
+            {'at':2,'dns':self.event()}, {'reset':True},
+            {'at':3,'dns':self.event(True)},
+            {'at':4,'dns':self.event(domain='www.baidu.com',ident=45)},
+            {'at':5,'dns':self.event(True,domain='www.baidu.com',ident=45,positive=True,blocked=False)}])
+        self.assertTrue(result['test']['marker'] and result['test']['normal'] and result['test']['blocked'])
+        self.assertTrue(all(value==0 for value in result['counts'].values()))
+        self.assertEqual(result['counts'],result['current'])
+        self.assertEqual(result['recorded'],[])
 
     def test_recent_is_opt_in_bounded_aggregated_and_expires(self):
         steps=[{'dns':{'name':'ads.example','qtype':1},'at':1,'wall':100,'snapshot':True},

@@ -3,7 +3,7 @@
 set -eu
 umask 077
 case "${1:-status}" in
- status|start-test|recent-start|recent-stop) exec ucode -S /usr/libexec/adzero/observe.uc -- "$@" ;;
+ status|start-test|recent-start|recent-stop|reset-stats) exec ucode -S /usr/libexec/adzero/observe.uc -- "$@" ;;
  run)
   command -v tcpdump >/dev/null 2>&1 || exit 1
   device=$(ubus call network.interface.lan status | jsonfilter -e '@.l3_device')

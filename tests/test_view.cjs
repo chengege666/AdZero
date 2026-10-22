@@ -45,6 +45,8 @@ const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable'
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');return {ok:true,data:structuredClone(observationFixture)};}
   if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
+  if(spec.method==='stats_reset'){observationFixture={...observationFixture,queries:0,blocked:0,reset_token:'f'.repeat(32)};return {ok:true,token:'f'.repeat(32)};}
+  if(spec.method==='controls_apply'){commands.push(spec.method);if(rpcFailure)return {ok:false,message:'typed failure'};const p=JSON.parse(args[0]);if(!rpcStale)Object.assign(state.policy,structuredClone(p.after));return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='recent_set'){observationFixture.recent={enabled:args[0],remaining:args[0]?300:0,items:[]};return {ok:true};}
   assert.equal(spec.object,'adzero'); commands.push(spec.method);
   if (rpcFailure) return {ok:false,message:'typed failure'};
@@ -92,7 +94,7 @@ function reset(overrides = {}) {
   app.recentBusy=false;app.recentIntent=null;app.recentNotice=null;app.recentPaintKey=null;
   storage.clear();ruleData={dns:{domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}},revision:'a'.repeat(64),items:[],catalog:[{id:'test',name:'Library example',url:'https://library.example/list',home:'https://library.example/',description:'test list',group:'Light'}]};
   app.draft=app.applyingDraft=app.editSource=null;app.draftSequence=0;
-  app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
+  app.controlsOpen=false;app.controlDraft=null;app.controlSearch='';app.controlFilter='all';app.controlInput='';app.controlKind='blocked';app.recentSearch='';app.statsBusy=false;app.statsIntent=null;app.statsNotice=null;app.statsPaintKey=null;app.rulesOpen=false;app.sourcesData=null;app.sourcesLoading=false;app.sourcesError=null;
   jobSteps=[];app.currentJob=null;app.jobUncertain=false;app.jobProgress=null;
   app.busy = app.notice = app.domainResult = null; app.domainInput = ''; root = app.render(state); active = body;
 }
@@ -103,12 +105,12 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!find('az-toggle').disabled, 'enable omits disabled attribute');
   check(!text(root).includes('null') && !text(root).includes('undefined'), 'absent content is not rendered by native array append');
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
-  check(find('az-update').disabled, 'cannot update while off');
+  check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
   check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v='), 'local versioned CSS');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
-  check(!find('az-update').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
+  check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
   check(text(root).includes('66,425'), 'real domain count');
   check(text(root).includes('效果检测') && !text(root).includes('今日拦截'), 'terminal evidence is actionable and no daily count is invented');
   check(active === find('az-toggle'), 'focus restored to initiating control');
@@ -126,7 +128,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!find('az-toggle').disabled && text(find('az-toggle')).includes('关闭并恢复'), 'recovery available');
   await app.runAction('disable'); check(state.state === 'disabled', 'recover via disable');
   reset(); pending = true; const first = app.runAction('enable');
-  check(find('az-toggle').disabled && find('az-status').disabled && find('az-update').disabled, 'controls lock during operation');
+  check(find('az-toggle').disabled && find('az-status').disabled && !find('az-update'), 'controls lock during operation');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'no optimistic switch');
   await app.runAction('enable'); await app.refreshStatus(); await app.runAction('reboot');
   check(commands.length === 1, 'duplicates and arbitrary commands ignored');
@@ -147,7 +149,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(initial.state === 'loading' && commands.length === 0, 'load does not wait for or start status RPC');
   statusPending = true; root = app.render(initial);
   check(typeof root.then !== 'function' && text(root).includes('正在读取运行状态'), 'view renders immediately while status is pending');
-  check(find('az-toggle').disabled && find('az-update').disabled, 'initial actions locked until fresh status');
+  check(find('az-toggle').disabled && !find('az-update'), 'initial actions locked until fresh status');
   check(commands.join(',') === 'status', 'exactly one initial request');
   resolveStatus(); await app.initialRequest;
   check(app.currentStatus.state === 'disabled' && !find('az-toggle').disabled, 'initial response hydrates view');
@@ -167,20 +169,20 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!find('az-routing').disabled,'saved automatic routing can still be turned off after switching to SSR Plus+');
   reset({ state: 'error', error: '<img src=x onerror=alert(1)>' });
   check(!nodes(root, n => n.scalarHtml).length, 'untrusted data cannot reach innerHTML');
-  reset(); check(find('az-domain').disabled && find('az-lookup').disabled,'query unavailable when off');
-  await app.lookupDomain(); check(!commands.length,'no query while off');
+  reset(); await app.openControls(); check(find('az-domain').disabled && find('az-lookup').disabled,'query unavailable when off');
+  await app.openControls(); await app.lookupDomain(); check(!commands.length,'no query while off');
   reset({state:'configured_unverified'}); app.domainInput='login.ads.example';
-  await app.lookupDomain();
+  await app.openControls(); await app.lookupDomain();
   check(text(root).includes('ads.example') && text(root).includes('及其所有子域'),'actual subtree scope visible before mutation');
   check(!commands.includes('allow'),'query does not write');
   await app.runPolicy('allow',['login.ads.example','ads.example']);
   check(state.policy.allowed.includes('ads.example') && app.notice.kind === 'success','typed allow then canonical status');
-  check(text(root).includes('撤销放行'),'personal list has undo');
+  check(text(root).includes('移除'),'personal list has undo');
   await app.runPolicy('revoke',['ads.example','ads.example']);
   check(!state.policy.allowed.length && app.notice.kind === 'success','revoke status verified');
-  await app.runPolicy('pause',[900]);
+  app.controlsOpen=false;app.paint();await app.runPolicy('pause',[900]);
   check(state.state === 'paused' && text(root).includes('15 分钟后'),'pause deadline visible');
-  check(find('az-domain').disabled && find('az-update').disabled && !find('az-resume').disabled,'paused controls guarded');
+  check(!find('az-domain') && !find('az-update') && !find('az-resume').disabled,'paused controls guarded');
   check(find('az-toggle').attrs['data-action'] === 'resume','paused switch resumes');
   state.state='configured_unverified'; await poll.tick();
   check(app.currentStatus.state==='configured_unverified' && app.notice===null,'automatic resume clears obsolete paused notice');
@@ -195,15 +197,15 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset({state:'configured_unverified'});
   rpcStale=true; await app.runPolicy('allow',['ads.example','ads.example']); check(app.notice.kind==='error','stale RPC success rejected');
   rpcStale=false; rpcFailure=true; await app.runPolicy('pause',[300]); check(app.notice.kind==='error' && state.state!=='paused','RPC failure is not optimistic pause');
-  reset({state:'configured_unverified'}); app.domainInput=''; await app.lookupDomain(); check(!commands.length && text(root).includes('请输入'),'empty query validation');
-  app.domainInput='ads.example'; rpcFailure=true; await app.lookupDomain(); check(text(root).includes('typed failure') && !find('az-allow'),'query failure cannot enable allow');
+  reset({state:'configured_unverified'}); app.domainInput=''; await app.openControls(); await app.lookupDomain(); check(!commands.length && text(root).includes('请输入'),'empty query validation');
+  app.domainInput='ads.example'; rpcFailure=true; await app.openControls(); await app.lookupDomain(); check(text(root).includes('typed failure') && !find('az-allow'),'query failure cannot enable allow');
   reset({state:'paused',policy:{allowed:['ads.example'],pause:{remaining:0,error:'resume_failed'}}});
   check(text(root).includes('自动恢复未完成') && !find('az-resume').disabled,'failed automatic resume remains actionable');
   await app.runAction('disable'); check(state.state==='disabled','manual close cancels pause via canonical controller');
   reset({state:'configured_unverified'});await app.refreshStatus();
   statusPending=true;const cached=await app.load();root=app.render(cached);
   check(cached.stale && text(root).includes('66,425') && !text(root).includes('正在读取运行状态'),'return navigation paints last snapshot immediately');
-  check(find('az-toggle').disabled && find('az-update').disabled && find('az-domain').disabled,'cached snapshot cannot authorize mutations');
+  check(find('az-toggle').disabled && !find('az-update') && !find('az-domain'),'cached snapshot cannot authorize mutations');
   resolveStatus();await app.initialRequest;check(!app.currentStatus.stale && !find('az-toggle').disabled,'background recheck restores live controls');
   statusPending=false;failStatus=true;await app.refreshStatus();
   check(app.currentStatus.stale && text(root).includes('66,425') && find('az-toggle').disabled && !find('az-status').disabled,'recheck failure preserves snapshot with retry and locked operations');
@@ -254,7 +256,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   await app.stageSource('source_toggle',[key,'https://one.example/list',false]);
   app.rulesOpen=false;app.paint();await app.stageRouting(true);
   check(commands.length===0&&find('az-routing').attrs['aria-checked']==='true'&&!state.policy.routing_enabled,'routing is staged without changing live state');
-  check(!find('az-update').disabled,'overview reload can apply all pending choices together');
+  check(!find('az-toggle').disabled,'overview reload can apply all pending choices together');
   await app.openRules();
   check(app.draft.items.length===2,'switching internal tabs preserves all pending choices');
   commands.length=0;await app.reloadCurrent();
@@ -346,8 +348,8 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   find('az-test-commands').focus();
   observationFixture.verification={state:'passed',client:'192.168.2.10'};await app.refreshObservation();
   check(text(find('az-live-verification')).includes('此设备检测通过')&&text(find('az-live-verification')).includes('192.168.2.10'),'verified device is identified without claiming all clients');
-  const queryInput=find('az-domain');queryInput.focus();await app.refreshObservation();
-  check(find('az-domain')===queryInput&&active===queryInput,'stats polling does not rebuild or steal focus from the query form');
+  const queryInput=find('az-pause-duration');queryInput.focus();await app.refreshObservation();
+  check(find('az-pause-duration')===queryInput&&active===queryInput,'stats polling does not rebuild or steal focus from overview controls');
   observationFailure=true;await app.refreshObservation();
   check(!text(find('az-live-verification')).includes('此设备检测通过'),'lost observation never preserves a current verification claim');
   check(text(find('az-live-metrics')).includes('统计组件尚未就绪'),'stats outage cannot look like a zero-hit result');
@@ -355,10 +357,10 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset({state:'configured_unverified'});await app.initialObservationRequest;
   check(pollCallbacks.size===1,'immediate LuCI registration before mount must not cancel automatic refresh');
   observationFixture={available:true,active:true,queries:20,blocked:4,verification:{state:'idle'}};
-  const inputBefore=find('az-domain');inputBefore.focus();commands.length=0;
+  const inputBefore=find('az-pause-duration');inputBefore.focus();commands.length=0;
   await poll.tick();
   check(text(find('az-live-metrics')).includes('20.0%'),'scheduled poll updates counters without page refresh');
-  check(find('az-domain')===inputBefore&&active===inputBefore&&!commands.length,'live poll preserves typing and never calls full status or reload');
+  check(find('az-pause-duration')===inputBefore&&active===inputBefore&&!commands.length,'live poll preserves input focus and never calls full status or reload');
   const startBefore=find('az-test-start');startBefore.focus();await poll.tick();
   check(find('az-test-start')===startBefore&&active===startBefore,'unchanged detection panel keeps keyboard focus');
   let scope=nodes(root,n=>(n.attrs.class||'')==='az-stat-scope')[0];scope.open=true;scope.events.toggle({target:scope});
@@ -386,7 +388,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(find('az-live-health')).includes('2 条命中规则')&&observationFixture.blocked===4,'positive rule hits are diagnosed without inflating blocked counter');
   observationFixture.current={matched_positive:0};await poll.tick();
   check(text(find('az-live-health')).includes('收到新的拦截应答'),'idle block count has a clear explanation');
-  await app.setRecent(true);
+  await app.openControls();await app.setRecent(true);
   check(!commands.length&&text(find('az-live-recent')).includes('停止并清空'),'recent opt-in does not restart DNS, proxy or filtering');
   observationFixture.recent={enabled:true,remaining:298,items:[{domain:'ads.example',count:2,qtypes:[1,28]}]};await poll.tick();
   const recentButton=nodes(find('az-live-recent'),n=>n.tag==='button'&&text(n)==='检查并放行')[0];
@@ -397,7 +399,30 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(commands.includes('lookup')&&!commands.includes('allow')&&app.domainInput==='ads.example','recent shortcut checks canonical scope before exposing explicit allow');
   commands.length=0;await app.setRecent(false);
   check(!text(find('az-live-recent')).includes('ads.example')&&!commands.length,'stop immediately hides domains without any network lifecycle action');
+  const controlInput=find('az-control-input');controlInput.focus();await poll.tick();
+  check(find('az-control-input')===controlInput&&active===controlInput,'live controls polling preserves custom domain typing');
+  await app.stageControls('blocked','custom.example\nsecond.example');
+  check(!commands.length&&app.controlCount()===2,'multiple custom domains are staged without backend calls');
+  check(find('az-controls-apply')&&!find('az-controls-apply').disabled,'one explicit apply is available for the batch');
+  await app.applyControls();
+  check(commands.filter(v=>v==='controls_apply').length===1&&state.policy.blocked.length===2&&!app.controlDraft,'batch custom domains use one job and reconcile canonical state');
+  find('az-controls-search').events.input({target:{value:'second'}});
+  check(text(find('az-control-list')).includes('second.example')&&!text(find('az-control-list')).includes('custom.example'),'custom rule search filters domain list');
+  app.controlSearch='';await app.stageControls('allowed','custom.example');
+  check(app.controlDraft.after.allowed.includes('custom.example')&&!app.controlDraft.after.blocked.includes('custom.example'),'switching exact rule type removes its conflicting old choice');
+  rpcStale=true;await app.applyControls();
+  check(app.controlCount()>0&&app.notice.kind==='error','RPC success cannot erase an unapplied custom rule draft');rpcStale=false;
+  find('az-controls-discard').events.click();
+  await app.stageControls('blocked','example\n*.bad.example');
+  check(!app.controlDraft&&app.notice.kind==='error','invalid multi-line additions leave the entire draft unchanged');
   root=null;await poll.tick();check(!pollCallbacks.size&&!listeners.size,'leaving mounted page removes poll and visibility listener');
+  reset({state:'configured_unverified'});await app.initialObservationRequest;
+  observationFixture={available:true,active:true,queries:10,blocked:4,verification:{state:'idle'}};await poll.tick();commands.length=0;
+  check(!find('az-live-recent')&&!find('az-domain')&&!find('az-update'),'overview omits moved access controls and duplicate filtering card');
+  await app.resetStats();
+  check(app.observation.queries===0&&app.observation.blocked===0&&!commands.length&&text(root).includes('统计已清零'),'clear waits for collector receipt and changes no filtering lifecycle');
+  const resetButton=find('az-stats-reset');resetButton.focus();await poll.tick();
+  check(resetButton===find('az-stats-reset')&&active===resetButton,'unchanged live poll preserves reset-button focus');
   reset({compatibility:{dns:{active_proxy_count:2,active_proxies:['nailink','passwall']}}});
   check(text(root).includes('NaiLink / daed、PassWall')&&find('az-toggle').disabled,'real conflict names both proxies');
   reset({compatibility:{dns:{active_proxy_count:1,active_proxies:['passwall'],uncertain_proxies:[]}}});

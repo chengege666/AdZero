@@ -1,0 +1,232 @@
+{
+  "source_sha256": "243742c80e0f395985e07c82a102ba97cd32ba99566be730ee50219085638dec",
+  "native_init_commit": "e553e82e01c697aefbe1555261a503f425e00ccd",
+  "native_init_blob": "7bc7e7568c74c197668ddf6372c7013de2baf152",
+  "core": "v1.19.32",
+  "checks": 24,
+  "native_safe_paths": "SAFE_PATHS=/usr/share/openclash:/etc/ssl",
+  "missing_safe_paths_reproduced": true,
+  "inherited_safe_paths_overridden": true,
+  "outside_path_rejected_and_restored": true,
+  "unicode_strategy_labels": true,
+  "ruby_json_installed": false,
+  "cases": [
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.11
+    },
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.11
+    },
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.11
+    },
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.11
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.022
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.022
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.022
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.022
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.023
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.023
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.023
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.023
+    }
+  ],
+  "scope": "Native rc.common + extracted OpenClash quick-start/hook stages + real Mihomo DNS; no firewall or router test"
+}

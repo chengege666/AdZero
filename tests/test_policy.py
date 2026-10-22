@@ -139,3 +139,60 @@ class PolicyTest(unittest.TestCase):
         self.run_policy('pause-begin','900');self.run_policy('is-paused',ok=False)
         self.run_policy('pause-begin','1800',ok=False)
         self.run_policy('pause-stage','recovery_required');self.run_policy('is-paused',ok=False)
+
+    def control_input(self,allowed=None,blocked=None):
+        before={k:self.status()[k] for k in ('allowed','blocked')}
+        return str(self.write('controls.json',json.dumps({'before':before,'after':{'allowed':allowed or [],'blocked':blocked or []}})))
+
+    def test_batch_controls_preserve_external_rules_and_restore_ownership(self):
+        config=self.root/'etc/config/adblock-fast'
+        config.write_text(config.read_text()+" list blocked_domain 'original-block.example'\n")
+        self.run_policy('begin-controls',self.control_input(['ads.example'],['custom.example','other-custom.example']))
+        self.assertEqual(self.status()['blocked'],['custom.example','other-custom.example'])
+        self.assertTrue(self.status()['pending'])
+        self.run_policy('confirm');self.run_policy('finish');self.run_policy('validate')
+        self.assertIn('custom.example',config.read_text());self.assertIn('original-block.example',config.read_text())
+        self.run_policy('restore')
+        self.assertNotIn('custom.example',config.read_text());self.assertIn('original-block.example',config.read_text())
+        self.assertEqual(self.status()['blocked'],['custom.example','other-custom.example'])
+        self.run_policy('has-allowed')
+
+    def test_controls_rollback_restores_both_lists_and_retains_journal_until_finish(self):
+        original=(self.root/'etc/config/adblock-fast').read_text()
+        self.run_policy('begin-controls',self.control_input(['ads.example'],['custom.example']))
+        self.run_policy('rollback');self.run_policy('rollback')
+        self.assertEqual(self.status()['blocked'],[]);self.assertEqual(self.status()['allowed'],[])
+        self.assertIn('original.example',(self.root/'etc/config/adblock-fast').read_text())
+        self.assertNotIn('custom.example',(self.root/'etc/config/adblock-fast').read_text())
+        self.assertTrue(self.status()['pending']);self.run_policy('finish');self.assertFalse(self.status()['pending'])
+
+    def test_disabled_controls_save_choices_without_touching_external_backend(self):
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '0'\n")
+        config=self.root/'etc/config/adblock-fast';before=config.read_bytes()
+        path=self.control_input(['future.example'],['custom.example'])
+        self.run_policy('begin-controls',path);self.run_policy('finish')
+        self.assertEqual(config.read_bytes(),before);self.assertEqual(self.status()['blocked'],['custom.example'])
+
+    def test_controls_reject_stale_overlapping_and_parent_scope_without_writes(self):
+        for allowed,blocked in [(['sub.ads.example'],[]),(['ads.example'],['sub.ads.example']),(['*.example'],[])]:
+            with self.subTest(allowed=allowed):
+                before=(self.root/'etc/config/adblock-fast').read_bytes()
+                self.run_policy('begin-controls',self.control_input(allowed,blocked),ok=False)
+                self.assertFalse(self.status()['pending']);self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+        path=self.control_input([],['custom.example'])
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n list blocked_domain 'external.example'\n")
+        self.run_policy('begin-controls',path,ok=False)
+
+    def test_custom_block_mirror_refuses_external_overwrite(self):
+        self.run_policy('begin-controls',self.control_input([],['custom.example']));self.run_policy('finish')
+        config=self.root/'etc/config/adblock-fast';config.write_text(config.read_text().replace('custom.example','external-edit.example'))
+        before=config.read_bytes();self.run_policy('validate',ok=False);self.run_policy('restore',ok=False)
+        self.assertEqual(config.read_bytes(),before)
+
+    def test_removing_last_custom_rules_can_rollback_after_mirrors_are_removed(self):
+        self.run_policy('begin-controls',self.control_input(['ads.example'],['custom.example']));self.run_policy('finish')
+        self.run_policy('begin-controls',self.control_input([],[]))
+        self.assertFalse((self.root/'etc/adzero/allow-state.json').exists())
+        self.assertFalse((self.root/'etc/adzero/block-state.json').exists())
+        self.run_policy('rollback');self.run_policy('validate');self.run_policy('finish')
+        self.assertEqual(self.status()['allowed'],['ads.example']);self.assertEqual(self.status()['blocked'],['custom.example'])

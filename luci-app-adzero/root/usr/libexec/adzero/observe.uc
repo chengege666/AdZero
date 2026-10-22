@@ -35,6 +35,14 @@ if(action=='recent-start'||action=='recent-stop'){
 		state.atomic(dir+'/recent.json',request);print('{"ok":true}\n');
 	}catch(e){print(sprintf('%J\n',{ok:false,message:e.message}));}exit(0);
 }
+if(action=='reset-stats'){
+	try{
+		let current=state.snapshot(),now=state.monotime();if(!current.available)die('统计组件未就绪，暂时无法清零。');
+		let nonce=replace(trim(fs.readfile('/proc/sys/kernel/random/uuid')??''),/-/g,'');if(!match(nonce,/^[a-f0-9]{32}$/))die('无法创建清零请求。');
+		state.atomic(dir+'/reset.json',{schema:1,nonce,boot:current.boot,requested:now});
+		print(sprintf('%J\n',{ok:true,token:nonce}));
+	}catch(e){print(sprintf('%J\n',{ok:false,message:e.message}));}exit(0);
+}
 if(action!='collect')exit(2);
 const device=shift(ARGV),loop=require('uloop'),uci=cursor(root+'/etc/config');
 let recent=wire.recent(),tracker=wire.tracker((d,now)=>recent.event(d,now,time())),generation='',previous='',loaded='',rules={},active=false,verification=null,test=null,sample=null;
@@ -45,6 +53,7 @@ let prior=state.read(dir+'/status.json',16384);
 if(match(boot,/^[a-f0-9-]{36}$/)&&prior?.boot==boot){
 	for(let name in keys(tracker.counts))if(type(prior[name])=='int'&&prior[name]>=0&&prior[name]<9007199254740991)tracker.counts[name]=prior[name];
 	if(type(prior.started)=='int'&&prior.started>0&&prior.started<=time())result.started=prior.started;
+	if(match(prior.reset_token??'',/^[a-f0-9]{32}$/))result.reset_token=prior.reset_token;
 }
 result.boot=boot;
 const outputs={'dnsmasq.servers':'/var/run/adblock-fast/dnsmasq.servers','dnsmasq.addnhosts':'/var/run/adblock-fast/dnsmasq.addnhosts','smartdns.domainset':'/var/run/adblock-fast/smartdns.domainset','unbound.adb_list':'/var/lib/unbound/adb_list.adblock-fast'};
@@ -78,6 +87,8 @@ function refresh(){
 }
 function tick(){
 	let now=state.monotime();
+	let reset=state.read(dir+'/reset.json',2048);
+	if(state.reset_request(reset,boot,now)&&reset.nonce!=result.reset_token){tracker.reset();result.reset_token=reset.nonce;result.started=time();}
 	try{let reason=refresh();if(reason)result.reason=reason;else delete result.reason;}catch(e){active=false;tracker.configure({},'',false);result.reason='rules_unavailable';}
 	let recording=state.read(dir+'/recent.json',2048);
 	if(active&&state.recent_request(recording,generation,now))recent.configure(recording.nonce,recording.deadline,now);else recent.configure(null,0,now);

@@ -44,10 +44,13 @@ r=Path(os.environ['ADZERO_POLICY_ROOT']); output=r/'var/run/adblock-fast/dnsmasq
 service={'dnsmasq':{'instances':{'test':{'running':True}}}}
 if sys.argv[1] != 'stop':
  (r/'last-start-method').write_text(sys.argv[1])
+ with (r/'start-events').open('a') as f: f.write(sys.argv[1]+'\\n')
  flag=r/'fail-backend-once'
  if flag.exists(): flag.unlink(); sys.exit(2)
  values=subprocess.check_output([os.environ['ADZERO_UCI'],'-q','get','adblock-fast.config.allowed_domain'],text=True).split()
  domains=['ads.example','tracker.example','sub.ads.example']
+ blocked=subprocess.run([os.environ['ADZERO_UCI'],'-q','get','adblock-fast.config.blocked_domain'],text=True,capture_output=True)
+ domains.extend(blocked.stdout.split())
  # Optional DNS-domain subscription fixtures exercise the production source ->
  # backend output -> adapter pipeline without downloading or restarting a router.
  downloads=r/'source-downloads.json'
@@ -211,3 +214,44 @@ print(json.dumps(result))
         self.ctl('allow','login.ads.example','example',ok=False)
         self.assertEqual(before,(self.root/'etc/config/adblock-fast').read_bytes())
         self.assertEqual(self.status()['state'],'configured_unverified')
+
+    def apply_controls_input(self,allowed,blocked):
+        current=self.status()['policy']
+        return str(self.write('controls.json',json.dumps({'before':{k:current[k] for k in ['allowed','blocked']},'after':{'allowed':allowed,'blocked':blocked}})))
+
+    def test_custom_domain_batch_updates_backend_and_adapter_once_then_noop(self):
+        self.ctl('enable')
+        starts=len((self.root/'start-events').read_text().splitlines())
+        path=self.apply_controls_input(['ads.example'],['custom.example','second.example'])
+        self.ctl('controls-apply',path)
+        self.assertEqual(self.query('sub.custom.example')['match'],'parent')
+        self.assertEqual(self.query('ads.example')['match'],'allowed')
+        self.assertIn('custom.example',(self.root/'etc/passwall/rules/block_host').read_text())
+        self.assertEqual(len((self.root/'start-events').read_text().splitlines()),starts+1)
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.ctl('controls-apply',self.apply_controls_input(['ads.example'],['custom.example','second.example']))
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+        self.assertEqual(len((self.root/'start-events').read_text().splitlines()),starts+1)
+        self.ctl('disable');self.ctl('enable')
+        self.assertEqual(self.query('custom.example')['match'],'exact')
+
+    def test_custom_domain_batch_failure_restores_rule_output_and_adapter(self):
+        self.ctl('enable');prior=self.status()['policy'];self.write('fail-backend-once','')
+        self.ctl('controls-apply',self.apply_controls_input([],['custom.example']),ok=False)
+        self.assertEqual(self.status()['policy']['blocked'],prior['blocked'])
+        self.assertEqual(self.query('custom.example')['match'],'none')
+        self.assertFalse(self.status()['policy']['pending'])
+
+    def test_custom_domain_batch_can_be_saved_before_enable(self):
+        self.ctl('controls-apply',self.apply_controls_input([],['custom.example']))
+        self.assertEqual(self.status()['state'],'disabled')
+        self.ctl('enable');self.assertEqual(self.query('custom.example')['match'],'exact')
+
+    def test_custom_controls_refuse_insecure_fetch_override_before_writing(self):
+        self.ctl('enable');path=self.apply_controls_input([],['custom.example'])
+        config=self.root/'etc/config/adblock-fast'
+        subprocess.run([self.env['ADZERO_UCI'],'set','adblock-fast.config.curl_additional_param=--insecure'],env=self.env,check=True)
+        subprocess.run([self.env['ADZERO_UCI'],'commit','adblock-fast'],env=self.env,check=True)
+        before=config.read_bytes();reply=self.ctl('controls-apply',path,ok=False)
+        self.assertIn('不安全',reply.stderr)
+        self.assertEqual(config.read_bytes(),before);self.assertEqual(self.status()['policy']['blocked'],[])

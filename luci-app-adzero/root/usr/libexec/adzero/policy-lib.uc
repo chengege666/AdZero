@@ -28,6 +28,16 @@ export function list(value) {
 	for (let item in value) { item = hostname(item); if (index(result, item) < 0) push(result, item); }
 	return sort(result);
 };
+export function controls(raw) {
+	if(type(raw)!='string'||length(raw)>100000)die('访问控制内容无效或过大。');
+	let p;try{p=json(raw);}catch(e){die('访问控制内容不是有效 JSON。');}
+	for(let part in ['before','after']){
+		if(type(p?.[part])!='object'||type(p[part].allowed)!='array'||type(p[part].blocked)!='array')die('访问控制名单不完整。');
+		p[part]={allowed:list(p[part].allowed),blocked:list(p[part].blocked)};
+	}
+	for(let a in p.after.allowed)for(let b in p.after.blocked)if(covers(a,b)||covers(b,a))die('放行与拦截的域名范围重叠，请先移除冲突规则。');
+	return {before:p.before,after:p.after};
+};
 export function lookup(domain, rules, allowed, suffix) {
 	domain = hostname(domain);
 	for (let item in allowed) if (covers(item, domain)) return {domain, match:'allowed', rule:item, scope:item};

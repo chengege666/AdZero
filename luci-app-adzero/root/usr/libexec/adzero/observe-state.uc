@@ -13,6 +13,7 @@ export function atomic(path,data){
 	let size=f.write(raw),closed=f.close();if(size!=length(raw)||!closed||!fs.rename(temp,path)){fs.unlink(temp);die('state_write');}
 };
 export function recent_request(request,generation,now){return request?.schema==1&&request.enabled===true&&match(request.nonce??'',/^[a-f0-9]{32}$/)&&request.generation==generation&&request.deadline>now&&request.deadline<=now+301;};
+export function reset_request(request,boot,now){return request?.schema==1&&request.boot==boot&&match(request.nonce??'',/^[a-f0-9]{32}$/)&&index(['int','double'],type(request.requested))>=0&&request.requested>=0&&request.requested<=now&&now-request.requested<=15;};
 export function snapshot(){
 	let value=read(directory+'/status.json',16384),now=monotime();
 	if(!value||value.schema!=1||value.updated>now||now-value.updated>12)return {available:false,reason:value?'stopped':'not_started',verification:{state:'idle'}};

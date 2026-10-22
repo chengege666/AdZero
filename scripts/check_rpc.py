@@ -119,7 +119,7 @@ pause) echo source_download > "$ADZERO_JOB_CONTEXT/reason"; exit 1;;
    sleep 2
    echo 'private-backend-token-not-for-browser';;
  source-add) sleep 2;;
- settings-apply)
+ settings-apply|controls-apply)
    [ -f "$2" ] || exit 1
    cat "$2" > /tmp/received-batch.json
    sleep 2;;
@@ -217,6 +217,12 @@ esac
                 assert not (base/'tmp/long-operation.lock').exists(),'detached worker did not release lock'
                 private=(base/'tmp/adzero-jobs'/receipt['job']/'log').read_text()
                 assert 'private-backend-token' in private and 'private-backend' not in json.dumps(receipt)
+            controls={'before':{'allowed':[],'blocked':[]},'after':{'allowed':['allow.example'],'blocked':['block.example','second.example']}}
+            receipt=call('controls_apply',{'payload':json.dumps(controls)})
+            assert finished(receipt)['ok']
+            assert json.loads((base/'tmp/received-batch.json').read_text())==controls
+            assert not (base/'tmp/adzero-jobs'/receipt['job']/'input').exists()
+            assert not call('controls_apply',{'payload':json.dumps({**controls,'after':{'allowed':['example.org'],'blocked':['sub.example.org']}})})['ok']
             # Interrupted record detection uses a process with the exact job id.
             lost=base/'tmp/adzero-jobs'/str(uuidlib.uuid4());lost.mkdir()
             (lost/'worker').write_text('999999')
@@ -235,12 +241,14 @@ esac
             assert not call('verification_start',{})['ok'],'missing observer cannot claim a test started'
             assert not call('recent_set',{'enabled':True})['ok'],'missing observer cannot record'
             assert call('recent_set',{'enabled':False})['ok'],'stop and clear works with observer unavailable'
+            assert not call('stats_reset',{})['ok'],'unavailable collector cannot claim a reset'
             acl=json.loads((base/'usr/share/rpcd/acl.d/luci-app-adzero.json').read_text())['luci-app-adzero']
             assert 'recent_set' in acl['write']['ubus']['adzero'] and 'recent_set' not in acl['read']['ubus']['adzero']
+            assert all(method in acl['write']['ubus']['adzero'] and method not in acl['read']['ubus']['adzero'] for method in ['stats_reset','controls_apply'])
             assert not (base/'tmp/service-was-called').exists(),'observation invoked network lifecycle'
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':55,'observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
+                    'checks':61,'controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

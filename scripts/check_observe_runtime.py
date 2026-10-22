@@ -186,7 +186,19 @@ def main():
             query('allowed-by-path.example',205)
             value=wait_for(lambda s:s.get('queries')==11 and s.get('current',{}).get('matched_positive')==1)
             assert value['blocked']==6 and value['current']['blocked']==0,value
-            report={'native':'OpenWrt 24.10.8 tcpdump-mini/ucode/uloop/dnsmasq','queries':11,'blocked':6,'udp_tcp':'passed','terminal_challenge':'passed','large_journal_bytes':journal_path.stat().st_size,'stage_offset':stage_offset,'recovery_then_resume_counts':'passed','test_queries_excluded':True,'config_invalidates_receipt':True,'same_boot_restart_preserves_counts':True,'unconfirmed_configuration_not_counted':True,'live_passwall_metadata':'passed','recent_opt_in_stop_expiry':'passed','positive_rule_hit_not_counted_as_block':'passed','scope':'isolated namespace; netifd interface discovery fixture; not a router/LAN certificate'}
+            collector_before=json.loads((base/'tmp/adzero-observe/status.json').read_text())['pid']
+            reset=json.loads(run('/usr/libexec/adzero/observe','reset-stats').stdout);assert reset['ok'],reset
+            value=wait_for(lambda s:s.get('reset_token')==reset['token'])
+            assert value['queries']==0 and value['blocked']==0 and value['current']['queries']==0,value
+            assert json.loads((base/'tmp/adzero-observe/status.json').read_text())['pid']==collector_before,'reset restarted collector'
+            query('doubleclick.net',300);query('www.baidu.com',301);query('doubleclick.net',302,tcp=True)
+            value=wait_for(lambda s:s.get('queries')==3 and s.get('blocked')==2)
+            time.sleep(1.2);assert status()['queries']==3,'same reset request was applied twice'
+            procs[-1].terminate();procs[-1].wait(timeout=4)
+            procs.append(subprocess.Popen(['chroot',temp,'/usr/libexec/adzero/observe','run'],stdout=log,stderr=log))
+            value=wait_for(lambda s:s.get('available') and s.get('active'))
+            assert value['queries']==3 and value['blocked']==2 and value['reset_token']==reset['token'],value
+            report={'source_sha256':__import__('build_sdk').source_hash(ROOT/'luci-app-adzero'),'reset_without_restart':True,'reset_request_applied_once':True,'same_boot_restart_preserves_reset':True,'queries_after_reset':3,'blocked_after_reset':2,'native':'OpenWrt 24.10.8 tcpdump-mini/ucode/uloop/dnsmasq','queries':11,'blocked':6,'udp_tcp':'passed','terminal_challenge':'passed','large_journal_bytes':journal_path.stat().st_size,'stage_offset':stage_offset,'recovery_then_resume_counts':'passed','test_queries_excluded':True,'config_invalidates_receipt':True,'same_boot_restart_preserves_counts':True,'unconfirmed_configuration_not_counted':True,'live_passwall_metadata':'passed','recent_opt_in_stop_expiry':'passed','positive_rule_hit_not_counted_as_block':'passed','scope':'isolated namespace; netifd interface discovery fixture; not a router/LAN certificate'}
             print(json.dumps(report,indent=2));(ROOT/'artifacts/runtime/observe-result.json').write_text(json.dumps(report,indent=2)+'\n')
         finally:
             for p in reversed(procs):p.terminate()

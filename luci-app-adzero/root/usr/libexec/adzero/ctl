@@ -661,6 +661,37 @@ require_active() {
 	backend_confirm ready || error '当前规则未就绪，请重新检测。'
 	"$SOURCES" cache-sync || error '下载快照检查失败，请重新检测。'
 }
+change_controls() {
+	verify_supported
+	reject_insecure_custom_fetch_flags
+	policy_clean || error '有未完成的恢复记录，请先关闭并恢复。'
+	[ ! -e "$STATE_DIR/pause.json" ] || error '请先恢复保护或保持关闭，再应用访问控制。'
+	active=0
+	if [ -f "$MANAGED_MARKER" ]; then require_active; active=1
+	else
+		[ "$(get_uci adzero.main.enabled)" = 0 ] && [ "$(get_uci adblock-fast.config.enabled)" = 0 ] || error '后端正由其他服务管理。'
+		[ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ] || error '存在未完成恢复记录。'
+	fi
+	plan=$("$POLICY" controls-check "$1") || error '访问控制预检失败，尚未应用。'
+	[ "$plan" != 0 ] || { printf 'no control changes\n'; return 0; }
+	[ "$plan" = 1 ] || error '访问控制计划无效。'
+	if "$POLICY" begin-controls "$1"; then
+		if [ "$active" = 0 ] || { backend_rebuild_if_changed && "$ADAPTER" apply; }; then
+			"$POLICY" finish || error '访问控制已应用，但完成记录清理失败。'
+			printf 'access controls applied\n'; return 0
+		fi
+	fi
+	if "$POLICY" pending; then
+		retain_pending_reload
+		"$POLICY" rollback || error '访问控制恢复遇到并发修改，记录已保留。'
+		if [ "$active" = 0 ] || { backend_restart dl && "$ADAPTER" apply; }; then
+			"$POLICY" finish || error '旧名单已恢复，但记录未能清理。'
+			error '访问控制未应用，已恢复原名单。'
+		fi
+		error '访问控制与恢复尚未完成，记录已保留。'
+	fi
+	error '访问控制尚未应用，请检查名单。'
+}
 change_allow() {
 	require_active
 	# Journal intent before UCI writes; both backend and adapter must succeed.
@@ -722,6 +753,7 @@ case "$1" in
 	source-refresh) acquire_lock source-refresh; change_sources refresh ;;
 	reload) acquire_lock reload; reload_current ;;
 	settings-apply) acquire_lock settings-apply; apply_settings "$2" ;;
+	controls-apply) acquire_lock controls-apply; change_controls "$2" ;;
 	enable) acquire_lock enable; enable_protection ;;
 	disable) acquire_lock disable; disable_protection ;;
 	refresh) acquire_lock refresh; refresh_blocklists ;;
