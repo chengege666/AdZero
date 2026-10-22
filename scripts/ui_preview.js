@@ -30,7 +30,7 @@ let observerFixture={available:true,active:true,queries:8420,blocked:1154,answer
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
-  if(spec.method==='observation')return {ok:true,data:{...structuredClone(observerFixture),active:state.state==='configured_unverified'}};
+  if(spec.method==='observation')return {ok:true,data:document.getElementById('scenario').value==='observer-pending'?{available:true,active:false,queries:0,blocked:0,reason:'adapter_pending',verification:{state:'idle'}}:{...structuredClone(observerFixture),active:state.state==='configured_unverified'}};
   if(spec.method==='verification_start'){
     observerFixture.verification={state:'waiting',remaining:120,marker:false,blocked:false,normal:false};
     setTimeout(()=>{observerFixture.verification={state:'passed',client:'192.168.2.10',at:Math.floor(Date.now()/1000)};},6000);

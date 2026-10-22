@@ -11,6 +11,7 @@ from pathlib import Path
 import shlex
 import struct
 import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,8 +65,10 @@ def pcap(*packets, little=True, link=1):
 
 @unittest.skipUnless(UCODE,'set ADZERO_UCODE to a real OpenWrt ucode runtime')
 class ObserveTest(unittest.TestCase):
-    def run_code(self,operation,success=True,**data):
-        result=subprocess.run(UCODE+[str(ROOT/'scripts/observe_transform.uc')],input=json.dumps({'operation':operation,**data}),text=True,capture_output=True)
+    def run_code(self,operation,success=True,observer_root=None,**data):
+        env={**os.environ}
+        if observer_root is not None:env['ADZERO_OBSERVER_ROOT']=str(observer_root)
+        result=subprocess.run(UCODE+[str(ROOT/'scripts/observe_transform.uc')],input=json.dumps({'operation':operation,**data}),env=env,text=True,capture_output=True)
         self.assertEqual(result.returncode==0,success,result.stderr)
         return json.loads(result.stdout) if success else None
 
@@ -148,3 +151,61 @@ class ObserveTest(unittest.TestCase):
         events[2]['to']='192.168.2.99'
         result=self.track(events,test)
         self.assertFalse(result['test'].get('blocked',False))
+
+    def journal(self,plugin='nailink',stage='configured_unverified'):
+        # Same order used by adapter.uc: files precede flags and stage.
+        return {'schema':1,'plugin':plugin,'files':[{'path':'/etc/daed/adzero-geosite.dat','kind':'owned','before':None,'after':'A'*131072}], 'flags':[],'stage':stage}
+
+    def contexts(self,steps):
+        with tempfile.TemporaryDirectory(prefix='adzero-observe-context-') as root:
+            (Path(root)/'etc/adzero').mkdir(parents=True)
+            return self.run_code('adapter-context',observer_root=root,steps=steps)
+
+    def test_adapter_stage_after_large_provider_is_found_for_each_plugin(self):
+        steps=[]
+        for plugin in ('nailink','passwall','openclash','nikki','none'):
+            raw=json.dumps(self.journal(plugin))
+            self.assertGreater(raw.index('"stage"'),1024)
+            steps.append({'raw':raw})
+        result=self.contexts(steps)
+        self.assertTrue(all(v['stage']=='configured_unverified' and v['reason'] is None for v in result['values']))
+        self.assertEqual(result['reads'],5)
+
+    def test_large_journal_metadata_is_cached_instead_of_reparsed_each_tick(self):
+        result=self.contexts([{'raw':json.dumps(self.journal()),'repeat':1000}])
+        self.assertEqual(result['reads'],1)
+        self.assertEqual(len(result['values']),1000)
+
+    def test_atomic_journal_replacement_invalidates_cached_stage(self):
+        result=self.contexts([{'raw':json.dumps(self.journal(stage=stage)),'repeat':2} for stage in ('preparing','configured_unverified','restoring','configured_unverified')])
+        self.assertEqual([v['stage'] for v in result['values']],['preparing']*2+['configured_unverified']*2+['restoring']*2+['configured_unverified']*2)
+        self.assertEqual(result['reads'],4)
+
+    def test_nested_stage_or_quoted_stage_cannot_override_root_recovery_stage(self):
+        journal=self.journal(stage='recovery_required');journal['files'][0].update(stage='configured_unverified',before='"stage":"configured_unverified"')
+        result=self.contexts([{'raw':json.dumps(journal)}])['values'][0]
+        self.assertEqual(result['reason'],'adapter_pending')
+        self.assertEqual(result['stage'],'recovery_required')
+
+    def test_invalid_journal_fails_closed_and_is_not_reparsed_each_tick(self):
+        for raw in ('not json',json.dumps({'schema':1,'plugin':'nailink','files':{},'stage':'configured_unverified'})):
+            result=self.contexts([{'raw':raw,'repeat':5}])
+            self.assertEqual(result['reads'],1)
+            self.assertTrue(all(v['reason']=='adapter_state_invalid' for v in result['values']))
+
+    def test_absent_or_removed_journal_does_not_block_direct_dns_statistics(self):
+        result=self.contexts([{}, {'raw':json.dumps(self.journal())}, {'remove':True}])
+        self.assertEqual(result['values'][0],{'present':False})
+        self.assertEqual(result['values'][2],{'present':False})
+        self.assertEqual(result['reads'],1)
+
+    def test_world_readable_or_symlink_journal_is_not_read(self):
+        for kind in ('permissions','symlink'):
+            with tempfile.TemporaryDirectory() as root:
+                path=Path(root)/'etc/adzero/adapter.json';path.parent.mkdir(parents=True)
+                source=path if kind=='permissions' else path.with_name('target.json')
+                source.write_text(json.dumps(self.journal()));source.chmod(0o644 if kind=='permissions' else 0o600)
+                if kind=='symlink':path.symlink_to(source)
+                result=self.run_code('adapter-context',observer_root=root,steps=[{}])
+                self.assertEqual(result['reads'],0)
+                self.assertEqual(result['values'][0]['reason'],'adapter_state_invalid')

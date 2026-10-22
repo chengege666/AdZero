@@ -36,13 +36,16 @@ if(match(boot,/^[a-f0-9-]{36}$/)&&prior?.boot==boot){
 }
 result.boot=boot;
 const outputs={'dnsmasq.servers':'/var/run/adblock-fast/dnsmasq.servers','dnsmasq.addnhosts':'/var/run/adblock-fast/dnsmasq.addnhosts','smartdns.domainset':'/var/run/adblock-fast/smartdns.domainset','unbound.adb_list':'/var/lib/unbound/adb_list.adblock-fast'};
+const adapter_context=state.adapter_context();
 function refresh(){
 	uci.unload('adzero');uci.unload('adblock-fast');
 	let mode=uci.get('adblock-fast','config','dns'),path=outputs[mode],file=path?fs.stat(root+path):null,config=fs.stat(root+'/etc/config/adzero');
 	let source=join('|',[path??'',file?.inode??0,file?.mtime??0,file?.size??0]),journal=fs.stat(root+'/etc/adzero/adapter.json');
 	let signature=join('|',[source,config?.inode??0,config?.mtime??0,config?.size??0,journal?.inode??0,journal?.mtime??0,journal?.size??0]);
-	let enabled=uci.get('adzero','main','enabled')=='1'&&uci.get('adblock-fast','config','enabled')=='1'&&!!fs.stat(root+'/etc/adzero/managed')&&!!file?.size;
-	if(journal){let f=fs.open(root+'/etc/adzero/adapter.json','r'),header=f?f.read(1024):'';if(f)f.close();let stage=match(header??'',/"stage"[[:space:]]*:[[:space:]]*"([^"]+)"/);if(stage?.[1]!='configured_unverified')enabled=false;}
+	let reason=uci.get('adzero','main','enabled')!='1'?'protection_disabled':uci.get('adblock-fast','config','enabled')!='1'?'backend_disabled':!fs.stat(root+'/etc/adzero/managed')?'not_managed':!path?'unsupported_resolver':!file?.size?'rules_unavailable':null;
+	let context=adapter_context();
+	if(!reason&&context.present)reason=context.reason;
+	let enabled=!reason;
 	if(signature!=previous||enabled!=active){
 		if(enabled&&source!=loaded){
 			let list=cache.load(root+path,mode,root);rules={};for(let name in list)rules[name]=true;loaded=source;
@@ -51,10 +54,11 @@ function refresh(){
 		generation=replace(trim(fs.readfile('/proc/sys/kernel/random/uuid')??''),/-/g,'');previous=signature;active=enabled;
 		verification=null;test=null;tracker.configure(rules,generation,active);
 	}
+	return reason;
 }
 function tick(){
 	let now=state.monotime();
-	try{refresh();delete result.reason;}catch(e){active=false;tracker.configure({},'',false);result.reason='rules_unavailable';}
+	try{let reason=refresh();if(reason)result.reason=reason;else delete result.reason;}catch(e){active=false;tracker.configure({},'',false);result.reason='rules_unavailable';}
 	let requested=state.read(dir+'/test.json',2048);
 	if(requested?.generation==generation&&match(requested.nonce??'',/^[a-f0-9]{32}$/)&&requested.deadline>now&&requested.deadline<=now+125){
 		if(test?.nonce!=requested.nonce){test=requested;verification=null;tracker.verification(test);}

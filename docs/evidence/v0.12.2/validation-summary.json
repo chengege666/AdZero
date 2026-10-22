@@ -1,0 +1,16 @@
+{
+  "version": "0.12.2",
+  "source_sha256": "70074dbebca9f1e51cee9f0a9bde7bb38744a8c5038dfdc1c0537ca1117a54e5",
+  "root_cause": "1 KiB prefix missed top-level adapter stage after large provider data",
+  "fix": "private structured JSON read cached per atomic file identity; inactive reasons and honest counters",
+  "native_regression_tests": 344,
+  "observer_tests_included": 20,
+  "ui_assertions": 159,
+  "rpc_checks": 52,
+  "sdk_builds": 3,
+  "payload_files_per_package": 37,
+  "release_delivery_checks": 6,
+  "actual_capture": "native OpenWrt UDP/TCP queries 6, blocked 3; 2 MiB journal; recover/resume; challenge excluded",
+  "browser": "production view with native DOM and simulated RPC; inactive message and automatic readiness refresh checked",
+  "device_acceptance": "pending on user router; no router access in this run"
+}

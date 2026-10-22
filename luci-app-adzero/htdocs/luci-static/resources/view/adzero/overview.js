@@ -155,18 +155,24 @@ function sourceChoice(i) { return {id:i._new?null:i.id,name:i.name,url:i.url,for
 function sourceKey(i) { return i._key || i.id; }
 function defaultDNS() {return {domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}};}
 function sameDNS(a,b) {return JSON.stringify(a||defaultDNS())===JSON.stringify(b||defaultDNS());}
+function observationHint(o,s) {
+	if(!o.available)return _('统计组件尚未就绪');
+	if(!flags(s).enabled)return flags(s).paused?_('保护已暂停，统计已暂停'):_('开启或恢复保护后可检测');
+	var reasons={protection_disabled:_('保护状态待同步，统计未开始'),backend_disabled:_('过滤后端尚未就绪，统计未开始'),not_managed:_('过滤接入尚未确认，统计未开始'),unsupported_resolver:_('当前 DNS 模式暂不支持统计'),rules_unavailable:_('等待有效规则，统计未开始'),adapter_pending:_('代理接入尚未完成，统计暂未开始'),adapter_state_invalid:_('接入状态读取异常，统计暂未开始'),adapter_changing:_('接入正在更新，统计稍后自动开始')};
+	return reasons[o.reason]||_('过滤已开启，统计状态待确认');
+}
 return view.extend({
 	busy: null, currentStatus: null, lastChecked: null, notice: null, domainInput: '', domainResult: null, pauseSeconds: 300,
 	observation:null, observationBusy:false, verificationCommands:'', verificationNotice:null, networkOpen:false,
 	draft: null, applyingDraft: null,
 	renderMetrics:function(s){
-		var o=this.observation||{},available=o.available===true,ready=flags(s).enabled&&(s.backend||{}).state==='ready';
+		var o=this.observation||{},available=o.available===true,hasCounts=available&&(o.active===true||o.queries>0),ready=flags(s).enabled&&(s.backend||{}).state==='ready';
 		var active=names[(s.adapter||{}).plugin]||_('路由器 DNS'),ratio=available&&o.queries>0?(100*o.blocked/o.queries).toFixed(1)+'%':'—';
 		return el('div',{'class':'az-stats-grid az-live-grid'},[
 			el('section',{'class':'az-card az-stat az-stat-accent'},[el('span',{'class':'az-stat-label'},_('已拦截 DNS 请求')),
-				el('strong',{'class':'az-number'},number(available?o.blocked:null)),el('p',{},available?_('拦截比例 ')+ratio:_('统计组件尚未就绪'))]),
+				el('strong',{'class':'az-number'},number(hasCounts?o.blocked:null)),el('p',{},available&&o.active?_('拦截比例 ')+ratio:observationHint(o,s))]),
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('已观察 DNS 请求')),
-				el('strong',{'class':'az-number'},number(available?o.queries:null)),el('p',{},_('本次开机 · 局域网明文 DNS'))]),
+				el('strong',{'class':'az-number'},number(hasCounts?o.queries:null)),el('p',{},available&&!o.active&&o.queries>0?_('本次开机累计 · 当前统计已暂停'):_('本次开机 · 局域网明文 DNS'))]),
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('规则域名')),
 				el('strong',{'class':'az-number'},number(ready?s.backend.domains:null)),el('p',{},_('当前加载的有效域名'))]),
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('当前接入')),
@@ -175,7 +181,7 @@ return view.extend({
 	},
 	renderVerification:function(){
 		var self=this,o=self.observation||{},v=o.verification||{},passed=o.available&&o.active&&flags(self.currentStatus||{}).enabled&&!(self.currentStatus||{}).stale&&v.state==='passed',waiting=o.available&&v.state==='waiting';
-		var title=passed?_('此设备检测通过'):waiting?_('等待电脑发出检测查询'):!o.available?_('统计组件尚未就绪，广告过滤可继续使用。'):!o.active?_('开启或恢复保护后可检测'):v.state==='expired'?_('检测已过期，可重新开始'):_('确认实际过滤效果');
+		var title=passed?_('此设备检测通过'):waiting?_('等待电脑发出检测查询'):!o.available?_('统计组件尚未就绪，广告过滤可继续使用。'):!o.active?observationHint(o,self.currentStatus||{}):v.state==='expired'?_('检测已过期，可重新开始'):_('确认实际过滤效果');
 		return el('section',{'class':'az-card az-verification-card'},[
 			el('div',{'class':'az-section-heading'},[el('div',{},[el('h3',{},_('效果检测')),el('p',{'class':'az-card-copy'},title)]),
 				el('button',{id:'az-test-start',type:'button','class':'az-button '+(passed?'az-button-quiet':'az-button-primary'),disabled:self.observationBusy||self.busy||!flags(self.currentStatus||{}).enabled||!o.available||!o.active||waiting?true:null,click:function(){return self.startVerification();}},self.observationBusy?_('准备中…'):passed?_('再次检测'):_('开始检测'))]),
@@ -623,7 +629,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.12.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.12.2' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {

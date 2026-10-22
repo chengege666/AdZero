@@ -1,0 +1,10 @@
+{
+  "fixture": "actual ctl/backend output/adapter serializer; backend and NaiLink API are isolated fixtures",
+  "state": "configured_unverified",
+  "backend_state": "ready",
+  "top_level_stage": "configured_unverified",
+  "journal_bytes": 121574,
+  "stage_offset": 120463,
+  "old_observer_header_finds_stage": false,
+  "rule_count": 4099
+}

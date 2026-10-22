@@ -61,6 +61,15 @@ def main():
         (base/'etc/config/adblock-fast').write_text("config adblock-fast 'config'\n option enabled '1'\n option dns 'dnsmasq.servers'\n")
         (base/'etc/adzero/managed').write_text('1\n')
         (base/'var/run/adblock-fast/dnsmasq.servers').write_text('server=/doubleclick.net/\n')
+        # Real adapter serialization puts potentially large provider strings
+        # before the top-level stage. The original 1 KiB prefix missed it.
+        journal={'schema':1,'plugin':'nailink','files':[{'path':'/etc/daed/adzero-geosite.dat','kind':'owned','before':None,'after':'A'*2097152}],'flags':[],'stage':'configured_unverified'}
+        journal_path=base/'etc/adzero/adapter.json'
+        def replace_journal(stage):
+            journal['stage']=stage;temp=journal_path.with_suffix('.next')
+            temp.write_text(json.dumps(journal));temp.chmod(0o600);temp.replace(journal_path)
+        replace_journal('configured_unverified')
+        stage_offset=journal_path.read_text().index('"stage"');assert stage_offset>1024
         # Only netifd discovery is a fixture. Capture, packets, DNS responses,
         # timers, UCI, process lifecycle and state files are native binaries.
         (base/'bin/ubus').write_text('#!/bin/sh\necho \'{"l3_device":"lo"}\'\n');(base/'bin/ubus').chmod(0o755)
@@ -119,11 +128,16 @@ def main():
             procs.append(subprocess.Popen(['chroot',temp,'/usr/libexec/adzero/observe','run'],stdout=log,stderr=log))
             value=wait_for(lambda s:s.get('available') and s.get('active'))
             assert value['queries']==4 and value['blocked']==2,value
-            (base/'etc/adzero/adapter.json').write_text('{"schema":1,"stage":"recovery_required"}')
+            replace_journal('recovery_required')
             wait_for(lambda s:s.get('available') and not s.get('active'))
+            assert status()['reason']=='adapter_pending'
             query('doubleclick.net',150)
             time.sleep(1.1);value=status();assert value['queries']==4 and value['blocked']==2,value
-            report={'native':'OpenWrt 24.10.8 tcpdump-mini/ucode/uloop/dnsmasq','queries':4,'blocked':2,'udp_tcp':'passed','terminal_challenge':'passed','test_queries_excluded':True,'config_invalidates_receipt':True,'same_boot_restart_preserves_counts':True,'unconfirmed_configuration_not_counted':True,'scope':'isolated namespace; netifd interface discovery fixture; not a router/LAN certificate'}
+            replace_journal('configured_unverified')
+            wait_for(lambda s:s.get('available') and s.get('active'))
+            query('doubleclick.net',151);query('www.baidu.com',152)
+            value=wait_for(lambda s:s.get('queries')==6 and s.get('blocked')==3)
+            report={'native':'OpenWrt 24.10.8 tcpdump-mini/ucode/uloop/dnsmasq','queries':6,'blocked':3,'udp_tcp':'passed','terminal_challenge':'passed','large_journal_bytes':journal_path.stat().st_size,'stage_offset':stage_offset,'recovery_then_resume_counts':'passed','test_queries_excluded':True,'config_invalidates_receipt':True,'same_boot_restart_preserves_counts':True,'unconfirmed_configuration_not_counted':True,'scope':'isolated namespace; netifd interface discovery fixture; not a router/LAN certificate'}
             print(json.dumps(report,indent=2));(ROOT/'artifacts/runtime/observe-result.json').write_text(json.dumps(report,indent=2)+'\n')
         finally:
             for p in reversed(procs):p.terminate()

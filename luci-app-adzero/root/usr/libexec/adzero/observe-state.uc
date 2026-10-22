@@ -18,3 +18,31 @@ export function snapshot(){
 	if(!match(value.pid??'',/^[1-9][0-9]*$/)||index(split(fs.readfile('/proc/'+value.pid+'/cmdline')??'','\x00'),root+'/usr/libexec/adzero/observe.uc')<0)return {available:false,reason:'stopped',verification:{state:'idle'}};
 	return value;
 };
+
+// The recovery journal places provider data before its top-level stage. That
+// field can be megabytes into the file; a prefix regex is not a JSON reader.
+// Keep only small metadata, and decode private data once per atomic replacement.
+export function adapter_context(reader){
+	reader??=fs.readfile;
+	let cached_key=null,cached=null;
+	function identity(s){return join('|',[s?.inode??0,s?.mtime??0,s?.ctime??0,s?.size??0,s?.mode??0,s?.uid??-1]);}
+	return function(){
+		let path=root+'/etc/adzero/adapter.json',s=fs.lstat(path);
+		if(!s){cached_key=null;cached=null;return {present:false};}
+		let key=identity(s);
+		if(key==cached_key)return cached;
+		let value={present:true,reason:'adapter_state_invalid'};
+		if(s.type=='file'&&s.uid==fs.stat('/proc/self')?.uid&&!(s.mode&0077)&&s.size>0&&s.size<=67108864){
+			try{
+				let raw=reader(path,67108865);
+				if(raw!=null&&length(raw)==s.size){
+					let data=json(raw);
+					if(data?.schema==1&&type(data.plugin)=='string'&&length(data.plugin)&&type(data.files)=='array'&&type(data.stage)=='string')
+						value={present:true,stage:data.stage,reason:data.stage=='configured_unverified'?null:'adapter_pending'};
+				}
+			}catch(e){}
+		}
+		if(identity(fs.lstat(path))!=key)return {present:true,reason:'adapter_changing'};
+		cached_key=key;cached=value;return value;
+	};
+};

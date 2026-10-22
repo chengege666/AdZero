@@ -317,6 +317,12 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset({state:'configured_unverified'});await app.initialObservationRequest;
   check(text(find('az-live-metrics')).includes('统计组件尚未就绪'),'unavailable counter is explained instead of inventing zero');
   check(find('az-test-start').disabled,'verification needs a live, active observer');
+  observationFixture={available:true,active:false,queries:0,blocked:0,reason:'adapter_pending',verification:{state:'idle'}};
+  await app.refreshObservation();
+  check(text(find('az-live-verification')).includes('代理接入尚未完成')&&!text(find('az-live-verification')).includes('开启或恢复保护后可检测'),'active protection with pending observer is not mislabelled as disabled protection');
+  check(nodes(find('az-live-metrics'),n=>n.tag==='strong').slice(0,2).every(n=>text(n)==='—'),'observer that has never counted cannot display a misleading zero');
+  observationFixture.queries=100;observationFixture.blocked=18;await app.refreshObservation();
+  check(text(find('az-live-metrics')).includes('18')&&text(find('az-live-metrics')).includes('当前统计已暂停'),'paused observation keeps labelled same-boot historical counts');
   observationFixture={available:true,active:true,queries:100,blocked:18,answered:95,verification:{state:'idle'}};
   await app.refreshObservation();
   check(text(find('az-live-metrics')).includes('18.0%')&&text(find('az-live-metrics')).includes('66,425'),'blocked-request ratio and rule count are distinct');
