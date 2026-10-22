@@ -200,6 +200,7 @@ class AdapterTransactionTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which("ruby"), "real Ruby YAML parser required")
     def test_openclash_hook_yaml_anchors_preserved_and_reverted(self):
         self.select("openclash")
+        self.write("etc/config/openclash", "config openclash 'config'\n option config_path '/etc/openclash/config/config.yaml'\n")
         custom = self.write("etc/openclash/custom/openclash_custom_overwrite.sh", "#!/bin/sh\n# custom settings\nexit 0\n")
         base = self.write("etc/openclash/source.yaml", 'dns:\n  enable: true\n  enhanced-mode: fake-ip\n  fake-ip-filter: ["+.lan"]\nproxies: &proxies []\nother-proxies: *proxies\nrules: ["MATCH,DIRECT"]\n')
         run = self.root / "etc/openclash/config.yaml"

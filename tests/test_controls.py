@@ -108,6 +108,7 @@ names=[s.strip() for s in (r/'etc/passwall/rules/block_host').read_text().splitl
             run = self.write('etc/nikki/run/config.yaml', base.read_text())
             self.write('etc/init.d/nikki', '#!/bin/sh\nyq -o=json eval-all \'. as $item ireduce ({}; . * $item ) | .rules = .nikki-rules + .rules | del(.nikki-rules)\' '+shlex.join([str(base),str(mixin)])+' > '+shlex.quote(str(run))+'\n')
         if plugin == 'openclash':
+            self.write('etc/config/openclash', "config openclash 'config'\n option config_path '/etc/openclash/config/config.yaml'\n")
             custom = self.write('etc/openclash/custom/openclash_custom_overwrite.sh', '#!/bin/sh\n# original\nexit 0\n')
             base = self.write('etc/openclash/source.yaml', 'dns:\n  enable: true\n  enhanced-mode: fake-ip\n  fake-ip-filter: ["+.lan"]\nrules: ["MATCH,DIRECT"]\n')
             run = self.root/'etc/openclash/config.yaml'

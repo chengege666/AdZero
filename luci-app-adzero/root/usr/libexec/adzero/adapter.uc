@@ -24,6 +24,7 @@ let transaction_saved = false;
 let clear_nailink_pending, nailink_completed, rules_signature;
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
+let openclash_error = 'hook_failed';
 const native_runtime={passwall:proxy.dns_runtime(root,'passwall'),ssrplus:proxy.dns_runtime(root,'ssrplus')};
 
 function quote(s) { return "'" + replace(s, /'/g, "'\\''") + "'"; }
@@ -107,6 +108,26 @@ function wait_native_dns(){
 	return value;
 }
 
+function openclash_paths() {
+	let source=uci.get('openclash','config','config_path');
+	if(type(source)!='string'||substr(source,0,22)!='/etc/openclash/config/'||index(source,'..')>=0)
+		die('OpenClash selected configuration path is unavailable');
+	let name=substr(source,22);
+	if(!match(name,/^[^\/\r\n]+[.]ya?ml$/)||substr(name,0,1)=='.')die('Unexpected OpenClash configuration filename');
+	return {temporary:'/tmp/'+name,generated:'/etc/openclash/'+name};
+}
+const openclash_errors={
+	target:'OpenClash supplied an unexpected generated configuration path',
+	dns_disabled:'OpenClash DNS is disabled; automatic adapter is unavailable',
+	core_missing:'OpenClash requires its Mihomo/Meta core',
+	core_rejected:'OpenClash core rejected the adapted configuration',
+	hook_failed:'OpenClash custom configuration hook failed'
+};
+function openclash_failure(reason) {
+	progress.failure(reason=='dns_disabled'?'openclash_dns':reason=='core_missing'||reason=='core_rejected'?'openclash_core':'openclash_hook');
+	die(openclash_errors[reason]??openclash_errors.hook_failed);
+}
+
 function setting(config, section, option, value) {
 	if (length(uci.changes(config)?.[config] ?? [])) die('配置有其他页面的未提交修改，拒绝一并提交。');
 	let entry;
@@ -138,11 +159,23 @@ function yaml(path, engine) {
 	if (!length(trim(text ?? ''))) return {};
 	let data;
 	if (engine == 'nikki') data = capture(['yq', '-o=json', '.', path]);
-	else data = capture(['ruby', '-ryaml', '-rjson', '-e', 'puts JSON.generate(YAML.safe_load(File.read(ARGV[0]), aliases: true))', path]);
+	// Psych already ships JSON emission with ruby-yaml. OpenClash does not
+	// depend on the separate ruby-json package; avoid a hidden dependency.
+	else data = capture(['ruby', '-ryaml', '-e', 'puts YAML.to_json(YAML.safe_load(File.read(ARGV[0]), aliases: true))', path]);
 	let value = json(data);
 	if (value == null) return {};
 	if (type(value) != 'object') die('Expected a YAML mapping');
 	return value;
+}
+function confirm_openclash() {
+	let config=yaml(root+openclash_paths().generated,'openclash'),provider=config['rule-providers']?.['adzero-dns'];
+	let filter_rule=config.dns?.['fake-ip-filter-mode']=='rule'?'RULE-SET,adzero-dns,real-ip':'rule-set:adzero-dns';
+	if(config.dns?.enable!=true||provider?.type!='file'||provider?.behavior!='domain'||
+		index(['/etc/openclash/rule_provider/adzero.txt','./rule_provider/adzero.txt'],provider?.path)<0||
+		!same(config.dns?.['nameserver-policy']?.['rule-set:adzero-dns'],['rcode://name_error'])||
+		index(config.dns?.['fake-ip-filter']??[],filter_rule)<0||index(config.rules??[],'RULE-SET,adzero-dns,REJECT')<0)
+		openclash_failure('hook_failed');
+	if(journal.split&&(config.mode!='rule'||index(config.rules??[],'RULE-SET,adzero-cn-domain,DIRECT')<0))openclash_failure('hook_failed');
 }
 function graphql(query, variables, readiness) {
 	let operation = index(query, 'run(dry:false)') >= 0 ? 'reload' :
@@ -226,6 +259,7 @@ function active_plugin() {
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
 	if (!length(active)) return 'none';
 	if (index(['nailink','passwall','openclash','nikki','ssrplus'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
+	if(active[0].id=='openclash')openclash_paths();
 	if(active[0].id=='ssrplus'){
 		if(split_enabled&&action!='routing-check')die('SSR Plus+ 当前支持广告过滤；请先关闭 AdZero 自动分流，保留 SSR Plus+ 原生分流。');
 		let helper=fs.readfile(root+'/usr/share/shadowsocksr/gfw2ipset.sh',1048577)??'';
@@ -386,7 +420,15 @@ function restart(plugin) {
 			return; // restore persisted settings without starting a stopped proxy
 		}
 	}
-	if (plugin == 'openclash' && journal?.stage == 'restarting') fs.unlink(state_dir + '/openclash-hook.json');
+	if (plugin == 'openclash') {
+		// OpenClash passes /tmp/<selected basename>.yaml to its custom hook,
+		// then moves it to /etc/openclash. Provider-only changes are absent
+		// from its quick-start manifest: invalidate that generated cache on
+		// apply AND restore, so neither can silently keep the previous rules.
+		openclash_paths();
+		fs.unlink(root+'/tmp/openclash.change');
+		if(journal?.stage=='restarting')fs.unlink(state_dir+'/openclash-hook.json');
+	}
 	if (system(service_command(plugin,'restart'), 120000) != 0) die('Proxy restart failed');
 	if(native_runtime[plugin]&&journal?.stage=='restarting'){
 		let value=wait_native_dns();
@@ -403,10 +445,18 @@ function restart(plugin) {
 	if (plugin == 'openclash' && journal?.stage == 'restarting') {
 		let ready = false;
 		for (let attempt = 0; attempt < 45; attempt++) {
-			if (fs.readfile(state_dir + '/openclash-hook.json') == '' + journal.generation) { ready = true; break; }
+			let raw=fs.readfile(state_dir+'/openclash-hook.json'),receipt;
+			try { receipt=raw?json(raw):null; } catch(e) { receipt=null; }
+			if(receipt?.generation==journal.generation){
+				if(receipt.state=='failed')openclash_failure(receipt.reason);
+				if(receipt.state=='ready'){ready=true;break;}
+			}
 			sleep(1000);
 		}
-		if (!ready) die('OpenClash did not confirm its generated DNS configuration');
+		if (!ready) { progress.failure('openclash_confirmation');die('OpenClash did not confirm its generated DNS configuration'); }
+		// User overwrite calls and native provider-path normalization run after
+		// our hook. Confirm the final generated file, not only the hook receipt.
+		confirm_openclash();
 	}
 	if (plugin == 'nikki' && journal?.stage == 'restarting') {
 		let actual = yaml(root + '/etc/nikki/run/config.yaml', 'nikki');
@@ -449,6 +499,7 @@ function apply_plugin(plugin, list) {
 		tracked(path, base + (substr(base, -1) == '\n' || !length(base) ? '' : '\n') + lib.block(join('\n', list)), 'block', 0644);
 		setting('passwall', section, 'use_block_list', '1');
 	} else if (plugin == 'openclash' || plugin == 'nikki') {
+		if(plugin=='openclash')openclash_paths();
 		let provider = plugin == 'nikki' ? '/etc/nikki/run/providers/rule/adzero.txt' : '/etc/openclash/rule_provider/adzero.txt';
 		tracked(root + provider, join('\n', map(list, s => '+.' + s)) + '\n', 'owned', 0644);
 		if (plugin == 'openclash') {
@@ -776,21 +827,27 @@ try {
 	else if (action == 'check') { print(active_plugin() + '\n'); }
 	else if (action == 'hook-openclash') {
 		let path = shift(ARGV);
-		if (!journal || journal.plugin != 'openclash' || !path || substr(path, 0, 15) != '/etc/openclash/' || index(path, '..') >= 0) die('Unexpected OpenClash hook target');
+		openclash_error='target';
+		if(!journal||journal.plugin!='openclash')die('Unexpected OpenClash hook target');
+		let paths=openclash_paths();
+		// Bind temporary-file access to the selected subscription; never allow
+		// arbitrary /tmp paths, traversal or links to user configuration files.
+		if(index([paths.temporary,paths.generated],path)<0||fs.lstat(root+path)?.type!='file')die('Unexpected OpenClash hook target');
+		openclash_error='hook_failed';
 		let config = yaml(root + path, 'openclash');
-		if (config.dns?.enable != true) die('OpenClash DNS is disabled; automatic adapter is unavailable');
+		if (config.dns?.enable != true) { openclash_error='dns_disabled';die(openclash_errors.dns_disabled); }
 		if (config['rule-providers']?.['adzero-dns'] && config['rule-providers']['adzero-dns'].path != '/etc/openclash/rule_provider/adzero.txt') die('Reserved OpenClash rule provider already exists');
 		config = lib.mihomo(config, '/etc/openclash/rule_provider/adzero.txt', false);
 		if(journal.split){let result=route.mihomo(config,'/etc/openclash/rule_provider/adzero-cn-domains.txt','/etc/openclash/rule_provider/adzero-cn-ips.txt',dns_profile);config=result.config;}
 		let core = root + '/etc/openclash/core/clash_meta';
-		if (!fs.access(core, 'x')) die('OpenClash requires its Mihomo/Meta core');
+		if (!fs.access(core, 'x')) { openclash_error='core_missing';die(openclash_errors.core_missing); }
 		let temporary = root + path + '.adzero-check';
 		atomic(temporary, sprintf('%J', config) + '\n');
 		let command = join(' ', map([core, '-t', '-d', root + '/etc/openclash', '-f', temporary], quote));
 		let rc = system(command + ' >/dev/null 2>&1', 30000);
-		if (rc != 0) { fs.unlink(temporary); die('OpenClash core rejected the adapted configuration'); }
+		if (rc != 0) { fs.unlink(temporary);openclash_error='core_rejected';die(openclash_errors.core_rejected); }
 		if (!fs.rename(temporary, root + path)) die('Cannot commit generated OpenClash configuration');
-		atomic(state_dir + '/openclash-hook.json', '' + journal.generation);
+		atomic(state_dir+'/openclash-hook.json',sprintf('%J',{generation:journal.generation,state:'ready'}));
 	} else if (action == 'apply') {
 		progress.stage('adapting');
 		if (journal && journal.stage != 'configured_unverified') die('Adapter recovery is pending; disable protection first');
@@ -842,8 +899,14 @@ try {
 		}
 	} else die('Usage: adapter {check|apply|remove|status|hook-openclash PATH}');
 } catch (e) {
+	if(action=='hook-openclash')progress.failure(openclash_error=='dns_disabled'?'openclash_dns':openclash_error=='core_missing'||openclash_error=='core_rejected'?'openclash_core':'openclash_hook');
 	progress.failure('adapter');
-	if (action == 'hook-openclash' && journal) { journal.stage = 'recovery_required'; save(); }
+	if(action=='hook-openclash'&&journal?.plugin=='openclash') {
+		// The native init script suppresses hook stderr. Preserve only fixed
+		// diagnostics, not subscription contents or core output, for the caller.
+		atomic(state_dir+'/openclash-hook.json',sprintf('%J',{generation:journal.generation,state:'failed',reason:openclash_error}));
+		journal.stage='recovery_required';save();
+	}
 	fs.stderr.write('AdZero DNS adapter: ' + e.message + '\n');
 	exit(1);
 }

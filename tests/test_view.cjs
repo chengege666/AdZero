@@ -79,7 +79,7 @@ const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
   return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
 } };
 const app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', 'sessionStorage', 'setTimeout', source)(
-  { extend: x => x }, api, { content: (target, children) => { target.children = children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, poll,session,fn=>queueMicrotask(fn));
+  { extend: x => x }, api, { content: (target, children) => { target.children = Array.isArray(children)?children.map(x=>x==null?String(x):x):children; } }, x => x, E, doc, { resource: x => '/luci-static/resources/' + x }, rpc, poll,session,fn=>queueMicrotask(fn));
 function reset(overrides = {}) {
   state = { state: 'disabled', managed: false, dns_mode_safe: true, resolver: 'dnsmasq.servers', client_dns_verified: false,
     policy:{allowed:[],pause:null,routing_enabled:false}, force_dns: 'off', tls_download: 'strict', backend: { state: 'ready', domains: 66425, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified' },
@@ -330,6 +330,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   observationFixture={available:true,active:false,queries:0,blocked:0,reason:'adapter_pending',verification:{state:'idle'}};
   await app.refreshObservation();
   check(text(find('az-live-verification')).includes('代理接入尚未完成')&&!text(find('az-live-verification')).includes('开启或恢复保护后可检测'),'active protection with pending observer is not mislabelled as disabled protection');
+  check(text(find('az-live-health'))===''&&!text(root).includes('null'),'inactive observer never renders literal null during live polling');
   check(nodes(find('az-live-metrics'),n=>n.tag==='strong').slice(0,2).every(n=>text(n)==='—'),'observer that has never counted cannot display a misleading zero');
   observationFixture.queries=100;observationFixture.blocked=18;await app.refreshObservation();
   check(text(find('az-live-metrics')).includes('18')&&text(find('az-live-metrics')).includes('当前统计已暂停'),'paused observation keeps labelled same-boot historical counts');
@@ -350,6 +351,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   observationFailure=true;await app.refreshObservation();
   check(!text(find('az-live-verification')).includes('此设备检测通过'),'lost observation never preserves a current verification claim');
   check(text(find('az-live-metrics')).includes('统计组件尚未就绪'),'stats outage cannot look like a zero-hit result');
+  check(text(find('az-live-health'))===''&&!text(root).includes('null'),'observer outage clears the previous health text without a null node');
   reset({state:'configured_unverified'});await app.initialObservationRequest;
   check(pollCallbacks.size===1,'immediate LuCI registration before mount must not cancel automatic refresh');
   observationFixture={available:true,active:true,queries:20,blocked:4,verification:{state:'idle'}};

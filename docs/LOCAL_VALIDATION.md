@@ -1,3 +1,13 @@
+# v0.14.1 OpenClash 开启与更新修复
+
+用户回传确认 OpenClash 是唯一活动代理，AdZero 因没有配置生成回执而撤销开启。修复了原生 `/tmp/<配置名>.yaml` 路径不被接受、快速启动跳过 provider 更新、隐藏的 ruby-json 依赖和统计区域 `null`；同时核对钩子之后的最终配置。详见 [OpenClash 修复记录](OPENCLASH_FIX.md)。
+
+- 386 项 OpenWrt 原生 Python 回归、189 项界面断言全部通过，无跳过；55 项真实 rpcd 检查通过。
+- 24 组隔离 OpenClash 原生快速启动/钩子阶段与真实 Mihomo DNS 检查通过，覆盖两种 DNS 模式、UDP/TCP、A/AAAA、规则增删和关闭恢复；环境只有 OpenClash 已依赖的 ruby-yaml，没有 ruby-json。
+- 三个官方 SDK 构建、每包 38 个文件检查与六项 LF/CRLF 安装交接检查通过。浏览器采用原生 LuCI DOM/Poll 与模拟 RPC，检查初始统计不可用、采集失败及恢复均不显示 `null`，并保留焦点和后台暂停行为。
+
+包目录 SHA-256：`180ead468722402e62411817175c595c12b71b937480bed06f97cc7bea6988f1`。完整证据见 [evidence/v0.14.1](evidence/v0.14.1/)。本轮没有连接用户路由器，完整 OpenClash 防火墙与真实节点不在隔离检查范围。
+
 # v0.14.0 原生服务重载与 DNS 加载检查
 
 用户回传确认：规则已在 PassWall 的 block_host，实际运行的 11400 DNS 却未包含规则目录；原生重启后恢复目录，用户报告过滤恢复。本轮隔离复现确认，旧调用 sh /etc/init.d/passwall restart 返回零，但没有经过 rc.common 调度，未执行重启函数。修正保留解释器参数，并覆盖 OpenClash、Nikki 和无代理 dnsmasq 的同类调用。

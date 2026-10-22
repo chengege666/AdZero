@@ -1,0 +1,13 @@
+{
+  "version": "0.14.1",
+  "source_sha256": "180ead468722402e62411817175c595c12b71b937480bed06f97cc7bea6988f1",
+  "native_tests": 386,
+  "ui_assertions": 189,
+  "sdk_builds": 3,
+  "payload_files": 38,
+  "delivery_checks": 6,
+  "rpc_checks": 55,
+  "openclash_dns_combinations": 24,
+  "router": "not_connected",
+  "scope": "OpenWrt userspace and native OpenClash hook stages plus real Mihomo DNS in isolated network; no full OpenClash firewall or real proxy nodes"
+}

@@ -378,6 +378,7 @@ p.write_text(json.dumps(data));print(json.dumps(out))
     @unittest.skipUnless(shutil.which('ruby'),'real Ruby required')
     def test_openclash_generated_config_contains_dns_and_connection_rules(self):
         self.select('openclash')
+        self.write('etc/config/openclash', "config openclash 'config'\n option config_path '/etc/openclash/config/config.yaml'\n")
         custom=self.write('etc/openclash/custom/openclash_custom_overwrite.sh','#!/bin/sh\nexit 0\n')
         base=self.write('etc/openclash/source.json',json.dumps({'mode':'global','dns':{'enable':True,'nameserver':['8.8.8.8']},'proxy-groups':[{'name':'My Proxy','type':'select','proxies':['node']}],'rules':['DOMAIN,user.example,DIRECT','MATCH,My Proxy']}))
         run=self.root/'etc/openclash/config.yaml';self.write('etc/openclash/core/clash_meta','#!/bin/sh\nexit 0\n').chmod(0o755)

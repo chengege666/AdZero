@@ -268,7 +268,7 @@ return view.extend({
 			if(panel!==self.panelNode || !document.contains(panel))return;
 			var metrics=document.getElementById('az-live-metrics'),verification=document.getElementById('az-live-verification'),recent=document.getElementById('az-live-recent'),health=document.getElementById('az-live-health');
 			if(metrics)dom.content(metrics,[self.renderMetrics(self.currentStatus||{})]);
-			if(health)dom.content(health,[self.renderObservationHealth()]);
+			if(health){var healthContent=self.renderObservationHealth();dom.content(health,healthContent==null?[]:[healthContent]);}
 			if(recent&&self.recentPaintKey!==recentKey(self)&&(!document.activeElement||!recent.contains(document.activeElement)||!((self.observation||{}).recent||{}).enabled))dom.content(recent,[self.renderRecent()]);
 			var expiry=document.getElementById('az-recent-expiry');if(expiry)dom.content(expiry,[_('剩余 ')+number(((self.observation||{}).recent||{}).remaining)+_(' 秒 · 最多 30 个域名')]);
 			// Preserve command selection while waiting, but always show the final
@@ -710,7 +710,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.14.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.14.1' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);

@@ -44,6 +44,7 @@ jobs:
           sudo python3 scripts/check_rpc.py
           sudo python3 scripts/check_proxy_runtime.py
           sudo python3 scripts/check_passwall_runtime.py
+          sudo python3 scripts/check_openclash_runtime.py
           sudo python3 scripts/check_observe_runtime.py
           sudo python3 scripts/check_source_cache.py
           sudo python3 scripts/check_nailink_gateway.py

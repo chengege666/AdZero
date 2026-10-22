@@ -1,0 +1,43 @@
+{
+  "source_sha256": "7fab139e21345f59d85426b76f6c5602ac8e5717d11bf10284f00e20c053904e",
+  "scheduler_sha256": "52767c88428aa9e3eea9be8ee88011dda82faeb9553abb3243bbea9e56582782",
+  "checks": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "documentWidth": 1440,
+      "automatic_reads": 10,
+      "scheduled_native_poll": true,
+      "inactive_health_no_null": true,
+      "observer_failure_no_null": true,
+      "input_preserved": true,
+      "hidden_suspended": true,
+      "visible_refreshed": true,
+      "no_full_state_or_reload": true,
+      "leave_cleanup": true,
+      "conflict_names": true,
+      "recent_opt_in_and_clear": true,
+      "recent_scope_checked": true,
+      "live_connection": true
+    },
+    {
+      "name": "mobile",
+      "width": 360,
+      "documentWidth": 360,
+      "automatic_reads": 10,
+      "scheduled_native_poll": true,
+      "inactive_health_no_null": true,
+      "observer_failure_no_null": true,
+      "input_preserved": true,
+      "hidden_suspended": true,
+      "visible_refreshed": true,
+      "no_full_state_or_reload": true,
+      "leave_cleanup": true,
+      "conflict_names": true,
+      "recent_opt_in_and_clear": true,
+      "recent_scope_checked": true,
+      "live_connection": true
+    }
+  ],
+  "scope": "Chromium; production LuCI view and native DOM/Poll; simulated RPC; no router connection"
+}
