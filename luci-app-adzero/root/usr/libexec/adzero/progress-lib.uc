@@ -1,11 +1,11 @@
 'use strict';
 // Public task metadata is a fixed vocabulary. Never forward private log text.
 import * as fs from 'fs';
-export const stages=['queued','waiting_lock','checking','downloading','validating','processing','adapting','restarting','restoring','verifying'];
+export const stages=['queued','waiting_lock','checking','downloading','validating','processing','adapting','restarting','confirming_proxy','restoring','verifying'];
 export const messages={
 	config_conflict:'配置有其他未保存的编辑或已经变化。请重新读取并核对；规则数量统计不会阻止应用。',
 	nailink_auth:'NaiLink 后端授权未通过。请通过原生服务重启刷新本机授权，再关闭并恢复 AdZero。',
-	nailink_gateway:'NaiLink 重载请求超时，完成状态尚未确认。已保留记录并阻止再次修改；请先核对或重启 NaiLink 原生服务。',
+	nailink_gateway:'NaiLink 重载请求未确认，本批规则与恢复记录已保留，后台会继续核对。请勿重复提交；旧版遗留记录需先重启 NaiLink 原生服务再关闭恢复。',
 	lock_busy:'另一项操作仍在进行，等待操作锁超时。请核对当前任务后重试。',
 	source_download:'规则下载失败，已停止应用。请检查该订阅的 HTTPS 地址与网络。',
 	source_format:'下载内容未通过规则格式校验，原有选择未被替换。',

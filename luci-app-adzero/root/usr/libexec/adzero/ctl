@@ -137,6 +137,7 @@ backend_restart() {
 	"$SOURCES" cache-save >/dev/null 2>&1 || :
 }
 reload_current() {
+	if adapter_reload_pending; then finish_pending_reload; printf 'confirmed previous proxy reload\n'; return 0; fi
 	require_active
 	reject_insecure_custom_fetch_flags
 	policy_clean || error '存在未完成恢复记录，请先关闭并恢复。'
@@ -186,6 +187,22 @@ policy_clean() {
 sources_clean() {
 	sources_rc=0; "$SOURCES" pending >/dev/null 2>&1 || sources_rc=$?
 	[ "$sources_rc" = 1 ]
+}
+adapter_reload_pending() {
+	[ "$("$ADAPTER" pending 2>/dev/null)" = nailink ]
+}
+retain_pending_reload() {
+	if adapter_reload_pending; then
+		public_failure nailink_gateway
+		error '代理重载尚未确认；保留本批规则和后端，后台将继续核对，不提交第二次重载。'
+	fi
+}
+finish_pending_reload() {
+	# Completion is tied to a native version barrier, exact profiles, owned
+	# files, backend input and dataplane readiness; running=true is insufficient.
+	"$SOURCES" confirm && "$POLICY" confirm && "$ADAPTER" settle || error '代理重载尚未确认，恢复记录已保留。'
+	if ! sources_clean; then "$SOURCES" finish || error '已确认重载，但规则完成记录未能清理。'; fi
+	"$POLICY" finish && "$POLICY" routing-finish || error '已确认重载，但策略完成记录未能清理。'
 }
 json_bool() {
 	if [ "$1" = 1 ]; then printf true; else printf false; fi
@@ -336,6 +353,7 @@ restore_force_dns() {
 	esac
 }
 rollback_enable() {
+	adapter_reload_pending && return 1
 	old_enabled=$1
 	"$ADAPTER" remove || return 1
 	"$POLICY" restore || return 1
@@ -432,6 +450,10 @@ enable_protection() {
 		error '状态保存失败，回滚未确认，请检查状态。'
 	fi
 	if ! "$ADAPTER" apply; then
+		if adapter_reload_pending; then
+			[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero start
+			retain_pending_reload
+		fi
 		rollback_enable "$previous" && error '代理 DNS 适配失败，原配置已恢复。'
 		error '代理 DNS 适配失败，恢复未完成；备份已保留。'
 	fi
@@ -510,6 +532,7 @@ change_sources() {
 		fi
 	fi
 	if ! sources_clean; then
+		retain_pending_reload
 		"$SOURCES" rollback || error '规则恢复遇到并发修改，恢复记录已保留。'
 		if [ "$active" = 0 ] || { backend_restart dl && "$ADAPTER" apply; }; then
 			"$SOURCES" discard || error '旧规则已恢复，但记录清理失败。'
@@ -553,6 +576,7 @@ apply_settings() {
 		if [ "$applied" = 1 ]; then "$SOURCES" finish || error '更改已应用，但完成记录未能清理。'; return 0; fi
 	fi
 	if ! sources_clean; then
+		retain_pending_reload
 		"$SOURCES" rollback || error '批量恢复遇到并发修改，恢复记录已保留。'
 		restored=0
 		if [ "$active" = 0 ]; then restored=1
@@ -592,6 +616,7 @@ change_routing() {
 			"$POLICY" routing-finish || error '分流已应用，但完成记录未能清理。'
 			printf 'routing preference synchronized with one proxy reload\n'; return 0
 		fi
+		retain_pending_reload
 		if "$POLICY" routing-rollback && "$ADAPTER" apply; then
 			"$POLICY" routing-finish || error '原配置已恢复，但切换记录未清理。'
 			error '自动分流切换未完成，已恢复原配置。'
@@ -628,6 +653,7 @@ change_allow() {
 		return 0
 	fi
 	if "$POLICY" pending; then
+		retain_pending_reload
 		if "$POLICY" rollback && backend_restart dl && "$ADAPTER" apply; then
 			"$POLICY" finish || error '已恢复旧名单，完成记录清理失败。'
 			error '放行操作未完成，已恢复原名单。'
@@ -689,6 +715,7 @@ case "$1" in
 			if [ -e "$STATE_DIR/pause.json" ]; then
 				if "$POLICY" pause-due; then resume_protection; fi
 			else
+				if adapter_reload_pending; then finish_pending_reload || exit 1; fi
 				policy_clean && backend_confirm ready && "$ADAPTER" apply
 			fi
 		fi ;;

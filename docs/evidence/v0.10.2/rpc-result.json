@@ -1,0 +1,30 @@
+{
+  "runtime": "pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot",
+  "source_sha256": "df694c9c010ccc0b54422d103d41eec1b5f8d4145d0e38ad5eabd76c70483f7b",
+  "checks": 44,
+  "rpcd_exec_timeout_seconds": 1,
+  "old_direct_exec_orphan_lock": "reproduced",
+  "private_batch_payload_and_detached_apply": "passed",
+  "finished_elapsed_is_fixed": "passed",
+  "nested_rpcd_call": "passed",
+  "typed_input_and_no_log_leak": "passed",
+  "detached_source_job": "passed",
+  "enable_disable_refresh_survive_timeout": "passed",
+  "routing_on_off_survive_timeout": "passed",
+  "public_stage_and_reason": "passed",
+  "interrupted_worker_record": "passed",
+  "large_status": {
+    "rules": 206375,
+    "rule_bytes": 5365750,
+    "journal_bytes": 7154533,
+    "rpcd_seconds": [
+      0.1382,
+      0.1306,
+      0.1316
+    ],
+    "unchanged_files": true,
+    "missing_output_and_stopped_resolver": "rejected",
+    "scope": "actual ctl/UCI/ucode/file.exec; procd service data fixture; no network services"
+  },
+  "router": "not_touched"
+}

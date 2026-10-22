@@ -123,6 +123,11 @@ try {
 	else if (action == 'lookup') print(sprintf('%J\n',query(shift(ARGV))));
 	else if (action == 'apply') { if (read(pending_path)) die('放行事务尚未恢复。'); apply(); }
 	else if (action == 'validate') validate();
+	else if (action == 'confirm') {
+		validate();let p=read(pending_path),r=read(routing_path);
+		if(p && !same(own(),p.after) || r && (r.stage!='applied' || uci.get('adzero','main','routing_enabled')!=r.after))
+			die('策略在等待重载期间发生变化，恢复记录已保留。');
+	}
 	else if (action == 'restore') restore();
 	else if (action == 'begin-allow' || action == 'begin-revoke') {
 		if (read(pending_path)) die('上一项放行操作尚未恢复，请先关闭并恢复。');

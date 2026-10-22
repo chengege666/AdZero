@@ -41,7 +41,7 @@ var phaseText = {
  queued:_('任务已提交…'), waiting_lock:_('正在等待上一项操作完成…'), checking:_('正在检查配置…'),
  downloading:_('正在下载规则，首次下载可能较慢…'), validating:_('正在校验规则…'),
  processing:_('正在处理规则并重载 DNS…'), adapting:_('正在配置当前代理接入…'),
- restarting:_('正在重载代理，连接可能短暂中断…'), restoring:_('正在恢复原有配置…'),
+ restarting:_('正在重载代理，连接可能短暂中断…'), confirming_proxy:_('重载仍在进行，正在确认完成状态；不会重复重载…'), restoring:_('正在恢复原有配置…'),
  verifying:_('正在核对运行状态…'), reconnecting:_('连接暂时中断，正在继续追踪原任务…')
 };
 function delay(ms) { return new Promise(function(resolve) { setTimeout(resolve,ms); }); }
@@ -173,6 +173,7 @@ return view.extend({
 			paused: pause.error ? _('自动恢复未完成，当前仍暂停。请尝试立即恢复，或关闭并恢复原设置。') : pause.remaining > 0 ? _('约 ') + Math.ceil(pause.remaining / 60) + _(' 分钟后自动恢复；重启路由器也会尝试恢复。') : _('暂停已到期，正在等待后台恢复保护。'),
 			inconsistent: _('部分配置尚未确认，请关闭并恢复后再开启。'), external_owner: _('请先在原服务中关闭过滤后端，再启用 AdZero。'),
 			unavailable: _('请检查插件依赖是否完整，然后重新检测。'), error: _('状态请求未完成，请查看错误详情后重新检测。'), loading: _('页面已就绪，正在读取后端与代理状态。') };
+		if(adapter.reload_pending){titles.inconsistent=_('正在确认代理重载');descriptions.inconsistent=_('本批规则已保留，后台正在核对代理是否完成。请勿重复应用或重载。');}
 		var blocker = s.adguardhome_running ? _('AdGuard Home 正在运行，请先关闭对应服务。') : dns.active_proxy_count > 1 ? _('多个代理同时启用，请保留一个正在使用的代理后重新检测。') :
 			s.state === 'disabled' && s.dns_mode_safe !== true ? _('当前 DNS 模式不支持自动启用，请检查过滤后端设置。') : null;
 		var toggle = f.canDisable && !f.enabled && !f.paused ? el('button', { id: 'az-toggle', 'class': 'az-button az-button-danger', type: 'button',
@@ -275,7 +276,7 @@ return view.extend({
 					el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},_('更新订阅'))]) ]),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
-			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
+			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : (s.adapter||{}).reload_pending ? _('正在确认上一次代理重载，本批规则已保留。请稍候重新检测，勿重复应用。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
 			el('section',{'class':'az-card az-source-list'},items.length ? [
 				el('div',{'class':'az-source-table-heading','aria-hidden':'true'},[el('span',{},_('规则名称 / 地址')),el('span',{},_('校验数量 / 最近检查')),el('span',{},_('操作'))]),
 				items.map(function(item) { return el('div',{'class':'az-source-row'},[
@@ -380,6 +381,13 @@ return view.extend({
 	},
 	reloadCurrent: function(){
 		return this.draftCount()?this.applyDraft():this.runAction('reload');
+	},
+	confirmPendingDraft: function(){
+		var d=this.draft,s=this.currentStatus||{},data=this.sourcesData;
+		if(!d||s.stale||s.state!=='configured_unverified'||!data||data.pending||this.sourcesError)return;
+		if(data.items.length===d.items.length && d.items.every(function(i){return data.items.some(function(v){return v.url===i.url&&v.name===i.name&&v.enabled===i.enabled&&(i.format==='unknown'||v.format===i.format);});}) && (s.policy||{}).routing_enabled===d.routing_enabled){
+			this.draft=null;this.notice={kind:'success',text:_('已确认上次重载完成，更改已应用。')};
+		}
 	},
 	applyDraft: function(receipt){
 		var self=this;if(!receipt&&(!self.canStage()||!self.draftCount()))return Promise.resolve();
@@ -502,7 +510,11 @@ return view.extend({
 		}
 		var previous=self.currentStatus;
 		self.busy = 'status'; self.notice = null; self.paint();
-		return getStatus().then(function(s) { self.currentStatus = s; self.lastChecked = new Date(); })
+		return getStatus().then(function(s) {
+			self.currentStatus = s; self.lastChecked = new Date();
+			if((previous.adapter||{}).reload_pending && !(s.adapter||{}).reload_pending && s.state==='configured_unverified' && self.draft)
+				return self.loadSources().then(function(){self.confirmPendingDraft();});
+		})
 			.catch(function(err) {
 				if (previous && previous.state!=='loading' && previous.state!=='error') { self.currentStatus=Object.assign({},previous,{stale:true}); self.notice={kind:'error',text:_('无法取得新状态，上次概览仅供参考。请重新检测。')}; }
 				else self.currentStatus = { state: 'error', error: String(err) };
@@ -534,7 +546,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.10.1' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.10.2' }), this.panelNode ]);
 		if (!this.pausePoll) {
 			var self = this;
 			this.pausePoll = function() {

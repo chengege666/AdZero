@@ -167,19 +167,71 @@ class RoutingAdapterTest(unittest.TestCase):
 import json,sys
 from pathlib import Path
 p=Path(__file__).resolve().parents[1]/'profiles.json';data=json.loads(p.read_text());r=json.loads(Path(sys.argv[1]).read_text());q=r['query'];v=r['variables']
-if 'general{' in q:out={'general':{'dae':{'running':data['running']}}}
+if r.get('readiness'):out={k:data.get('healthy',True) for k in ['ready','configured','listening','initialized','dns_ready','routing_ready']}
+elif 'general{' in q:out={'general':{'dae':{'running':data['running'],'modified':data.get('modified',False)}}}
 elif 'routings(' in q:out={'routings':[data['traffic']],'groups':[{'name':'proxy'}]}
 elif 'dnss(' in q:out={'dnss':[data['dns']]}
-elif 'updateDns' in q:data['dns']['dns']['string']=v['dns'];out={'updateDns':{'id':'dns'}}
+elif 'updateDns' in q:data['dns']['dns']['string']=v['dns'];data['modified']=True;data['writes']=data.get('writes',0)+1;out={'updateDns':{'id':'dns'}}
 elif 'updateRouting' in q:
  flag=p.parent/'fail-route-once'
  if flag.exists():flag.unlink();sys.exit(1)
  data['traffic']['routing']['string']=v['routing'];out={'updateRouting':{'id':'route'}}
-elif 'run(dry:false)' in q:data['running']=True;data['runs']+=1;out={'run':0}
+elif 'run(dry:false)' in q:
+ data['runs']+=1
+ if (p.parent/'hold-reload').exists():p.write_text(json.dumps(data));sys.exit(1)
+ data['running']=True;data['modified']=False;out={'run':0}
 else:out={}
 p.write_text(json.dumps(data));print(json.dumps(out))
 ''');api.chmod(0o755);self.env['ADZERO_NAILINK_API_FIXTURE']=str(api)
         return p
+
+    def pending_reload(self):
+        p=self.nailink_fixture();self.run_adapter('apply')
+        self.write('var/run/adblock-fast/dnsmasq.servers','server=/new-ads.example/\n')
+        self.write('hold-reload','1')
+        result=self.run_adapter('apply',success=False)
+        self.assertIn('no second mutation submitted',result.stderr)
+        return p
+
+    def test_pending_reload_preserves_new_dat_and_waits_for_version_completion(self):
+        p=self.pending_reload();record=self.root/'etc/adzero/adapter.json';journal=json.loads(record.read_text())
+        current=json.loads(p.read_text());self.assertTrue(current['modified'])
+        self.assertTrue(journal['nailink_completion']['barrier'])
+        self.assertEqual(journal['stage'],'restarting')
+        self.assertIn('new-ads.example',Path(journal['files'][0]['path']).read_bytes().decode('latin1'))
+        before=p.read_bytes();self.run_adapter('settle',success=False);self.assertEqual(p.read_bytes(),before)
+        current['modified']=False;p.write_text(json.dumps(current));before=p.read_bytes()
+        self.run_adapter('settle');self.assertEqual(p.read_bytes(),before)
+        self.assertEqual(json.loads(record.read_text())['stage'],'configured_unverified')
+        self.assertNotIn('nailink_reload_unconfirmed',json.loads(record.read_text()))
+        self.run_adapter('apply');self.assertEqual(p.read_bytes(),before)
+
+    def test_ready_old_core_without_version_barrier_cannot_settle(self):
+        p=self.pending_reload();record=self.root/'etc/adzero/adapter.json';journal=json.loads(record.read_text())
+        journal['nailink_completion']['barrier']=False;record.write_text(json.dumps(journal))
+        data=json.loads(p.read_text());data['modified']=False;p.write_text(json.dumps(data))
+        before=p.read_bytes();self.run_adapter('settle',success=False)
+        self.assertEqual(before,p.read_bytes());self.assertTrue(json.loads(record.read_text())['nailink_reload_unconfirmed'])
+
+    def test_completed_version_without_dataplane_readiness_cannot_settle(self):
+        p=self.pending_reload();data=json.loads(p.read_text());data.update(modified=False,healthy=False);p.write_text(json.dumps(data))
+        self.run_adapter('settle',success=False)
+        self.assertTrue(json.loads((self.root/'etc/adzero/adapter.json').read_text())['nailink_reload_unconfirmed'])
+
+    def test_external_profile_change_blocks_pending_completion(self):
+        p=self.pending_reload();data=json.loads(p.read_text());data['modified']=False
+        data['dns']['dns']['string']+='\n# manual edit';p.write_text(json.dumps(data));before=p.read_bytes()
+        self.run_adapter('settle',success=False);self.assertEqual(p.read_bytes(),before)
+
+    def test_external_dat_change_blocks_pending_completion(self):
+        p=self.pending_reload();data=json.loads(p.read_text());data['modified']=False;p.write_text(json.dumps(data))
+        self.write('etc/daed/adzero-geosite.dat','external')
+        self.run_adapter('settle',success=False);self.assertEqual((self.root/'etc/daed/adzero-geosite.dat').read_text(),'external')
+
+    def test_backend_change_blocks_pending_completion(self):
+        p=self.pending_reload();data=json.loads(p.read_text());data['modified']=False;p.write_text(json.dumps(data))
+        self.write('var/run/adblock-fast/dnsmasq.servers','server=/external.example/\n')
+        self.run_adapter('settle',success=False)
 
     def test_nailink_updates_both_profiles_and_restores_without_starting_stopped_core(self):
         p=self.nailink_fixture()
@@ -336,6 +388,59 @@ class RoutingControllerTest(unittest.TestCase):
         self.assertEqual(after['dns'],before['dns']);self.assertEqual(after['traffic'],before['traffic'])
         self.assertFalse(f.status()['policy']['routing_enabled']);self.assertEqual(f.status()['state'],'configured_unverified')
         self.assertFalse((self.root/'etc/adzero/routing-pending.json').exists())
+
+    def test_pending_rule_reload_does_not_roll_back_sources_or_restart_backend(self):
+        p=self.nailink();f=self.fixture;f.ctl('enable')
+        fetch=f.write('bin/fetch','#!/bin/sh\nprintf "added.example\\n" > "$2"\n',True)
+        f.env['ADZERO_SOURCE_FETCH_FIXTURE']=str(fetch)
+        f.write('source-downloads.json',json.dumps({'https://rules.example/added':['added.example']}))
+        f.write('hold-reload','1');before=json.loads(p.read_text())
+        f.ctl('source-add','','New','https://rules.example/added','domains',ok=False)
+        after=json.loads(p.read_text());self.assertEqual(after['runs'],before['runs']+1)
+        pending=self.root/'etc/adzero/sources-pending.json';self.assertTrue(pending.exists())
+        output=self.root/'var/run/adblock-fast/dnsmasq.servers';self.assertIn('added.example',output.read_text());body=output.read_bytes()
+        journal=json.loads((self.root/'etc/adzero/adapter.json').read_text());self.assertEqual(journal['count'],4)
+        f.ctl('reconcile',ok=False);self.assertEqual(output.read_bytes(),body)
+        self.assertEqual(json.loads(p.read_text())['runs'],after['runs'])
+        after['modified']=False;p.write_text(json.dumps(after));f.ctl('reconcile')
+        self.assertEqual(f.status()['state'],'configured_unverified');self.assertFalse(pending.exists())
+        self.assertEqual(output.read_bytes(),body);self.assertEqual(json.loads(p.read_text())['runs'],after['runs'])
+
+    def test_pending_routing_reload_keeps_target_preference_until_confirmed(self):
+        p=self.nailink();f=self.fixture;f.ctl('enable');f.write('hold-reload','1')
+        f.ctl('routing-on',ok=False)
+        self.assertTrue(f.status()['policy']['routing_enabled'])
+        current=json.loads(p.read_text());self.assertTrue(current['modified']);current['modified']=False;p.write_text(json.dumps(current))
+        f.ctl('reconcile');self.assertEqual(f.status()['state'],'configured_unverified')
+        self.assertFalse((self.root/'etc/adzero/routing-pending.json').exists())
+        self.assertEqual(json.loads(p.read_text())['runs'],current['runs'])
+
+    def test_pending_batch_is_confirmed_without_reapplying_or_losing_selection(self):
+        p=self.nailink();f=self.fixture;f.ctl('enable')
+        fetch=f.write('bin/fetch','#!/bin/sh\nprintf "added.example\\n" > "$2"\n',True)
+        f.env['ADZERO_SOURCE_FETCH_FIXTURE']=str(fetch)
+        url='https://rules.example/batch';f.write('source-downloads.json',json.dumps({url:['added.example']}))
+        data=json.loads(f.ctl('sources-list').stdout)
+        items=[{k:i[k] for k in ['id','name','url','format','enabled']} for i in data['items']]
+        items.append({'id':None,'name':'Batch','url':url,'format':'domains','enabled':True})
+        plan=f.write('batch.json',json.dumps({'revision':data['revision'],'items':items,'routing_before':False,'routing_enabled':False}))
+        f.write('hold-reload','1');before=json.loads(p.read_text())
+        f.ctl('settings-apply',str(plan),ok=False)
+        after=json.loads(p.read_text());self.assertEqual(after['runs'],before['runs']+1)
+        pending=self.root/'etc/adzero/sources-pending.json';self.assertTrue(pending.exists())
+        self.assertTrue(any(i['url']==url and i['enabled'] for i in json.loads(f.ctl('sources-list').stdout)['items']))
+        after['modified']=False;p.write_text(json.dumps(after));f.ctl('reconcile')
+        self.assertFalse(pending.exists());self.assertEqual(f.status()['state'],'configured_unverified')
+        self.assertEqual(json.loads(p.read_text())['runs'],after['runs'])
+
+    def test_initial_enable_pending_keeps_ownership_until_background_confirmation(self):
+        p=self.nailink();f=self.fixture;f.write('hold-reload','1');f.ctl('enable',ok=False)
+        state=f.status();self.assertTrue(state['managed']);self.assertTrue(state['configured'])
+        self.assertTrue(state['adapter']['reload_pending']);self.assertEqual(state['backend']['state'],'ready')
+        current=json.loads(p.read_text());self.assertEqual(current['runs'],1)
+        current['modified']=False;p.write_text(json.dumps(current));f.ctl('reconcile')
+        self.assertEqual(f.status()['state'],'configured_unverified')
+        self.assertEqual(json.loads(p.read_text())['runs'],1)
 
     def test_routing_toggle_preserves_filtering_and_restores_original_dns(self):
         f=self.fixture;f.ctl('enable');f.ctl('routing-on')

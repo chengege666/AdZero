@@ -259,6 +259,11 @@ try {
 	else if(action=='begin-batch')begin_batch(shift(ARGV));
 	else if (action == 'begin') begin(shift(ARGV),ARGV);
 	else if (action == 'rollback') rollback();
+	else if (action == 'confirm') {
+		let p=read(journal);clean_uci();
+		if(p && (p.schema!=1 || !same(model(),p.after) || p.routing && uci.get('adzero','main','routing_enabled')!=p.routing.after))
+			die('规则在等待重载期间发生变化，恢复记录已保留。');
+	}
 	else if (action == 'finish') {
 		let pending=read(journal);if (!pending) die('缺少规则完成记录。');
 		atomic(dir+'/sources-selected','1\n');

@@ -20,6 +20,7 @@ import time
 import urllib.request
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from concurrent.futures import ThreadPoolExecutor
 
 from build_sdk import source_hash
 from check_openwrt_runtime import ROOT, SHA256 as ROOTFS_SHA256
@@ -81,12 +82,27 @@ def main(package=None):
             target.chmod(mode)
             return target
 
-        def run(*args, timeout=15):
+        def run(*args, timeout=15, input=None):
             return subprocess.run(['chroot', temporary, *args], env=env, text=True,
-                                  capture_output=True, timeout=timeout)
+                                  capture_output=True, timeout=timeout, input=input)
 
         def adapter(action='nailink-status'):
             return run('/usr/bin/ucode', '-S', '/usr/libexec/adzero/adapter.uc', '--', action)
+
+        def query(query,variables=None):
+            sid=json.loads(run('/bin/ubus','call','session','create','{"timeout":60}').stdout)['ubus_rpc_session']
+            try:
+                grant={'ubus_rpc_session':sid,'scope':'access-group','objects':[['luci-app-daed-router','write']]}
+                assert run('/bin/ubus','call','session','grant',json.dumps(grant)).returncode==0
+                payload=json.dumps({'query':query,'variables':variables or {}})
+                value=run('/usr/bin/env','REQUEST_METHOD=POST','REQUEST_URI=/cgi-bin/daed-router/graphql',
+                    'SCRIPT_NAME=/cgi-bin/daed-router','PATH_INFO=/graphql','SERVER_PROTOCOL=HTTP/1.1',
+                    'HTTP_HOST=localhost','HTTP_ORIGIN=http://localhost','HTTP_COOKIE=daed_luci_session='+sid,
+                    'CONTENT_TYPE=application/json','CONTENT_LENGTH='+str(len(payload)),'/usr/libexec/daed/luci-proxy',input=payload)
+                assert value.returncode==0,value.stderr
+                result=json.loads(value.stdout.split('\n\n',1)[1]);assert not result.get('errors'),result
+                return result['data']
+            finally: run('/bin/ubus','call','session','destroy',json.dumps({'ubus_rpc_session':sid}))
 
         def snapshot():
             with sqlite3.connect(base / 'etc/daed/wing.db') as db:
@@ -146,6 +162,19 @@ def main(package=None):
                 value = adapter()
                 assert value.returncode == 0 and json.loads(value.stdout) == {'authorized': True, 'running': False, 'modified': False}, value.stderr
                 checks.append('real CGI + daemon JWT + rpcd authorization')
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    concurrent=list(pool.map(lambda _:adapter(),range(12)))
+                assert all(v.returncode==0 and json.loads(v.stdout)['authorized'] for v in concurrent),[v.stderr for v in concurrent if v.returncode]
+                assert not list((base/'etc/adzero').glob('graphql-*')),'request/response files were not cleaned'
+                checks.append('concurrent root diagnostics use distinct session-scoped request/response files and preserve all responses')
+                dns_text='upstream { local: "udp://223.5.5.5:53" }\nrouting { request { fallback: local } }'
+                created=query('mutation($dns:String!){createDns(name:"version-barrier",dns:$dns){id}}',{'dns':dns_text})['createDns']['id']
+                with sqlite3.connect(base/'etc/daed/wing.db') as db:
+                    version=db.execute('select version from dns where name=?',('version-barrier',)).fetchone()[0]
+                query('mutation($id:ID!,$dns:String!){updateDns(id:$id,dns:$dns){id}}',{'id':created,'dns':dns_text})
+                with sqlite3.connect(base/'etc/daed/wing.db') as db:
+                    assert db.execute('select version from dns where name=?',('version-barrier',)).fetchone()[0]==version+1
+                checks.append('real NaiLink API increments DNS profile version for identical text; no database writes by AdZero')
                 before = snapshot()
                 original = config.read_bytes()
                 put('etc/daed/luci-session.json', json.dumps({'username': 'luci', 'secret': 'intentionally-stale-test-key'}), 0o600)
@@ -218,20 +247,28 @@ Content-Type: application/json
                 value = adapter()
                 assert value.returncode != 0 and 'private-response-marker' not in value.stderr
                 checks.append('unknown GraphQL error remains private')
+                put('usr/libexec/daed/luci-proxy', '#!/bin/sh\nsleep 8\n',0o755)
+                started=time.monotonic();value=adapter();elapsed=time.monotonic()-started
+                assert value.returncode!=0 and elapsed<7,(elapsed,value.stderr)
+                checks.append('unresponsive read-only CGI is bounded to five seconds rather than the 30-second gateway deadline')
                 process.terminate(); process.wait(timeout=8); processes.remove(process)
-                upstream={'dns':'upstream { local: "udp://223.5.5.5:53" }\nrouting { request { fallback: local } }','calls':[]}
+                upstream={'dns':'upstream { local: "udp://223.5.5.5:53" }\nrouting { request { fallback: local } }','calls':[],'modified':False,'complete':False}
                 class SlowAPI(BaseHTTPRequestHandler):
                     def log_message(self,*_): pass
+                    def do_GET(self):
+                        assert self.path=='/health/ready'
+                        raw=json.dumps({k:upstream['complete'] for k in ['ready','configured','listening','initialized','dns_ready','routing_ready']}).encode()
+                        self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
                     def do_POST(self):
                         request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                         query=request['query']; variables=request.get('variables',{})
-                        if 'general{' in query: operation='read'; data={'general':{'dae':{'running':True}}}
+                        if 'general{' in query: operation='read'; data={'general':{'dae':{'running':True,'modified':upstream['modified']}}}
                         elif 'dnss(' in query: operation='read_dns'; data={'dnss':[{'id':'dns','dns':{'string':upstream['dns']}}]}
-                        elif 'updateDns' in query: operation='write_dns'; upstream['dns']=variables['dns']; data={'updateDns':{'id':'dns'}}
+                        elif 'updateDns' in query: operation='write_dns'; upstream['dns']=variables['dns']; upstream['modified']=True;data={'updateDns':{'id':'dns'}}
                         elif 'run(dry:false)' in query: operation='reload'; data={'run':1}
                         else: operation='validate_dns'; data={'parsedDns':{'string':''}}
                         upstream['calls'].append(operation)
-                        if operation=='reload': time.sleep(31.5)
+                        if operation=='reload': time.sleep(31.5);upstream['modified']=False;upstream['complete']=True
                         raw=json.dumps({'data':data}).encode()
                         try:
                             self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
@@ -242,11 +279,20 @@ Content-Type: application/json
                     put('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '0'\n")
                     put('var/run/adblock-fast/dnsmasq.servers','server=/ads.example/\n')
                     try:
-                        value=run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','apply',timeout=45)
-                        assert value.returncode!=0 and 'HTTP 502 (reload)' in value.stderr and 'no second mutation submitted' in value.stderr,value.stderr
-                        assert json.loads(record.read_text())['nailink_reload_unconfirmed'] is True
-                        assert upstream['calls'].count('reload')==1 and upstream['calls'][-1]=='reload',upstream['calls']
-                        checks.append('actual 30-second CGI timeout with slow upstream fixture retains journal and submits no rollback mutation')
+                        value=run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','apply',timeout=50)
+                        assert value.returncode==0,value.stderr
+                        state=json.loads(record.read_text())
+                        assert not state.get('nailink_reload_unconfirmed') and state['stage']=='configured_unverified',state
+                        assert upstream['calls'].count('reload')==1 and upstream['calls'].count('write_dns')==1,upstream['calls']
+                        checks.append('actual 30-second CGI timeout followed by native-shaped version and dataplane confirmation succeeds with one reload and no rollback')
+                        # DAT-only changes must create a fresh version barrier:
+                        # an old running=true/modified=false would be insufficient.
+                        put('var/run/adblock-fast/dnsmasq.servers','server=/new-ads.example/\n')
+                        upstream['complete']=False
+                        value=run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','apply',timeout=50)
+                        assert value.returncode==0,value.stderr
+                        assert upstream['calls'].count('reload')==2 and upstream['calls'].count('write_dns')==2,upstream['calls']
+                        checks.append('DAT-only update advances DNS profile version before a single reload; stale ready state is not accepted')
                     finally: server.shutdown()
             finally:
                 for process in reversed(processes):
@@ -256,7 +302,7 @@ Content-Type: application/json
               'nailink_gateway_sha256': hashlib.sha256(gateway).hexdigest(), 'checks': checks,
               'runtime': 'actual NaiLink 0.6.30 CGI + API-only daemon and actual OpenWrt rpcd/ubusd/ucode',
               'proxy_kernel_and_router': 'not_run', 'existing_database_rows_preserved': True,
-              'timeout_fixture': 'real CGI 30-second deadline, upstream handler/slow reload and procd inventory fixtures; no claim of actual proxy reload completion'}
+              'timeout_fixture': 'real CGI 30-second deadline, delayed upstream/version/readiness and procd inventory fixtures; no claim of actual proxy kernel reload completion'}
     (ROOT / 'artifacts/runtime/nailink-gateway-result.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 

@@ -1,6 +1,6 @@
 # AdZero
 
-当前测试版 **v0.10.1** 增加“重新加载”和按来源缓存：有更改时统一应用，已有快照直接交给后端复用；“更新订阅”才主动联网。内容未变时跳过后端重建和代理重载。保留现有四代理架构及恢复检查，不新增运行依赖。详见 [性能与操作说明](docs/RULE_APPLY_PERFORMANCE.md)。
+当前测试版 **v0.10.2** 修复 NaiLink 重载超过网关 30 秒期限时的完成确认：只提交一次重载，超时后核对本批配置版本与内核就绪状态；未确认前保留整批规则，不同时恢复旧后端。后台确认完成后收尾。保留“重新加载”、按来源缓存和现有四代理架构，不新增运行依赖。详见 [重载确认说明与旧版恢复步骤](docs/NAILINK_RELOAD_CONFIRMATION.md)及 [性能与操作说明](docs/RULE_APPLY_PERFORMANCE.md)。
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
@@ -40,10 +40,10 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.10.1)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.10.2)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -52,12 +52,12 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本使用 --upgrade：先校验安装包、暂停后台调度并等当前任务完成，备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。
 
-若出现「NaiLink GraphQL authorization denied」或已核对为 HTTP 200 / `access denied`，先通过 NaiLink 原生服务重启刷新它的本机授权（会短暂中断代理），待 NaiLink 页面恢复后再执行升级。AdZero 不会自行读取密钥或重置账户。新版本可用 `/usr/libexec/adzero/adapter nailink-status` 做只读授权检查；不要删除 `adapter.json`。HTTP 502/504 重载完成未确认时也保留记录，需先完成原生服务重启再关闭恢复。
+若出现「NaiLink GraphQL authorization denied」或已核对为 HTTP 200 / `access denied`，先通过 NaiLink 原生服务重启刷新它的本机授权（会短暂中断代理），待 NaiLink 页面恢复后再执行升级。AdZero 不会自行读取密钥或重置账户。可用 `/usr/libexec/adzero/adapter nailink-status` 做只读授权检查；不要删除 `adapter.json`。v0.10.1 及更早版本的重载未确认记录缺少本次配置版本证据，仍需先完成原生服务重启再关闭恢复；v0.10.2 新事务可在严格确认后自动完成。
 
 升级器核对调度器的完整命令、UID 和 Linux 进程启动时间，仅对确认的 watch 进程发送 STOP；当前 ctl/backend 子任务继续完成，不发送终止信号或删除操作锁。默认共等待最多 180 秒，每 15 秒反馈；只重试新旧控制器明确的占锁错误，恢复失败立即停止。普通退出、失败或 Ctrl+C 会恢复本次暂停且身份未变的调度器；原来已暂停的进程保持原状。安装器另有互斥锁，避免同时执行两个升级。SIGKILL 或断电无法执行清理，应先检查进程和锁；不按 PID 消失自动删锁。
 

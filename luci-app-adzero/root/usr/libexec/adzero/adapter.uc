@@ -19,6 +19,7 @@ let journal = null;
 let changed = false;
 let transaction_previous = null;
 let transaction_saved = false;
+let clear_nailink_pending, nailink_completed, rules_signature;
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 
@@ -114,7 +115,7 @@ function yaml(path, engine) {
 	if (type(value) != 'object') die('Expected a YAML mapping');
 	return value;
 }
-function graphql(query, variables) {
+function graphql(query, variables, readiness) {
 	let operation = index(query, 'run(dry:false)') >= 0 ? 'reload' :
 		index(query, 'parsedDns') >= 0 ? 'validate_dns' : index(query, 'updateDns') >= 0 ? 'write_dns' :
 		index(query, 'parsedRouting') >= 0 ? 'validate_routing' : index(query, 'updateRouting') >= 0 ? 'write_routing' : 'read';
@@ -122,12 +123,12 @@ function graphql(query, variables) {
 	let fixture = getenv('ADZERO_NAILINK_API_FIXTURE');
 	if (root && fixture) {
 		let request = state_dir + '/fixture-request.json';
-		atomic(request,sprintf('%J',{query,variables:variables ?? {}}));
+		atomic(request,sprintf('%J',{query,variables:variables ?? {},readiness:!!readiness}));
 		try { let data = json(capture([fixture,request])); fs.unlink(request); return data; }
 		catch(e) { fs.unlink(request); die(e); }
 	}
 	// Use NaiLink's LuCI CGI gateway. No passwords, private JWT keys or SQLite edits.
-	let bus = connect(), session;
+	let bus = connect(), session, request, output;
 	if (!bus) die('NaiLink requires rpcd/ubus');
 	try {
 		session = bus.call('session', 'create', {timeout:60})?.ubus_rpc_session;
@@ -135,15 +136,20 @@ function graphql(query, variables) {
 		bus.call('session', 'grant', {ubus_rpc_session:session, scope:'access-group', objects:[['luci-app-daed-router','write']]});
 		if (bus.call('session', 'access', {ubus_rpc_session:session, scope:'access-group', object:'luci-app-daed-router', function:'write'})?.access !== true)
 			die('NaiLink local LuCI session was not granted access; no API request sent');
-		let payload = sprintf('%J', {query, variables:variables ?? {}});
-		let request = state_dir + '/graphql-request.json';
+		let payload = readiness ? '' : sprintf('%J', {query, variables:variables ?? {}});
+		request = state_dir + '/graphql-request.' + session + '.json';
 		atomic(request, payload);
-		let argv = ['env', 'REQUEST_METHOD=POST', 'REQUEST_URI=/cgi-bin/daed-router/graphql',
-			'SCRIPT_NAME=/cgi-bin/daed-router', 'PATH_INFO=/graphql', 'SERVER_PROTOCOL=HTTP/1.1',
+		let path = readiness ? '/health/ready' : '/graphql';
+		let argv = ['env', 'REQUEST_METHOD=' + (readiness ? 'GET' : 'POST'), 'REQUEST_URI=/cgi-bin/daed-router' + path,
+			'SCRIPT_NAME=/cgi-bin/daed-router', 'PATH_INFO=' + path, 'SERVER_PROTOCOL=HTTP/1.1',
 			'HTTP_HOST=localhost', 'HTTP_ORIGIN=http://localhost', 'HTTP_COOKIE=daed_luci_session=' + session,
 			'CONTENT_TYPE=application/json', 'CONTENT_LENGTH=' + length(payload), root + '/usr/libexec/daed/luci-proxy'];
-		let proc = fs.popen(join(' ', map(argv, quote)) + ' < ' + quote(request) + ' 2>/dev/null', 'r');
-		let response = proc?.read('all'), rc = proc?.close();
+		output = state_dir + '/graphql-response.' + session;
+		atomic(output, '');
+		// Bound read-only probes too: a database busy during reload must not
+		// turn a completion poll into another 30-second wait per query.
+		let rc = system(join(' ', map(argv, quote)) + ' < ' + quote(request) + ' > ' + quote(output) + ' 2>/dev/null', operation == 'read' ? 5000 : 35000);
+		let response = fs.readfile(output, 8388609); fs.unlink(output);
 		fs.unlink(request);
 		if (rc != 0 || !length(response)) die('NaiLink CGI request failed');
 		response = replace(response, /\r\n/g, '\n');
@@ -157,23 +163,29 @@ function graphql(query, variables) {
 				code == 503 ? 'gateway or backend not ready' : code == 413 ? 'request too large' : 'request rejected';
 			if (operation == 'reload' && index([502,504],code) >= 0 && journal) {
 				journal.nailink_reload_unconfirmed = true; save();
-				progress.failure('nailink_gateway');
 			}
 			die('NaiLink CGI HTTP ' + code + ' (' + operation + '): ' + reason + '; private response omitted');
 		}
 		let result = json(substr(response, separator + 2));
+		if (readiness) { bus.call('session','destroy',{ubus_rpc_session:session}); bus.disconnect(); return result; }
 		if (length(filter(result.errors ?? [], e => type(e.message) == 'string' && substr(e.message,0,13) == 'access denied'))) {
 			progress.failure('nailink_auth');
 			die('NaiLink GraphQL authorization denied (' + operation + '); local LuCI session passed; check NaiLink local identity; private response omitted');
 		}
-		if (length(result.errors ?? []) || !result.data) die('NaiLink API rejected ' + operation + ' (private response omitted)');
+		if (length(result.errors ?? []) || !result.data) {
+			// A completed GraphQL error is a definite negative acknowledgement,
+			// unlike a disconnected transport with no completed response.
+			if(operation=='reload')clear_nailink_pending();
+			die('NaiLink API rejected ' + operation + ' (private response omitted)');
+		}
 		bus.call('session', 'destroy', {ubus_rpc_session:session});
 		bus.disconnect();
 		return result.data;
 	} catch (e) {
 		if (session) bus.call('session', 'destroy', {ubus_rpc_session:session});
 		bus.disconnect();
-		fs.unlink(state_dir + '/graphql-request.json');
+		if(request)fs.unlink(request);
+		if(output)fs.unlink(output);
 		die(e);
 	}
 }
@@ -237,6 +249,7 @@ function nailink_identity() {
 }
 function confirm_nailink_recovery() {
 	if (!journal?.nailink_reload_unconfirmed) return;
+	if (nailink_completed()) { clear_nailink_pending(); return; }
 	let identity = nailink_identity();
 	if (!identity || !journal.nailink_run_identity || same(identity,journal.nailink_run_identity)) {
 		progress.failure('nailink_gateway');
@@ -246,6 +259,61 @@ function confirm_nailink_recovery() {
 	// previous daemon's request cannot still commit after this restoration.
 	graphql('{general{dae{running}}}');
 	delete journal.nailink_reload_unconfirmed; save();
+}
+clear_nailink_pending = function() {
+	delete journal.nailink_reload_unconfirmed;
+	delete journal.nailink_run_identity;
+	delete journal.nailink_completion;
+	save();
+};
+nailink_completed = function() {
+	let proof = journal?.nailink_completion;
+	if (proof?.schema != 1 || !proof.barrier) return false;
+	try {
+		let runtime = graphql('{general{dae{running modified}}}').general?.dae;
+		if (runtime?.running !== true || runtime?.modified !== false) return false;
+		let health = graphql('', null, true);
+		if (health?.ready !== true || health.configured !== true || health.listening !== true ||
+			health.initialized !== true || health.dns_ready !== true || health.routing_ready !== true) return false;
+		let dns = selected_dns();
+		if (dns.id != proof.dns.id || dns.dns.string != proof.dns.text) return false;
+		if (proof.traffic) { let traffic=selected_traffic(); if (traffic.id != proof.traffic.id || traffic.text != proof.traffic.text) return false; }
+		for (let file in journal.files) {
+			let current=fs.readfile(file.path);
+			if ((file.kind=='owned'?b64enc(current):current) != file.after) return false;
+		}
+		if (!proof.input || !same(proof.input,rules_signature('nailink'))) return false;
+		return true;
+	} catch(e) { return false; }
+};
+function prepare_nailink_completion() {
+	if(!journal.dns){
+		journal.nailink_completion=null;journal.nailink_run_identity=nailink_identity();
+		journal.nailink_reload_unconfirmed=true;save();return;
+	}
+	let dns=selected_dns(), runtime=graphql('{general{dae{running modified}}}').general?.dae;
+	// Updating only the DAT file leaves modified=false for both the old and
+	// new core. The native updateDns API increments the profile version even
+	// for identical text. Establish a version barrier before submitting run.
+	if (journal.stage=='restarting' && runtime?.running === true && runtime.modified === false) {
+		update_dns(dns.id,dns.dns.string);
+		runtime=graphql('{general{dae{running modified}}}').general?.dae;
+	}
+	let traffic=journal.traffic?selected_traffic():null;
+	journal.nailink_completion={schema:1,forward:journal.stage=='restarting',
+		barrier:runtime?.running===false || runtime?.running===true && runtime.modified===true,
+		dns:{id:dns.id,text:dns.dns.string},traffic:traffic?{id:traffic.id,text:traffic.text}:null,
+		input:rules_signature('nailink')};
+	journal.nailink_run_identity=nailink_identity();
+	journal.nailink_reload_unconfirmed=true; save(); // intent before dispatch
+}
+function settle_nailink() {
+	if (!journal?.nailink_reload_unconfirmed || !journal.nailink_completion?.forward || !nailink_completed())
+		die('NaiLink reload is still unconfirmed; no second mutation submitted; journal retained');
+	journal.stage='configured_unverified';
+	if(journal.nailink_completion.input)journal.rules_source=journal.nailink_completion.input;
+	clear_nailink_pending();
+	fs.unlink(state_dir+'/adapter.previous.json');
 }
 function restart(plugin) {
 	progress.stage('restarting');
@@ -258,9 +326,21 @@ function restart(plugin) {
 			if(journal.stage=='restarting')die('NaiLink 内核在应用期间已停止。');
 			return; // restoring profiles must not start a core the user stopped
 		}
-		journal.nailink_run_identity = nailink_identity(); save();
-		graphql('mutation{run(dry:false)}');
-		delete journal.nailink_run_identity; save(); return;
+		prepare_nailink_completion();
+		try { graphql('mutation{run(dry:false)}'); }
+		catch(e) {
+			if(!journal.nailink_reload_unconfirmed)die(e);
+			progress.stage('confirming_proxy');
+			let started=time();
+			for(let attempt=0;journal.nailink_completion?.barrier && attempt<30 && time()-started<60;attempt++) {
+				if (nailink_completed()) { clear_nailink_pending(); return; }
+				if(root && getenv('ADZERO_NAILINK_API_FIXTURE'))break;
+				sleep(2000);
+			}
+			progress.failure('nailink_gateway');
+			die(e.message+'; completion pending, no second mutation submitted');
+		}
+		clear_nailink_pending(); return;
 	}
 	let service = root + '/etc/init.d/' + plugin;
 	if(journal?.split){
@@ -529,7 +609,7 @@ function routing_check(wanted) {
 	}
 	return 'nailink';
 }
-function rules_signature(plugin) {
+rules_signature = function(plugin) {
 	let mode=uci.get('adblock-fast','config','dns');
 	let path=mode=='unbound.adb_list'?'/var/lib/unbound/adb_list.adblock-fast':'/var/run/adblock-fast/'+mode;
 	let sha256=rulecache.fingerprint(root+path);if(!sha256)return null;
@@ -558,7 +638,7 @@ function rules_signature(plugin) {
 		let hash=rulecache.fingerprint(root+name);if(!hash)return null;dependencies[name]=hash;
 	}
 	return {schema:3,mode,sha256,dependencies};
-}
+};
 function reconfigure_nailink(with_rules) {
 	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');
 	if(split_enabled&&!country_cached('nailink'))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
@@ -588,6 +668,7 @@ function reconfigure_nailink(with_rules) {
 		if(source&&(with_rules||source.sha256==journal.rules_source?.sha256))journal.rules_source=source;else delete journal.rules_source;
 		save();fs.unlink(state_dir+'/adapter.previous.json');
 	}catch(e){
+		if(journal?.nailink_reload_unconfirmed)die(e);
 		progress.failure('adapter');
 		try{rollback_update(previous);}catch(recovery){journal.stage='recovery_required';save();die('快速切换恢复未完成，请保留恢复记录。');}
 		die(e);
@@ -608,12 +689,15 @@ try {
 	journal = read_journal();
 	if (action == 'status') {
 		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
-			client_dns_verified:false, router_dns_verified:false,routing:{enabled:split_enabled,mode:journal?.split?.mode??'inactive',traffic_verified:false}}));
+			client_dns_verified:false, router_dns_verified:false,reload_pending:!!journal?.nailink_reload_unconfirmed,
+			routing:{enabled:split_enabled,mode:journal?.split?.mode??'inactive',traffic_verified:false}}));
 	} else if (action == 'nailink-status') {
 		let state = graphql('{general{dae{running modified}}}').general?.dae;
 		if (type(state?.running) != 'bool') die('NaiLink returned invalid runtime state');
 		print(sprintf('%J\n', {authorized:true,running:state.running,modified:type(state.modified) == 'bool' ? state.modified : null}));
-	} else if (action == 'remove') restore();
+	} else if (action == 'pending') { if(journal?.nailink_reload_unconfirmed){print('nailink\n');exit(0);}exit(1); }
+	else if (action == 'settle') settle_nailink();
+	else if (action == 'remove') restore();
 	else if(action=='routing-check')print(routing_check(shift(ARGV))+'\n');
 	else if(action=='reconfigure-nailink')reconfigure_nailink();
 	else if(action=='reconfigure-nailink-rules')reconfigure_nailink(true);
@@ -663,6 +747,7 @@ try {
 			save();
 			fs.unlink(state_dir + '/adapter.previous.json');
 		} catch (e) {
+			if(journal?.nailink_reload_unconfirmed)die(e);
 			if (previous == null) {
 				try { restore(); } catch (recovery) { die(e.message + '; recovery: ' + recovery.message + '. Journal retained in /etc/adzero/adapter.json'); }
 			} else {

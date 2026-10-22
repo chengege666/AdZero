@@ -271,5 +271,19 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   }];
   await app.runPolicy('routing_on',[]);
   check(app.notice.kind==='error' && text(root).includes('国内分类库校验失败') && !storage.has('adzero.v0.8.'+sessionID+'.job'),'confirmed failure is distinct from temporary disconnection');
+  reset({state:'inconsistent',managed:true,adapter:{plugin:'nailink',stage:'restarting',reload_pending:true}});
+  check(text(root).includes('正在确认代理重载') && !text(root).includes('部分配置尚未确认，请关闭并恢复后再开启'),'pending reload has its own accurate overview state');
+  app.sourcesData={...ruleData,pending:true};app.rulesOpen=true;app.paint();
+  check(text(root).includes('请稍候重新检测，勿重复应用') && find('az-source-reload').disabled,'pending reload blocks duplicate apply without mislabeling rule format');
+  app.draft={base:[],items:[{id:null,_key:'pending_1',_new:true,name:'Late',url:'https://late.example/rules',format:'domains',enabled:true}],routing_before:false,routing_enabled:false};
+  ruleData.items=[{id:'new',name:'Late',url:'https://late.example/rules',format:'domains',enabled:true}];
+  state={...state,state:'configured_unverified',adapter:{plugin:'nailink',stage:'configured_unverified',reload_pending:false}};
+  await app.refreshStatus();
+  check(!app.draft && app.notice.kind==='success' && !commands.includes('settings_apply') && !commands.includes('reload'),'late background completion clears matching pending draft without another mutation');
+  reset({state:'configured_unverified'});
+  jobSteps=[{ok:true,pending:true,progress:{stage:'confirming_proxy',elapsed:33}},()=>{
+    check(text(root).includes('不会重复重载'),'late acknowledgement explains confirmation rather than resubmission');
+    return {ok:true,pending:false};
+  }];await app.runAction('reload');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });
