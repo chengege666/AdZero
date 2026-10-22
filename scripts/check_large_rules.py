@@ -33,6 +33,7 @@ def main():
         backend.write_text(backend.read_text().replace("r=Path(os.environ['ADZERO_POLICY_ROOT']); output=", "r=Path(os.environ['ADZERO_POLICY_ROOT']); log=r/'backend-calls'; log.write_text((log.read_text() if log.exists() else '')+sys.argv[1]+'\\n'); output="))
         cfg=f.root/'etc/config/adblock-fast'
         cfg.write_text(cfg.read_text()+"\nconfig file_url 'large'\n option enabled '1'\n option action 'block'\n option adzero_format 'domains'\n option url 'https://bench.example/large'\nconfig file_url 'extra'\n option enabled '0'\n option action 'block'\n option adzero_format 'domains'\n option url 'https://bench.example/extra'\n")
+        cfg.write_text(cfg.read_text()+"\nconfig file_url 'unused'\n option enabled '0'\n option url 'https://bench.example/unused'\n")
         for key,names in bodies.items():f.write('body-'+key.rsplit('/',1)[1],'\n'.join(names)+'\n')
         fetch=f.write('bin/fetch','#!/bin/sh\necho "$1" >> "$ADZERO_SOURCES_ROOT/fetches"\ncase "$1" in */large) body=large;; */batch0) body=batch0;; */batch1) body=batch1;; *) body=extra;; esac\ncp "$ADZERO_SOURCES_ROOT/body-$body" "$2"\n',True)
         data=f.write('country.json',json.dumps({'domain_raw':''.join(f'server=/cn{i:06d}.example.cn/114.114.114.114\n' for i in range(109795)),
@@ -56,6 +57,29 @@ def main():
             if label.startswith('routing_'):assert after-before==1
             if label in ('reload_unchanged','refresh_unchanged'):assert after==before and row['backend_calls']==0,row
             results.append(row);print(json.dumps(row),flush=True)
+        # New timestamps and ordering do not change the active rule set.
+        f.write('body-large','# Updated: another time\n'+'\n'.join(reversed(bodies['https://bench.example/large']))+'\n')
+        before=json.loads(p.read_text())['runs'];calls=len((f.root/'backend-calls').read_text().splitlines());started=time.monotonic()
+        f.ctl('source-refresh')
+        row={'action':'refresh_header_and_order_only','seconds':round(time.monotonic()-started,4),'proxy_reload_calls':json.loads(p.read_text())['runs']-before,'backend_calls':len((f.root/'backend-calls').read_text().splitlines())-calls}
+        if args.libexec.resolve()==controls.ROOT.joinpath('luci-app-adzero/root/usr/libexec/adzero').resolve():assert row['proxy_reload_calls']==0 and row['backend_calls']==0,row
+        results.append(row);print(json.dumps(row),flush=True)
+        # Inactive edits must not rebuild filtering, even after RAM cache loss.
+        for label in ('edit_disabled_source','remove_disabled_source_cold_cache'):
+            listing=json.loads(f.ctl('sources-list').stdout)
+            items=[{key:item[key] for key in ('id','name','url','format','enabled')} for item in listing['items']]
+            if label.startswith('edit'):
+                item=next(i for i in items if i['id']=='unused')
+                item.update(name='Renamed inactive source',url='https://bench.example/unused-edited',format='domains')
+            else:
+                items=[i for i in items if i['id']!='unused']
+                for proof in (f.root/'tmp/adzero-source-cache').glob('*.proof'):proof.unlink()
+            plan=f.write('inactive-plan.json',json.dumps({'revision':listing['revision'],'items':items,'routing_before':True,'routing_enabled':True}))
+            before=json.loads(p.read_text())['runs'];calls=len((f.root/'backend-calls').read_text().splitlines());started=time.monotonic()
+            f.ctl('settings-apply',str(plan))
+            row={'action':label,'seconds':round(time.monotonic()-started,4),'proxy_reload_calls':json.loads(p.read_text())['runs']-before,'backend_calls':len((f.root/'backend-calls').read_text().splitlines())-calls}
+            if args.libexec.resolve()==controls.ROOT.joinpath('luci-app-adzero/root/usr/libexec/adzero').resolve():assert row['proxy_reload_calls']==0 and row['backend_calls']==0,row
+            results.append(row);print(json.dumps(row),flush=True)
         # Two new selections plus a routing change are one production action.
         listing=json.loads(f.ctl('sources-list').stdout)
         items=[{key:item[key] for key in ('id','name','url','format','enabled')} for item in listing['items']]
@@ -70,7 +94,7 @@ def main():
         assert final['state']=='configured_unverified' and final['backend']['domains']==206379,final
         assert json.loads(f.ctl('lookup','batch0-ad.example').stdout)['match']=='exact'
         report={'source_sha256':source_hash(ROOT/'luci-app-adzero') if args.libexec.resolve()==(ROOT/'luci-app-adzero/root/usr/libexec/adzero').resolve() else 'explicit_old_libexec',
-                'rules':206375,'domestic_domains':109795,'domestic_cidrs':10015,'measurements':results,
+                'libexec_sha256':source_hash(args.libexec),'rules':206375,'domestic_domains':109795,'domestic_cidrs':10015,'measurements':results,
                 'precheck_downloads':downloads_before,'batch_precheck_downloads':len((f.root/'fetches').read_text().splitlines())-downloads_before,
                 'scope':'real ctl/UCI/ucode; synthetic large rules; backend/download/NaiLink API/reload fixtures; not router or network timings'}
         args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n')

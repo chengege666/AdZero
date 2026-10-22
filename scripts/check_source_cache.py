@@ -71,6 +71,14 @@ let env={get_downloader:()=>({kind:'curl',flag:'-o',command:'curl -f --silent --
         address='https://lists.example/one?token=private-marker'
         sources('begin','add','','Fixture',address,'domains');sources('finish')
         assert count()==1
+        # Execute the pinned native enumeration that normally sends HEAD when
+        # a file_url size is absent. The precheck has already measured it.
+        start=text.index('\t// Enumerate enabled lists and sum their sizes in one pass.')
+        end=text.index('\n\tlet n_lists =',start)
+        sizing="import {cursor} from 'uci';let pkg={name:'adblock-fast'},cfg={update_config_sizes:true};function uci(name){return cursor();}function get_url_filesize(url){die('unexpected HEAD request');}\n"+text[start:end]+"\nprint(total_sizes);"
+        (base/'tmp/native-sizing.uc').write_text(sizing)
+        assert int(run('/usr/bin/ucode','/tmp/native-sizing.uc').stdout)==(base/'tmp/body').stat().st_size
+        checks.append('pinned native source-size enumeration uses measured precheck bytes without another HEAD request')
         fetch(address);assert count()==1 and (base/'tmp/adblock-fast_tmp.12345678').read_bytes()==(base/'tmp/body').read_bytes()
         checks.append('precheck download reused through real shell PATH wrapper and pinned upstream download function')
         fetch(address);assert count()==1

@@ -160,6 +160,62 @@ class SourcesTest(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.body.write_text(raw);self.add(kind=kind,ok=False)
 
+    def test_hosts_and_basic_adblock_report_native_ascii_exclusions(self):
+        for kind,raw in [('hosts','127.0.0.1 localhost\n0.0.0.0 valid.example\n0.0.0.0 under_score.example\n'),
+                         ('adblock','||valid.example^\n||under_score.example^\n')]:
+            with self.subTest(kind=kind):
+                self.body.write_text(raw);self.add(kind=kind)
+                item=self.data()['items'][0]
+                self.assertEqual((item['domains'],item['skipped']),(1,1))
+                self.run_source('rollback');self.run_source('discard')
+
+    def test_native_wildcard_is_excluded_and_never_converted_to_parent_domain(self):
+        p=self.root/'etc/config/adblock-fast'
+        p.write_text(p.read_text()+"\nconfig file_url 'legacy'\n option enabled '1'\n option url 'https://legacy.example/list'\n")
+        self.body.write_text('valid.example\n*.ads.example\n_srv._tcp.example\n')
+        self.run_source('begin','refresh');self.run_source('finish')
+        item=self.data()['items'][0]
+        self.assertEqual((item['format'],item['domains'],item['skipped']),('domains',1,2))
+        parsed=next((self.root/'tmp/adzero-source-cache').glob('*.parsed'))
+        self.assertEqual(json.loads(parsed.read_text())['names'],['valid.example'])
+
+    def test_downloaded_byte_size_is_recorded_for_native_download_scheduling(self):
+        self.add();item=self.data()['items'][0]
+        key='adblock-fast.'+item['id']+'.size'
+        self.assertEqual(int(subprocess.check_output([self.env['ADZERO_UCI'],'get',key],text=True)),self.body.stat().st_size)
+
+    def test_unsupported_semantics_are_not_discarded_as_underscore_records(self):
+        for kind,raw in [('hosts','0.0.0.0 under_score.example other.example\n'),
+                         ('adblock','||under_score.example^$important\n'),
+                         ('domains','@@||under_score.example^\n')]:
+            with self.subTest(kind=kind):
+                self.body.write_text(raw);self.add(kind=kind,ok=False)
+
+    def test_hosts_common_alias_headers_and_single_labels_match_native_processing(self):
+        self.body.write_text('::1 ip6-localhost ip6-loopback\nfe00::0 ip6-localnet\n255.255.255.255 broadcasthost\n127.0.0.1 dig\n127.0.0.1 wpad # system alias\n0.0.0.0 valid.example\n')
+        self.add(kind='hosts');item=self.data()['items'][0]
+        self.assertEqual((item['domains'],item['skipped']),(1,2))
+
+    def test_hosts_localhost_substrings_comments_and_ipv6_are_not_false_counts(self):
+        self.body.write_text('0.0.0.0 valid.example\n0.0.0.0 thislocalhost.com\n0.0.0.0 commented.example # localhost\n:: ipv6.example\n::1 other.example\n')
+        self.add(kind='hosts');item=self.data()['items'][0]
+        self.assertEqual((item['domains'],item['skipped']),(1,4))
+
+    def test_hosts_header_alias_cannot_hide_an_advertising_alias(self):
+        self.body.write_text('127.0.0.1 localhost ads.example\n0.0.0.0 valid.example\n')
+        self.add(kind='hosts',ok=False)
+
+    def test_stevenblack_custom_header_region_is_not_counted_as_loaded(self):
+        self.body.write_text('# Title: StevenBlack/hosts\n0.0.0.0 custom.example\n# Custom host records are listed here\n0.0.0.0 valid.example\n')
+        self.add(kind='hosts');self.assertEqual(self.data()['items'][0]['domains'],1)
+
+    def test_trailing_dot_records_cannot_produce_a_false_semantic_match(self):
+        self.body.write_text('valid.example\ndropped.example.\n')
+        self.add();self.assertEqual((self.data()['items'][0]['domains'],self.data()['items'][0]['skipped']),(1,1))
+        self.run_source('rollback');self.run_source('discard')
+        for kind,raw in [('hosts','0.0.0.0 invalid.example.\n'),('adblock','||invalid.example.^\n')]:
+            self.body.write_text(raw);self.add(kind=kind,ok=False)
+
     def test_legacy_source_full_refresh_keeps_protection_and_populates_metadata(self):
         self.fixture.ctl('enable')
         p=self.root/'etc/config/adblock-fast'

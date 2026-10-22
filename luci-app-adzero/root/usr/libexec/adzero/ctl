@@ -134,7 +134,8 @@ backend_restart() {
 		"$BACKEND_INIT" "${1:-start}" || backend_rc=$?
 	case "$backend_rc" in 0|1) backend_confirm ready || { public_failure backend; return 1; } ;; *) public_failure backend; return 1 ;; esac
 	# Optional optimization only. Missing/corrupt proof falls back to download.
-	"$SOURCES" cache-save >/dev/null 2>&1 || :
+	if [ "${1:-start}" = start ]; then "$SOURCES" cache-save preserve >/dev/null 2>&1 || :
+	else "$SOURCES" cache-save >/dev/null 2>&1 || :; fi
 }
 reload_current() {
 	if adapter_reload_pending; then finish_pending_reload; printf 'confirmed previous proxy reload\n'; return 0; fi
@@ -150,8 +151,9 @@ reload_current() {
 	printf 'reloaded current configuration\n'
 }
 backend_rebuild_if_changed() {
-	# Exact output + effective options + every enabled source body must match.
-	# Cosmetic metadata and a refresh returning identical bytes need no rebuild.
+	# Live output, effective options and verified rule content must match.
+	# Metadata, identical bytes and equivalent domain rules need no rebuild.
+	if "$SOURCES" cache-restamp >/dev/null 2>&1; then return 0; fi
 	if "$SOURCES" cache-live >/dev/null 2>&1; then
 		# Keep restore metadata current too, so skipping an unchanged refresh
 		# does not defer a needless rebuild to the next disable/enable cycle.

@@ -1,0 +1,19 @@
+{
+  "source_sha256": "ff1cb80da397e86ff27cb6256b90ed00ae16681bd9b737bc474d6da1b0a55581",
+  "installer_sha256": "72d1d15f200edb75bc8a3d4ad469c8f71e8d6d3a4576b2cb2306fb38d9c2af1c",
+  "native_tests": 301,
+  "ui_assertions": 135,
+  "rpc_checks": 44,
+  "nailink_gateway_checks": 18,
+  "source_download_handoff_checks": 9,
+  "https_source_snapshots": 21,
+  "production_parser_accepts": 21,
+  "native_exact_comparisons": 20,
+  "native_known_header_artifact_differences": 1,
+  "synthetic_rules": 206375,
+  "metadata_edits_and_equivalent_domains_skip_rebuild": true,
+  "unapplied_snapshots_remain_unapplied": true,
+  "sdk_builds": 3,
+  "package_payload_files": 33,
+  "core_kernel_and_router_and_lan": "not_run"
+}

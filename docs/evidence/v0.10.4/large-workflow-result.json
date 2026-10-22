@@ -1,0 +1,181 @@
+{
+  "source_sha256": "ff1cb80da397e86ff27cb6256b90ed00ae16681bd9b737bc474d6da1b0a55581",
+  "libexec_sha256": "f01812c21d744ffef73888670be89e64799d88e6c5a5e0d35aae7e36dd5500ec",
+  "rules": 206375,
+  "domestic_domains": 109795,
+  "domestic_cidrs": 10015,
+  "measurements": [
+    {
+      "action": "enable",
+      "seconds": 4.6785,
+      "proxy_reload_calls": 1,
+      "backend_calls": 2,
+      "timeline": [
+        "1792642832 waiting_lock",
+        "1792642832 checking",
+        "1792642833 processing",
+        "1792642833 verifying",
+        "1792642833 processing",
+        "1792642833 verifying",
+        "1792642835 adapting",
+        "1792642836 restarting"
+      ]
+    },
+    {
+      "action": "unchanged_reconcile",
+      "seconds": 0.6229,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792642837 waiting_lock",
+        "1792642837 checking",
+        "1792642837 verifying",
+        "1792642837 adapting"
+      ]
+    },
+    {
+      "action": "routing_on_cold",
+      "seconds": 4.1115,
+      "proxy_reload_calls": 1,
+      "backend_calls": 0,
+      "timeline": [
+        "1792642837 waiting_lock",
+        "1792642837 checking",
+        "1792642838 verifying",
+        "1792642840 adapting",
+        "1792642841 restarting"
+      ]
+    },
+    {
+      "action": "routing_off",
+      "seconds": 1.7833,
+      "proxy_reload_calls": 1,
+      "backend_calls": 0,
+      "timeline": [
+        "1792642842 waiting_lock",
+        "1792642842 checking",
+        "1792642842 verifying",
+        "1792642842 adapting",
+        "1792642843 restarting"
+      ]
+    },
+    {
+      "action": "routing_on_warm",
+      "seconds": 1.942,
+      "proxy_reload_calls": 1,
+      "backend_calls": 0,
+      "timeline": [
+        "1792642843 waiting_lock",
+        "1792642843 checking",
+        "1792642844 verifying",
+        "1792642844 adapting",
+        "1792642845 restarting"
+      ]
+    },
+    {
+      "action": "lookup",
+      "seconds": 0.9054,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792642845 waiting_lock",
+        "1792642845 checking",
+        "1792642845 verifying"
+      ]
+    },
+    {
+      "action": "enable_extra_source",
+      "seconds": 5.5092,
+      "proxy_reload_calls": 1,
+      "backend_calls": 2,
+      "timeline": [
+        "1792642846 waiting_lock",
+        "1792642846 checking",
+        "1792642846 verifying",
+        "1792642847 downloading",
+        "1792642847 validating",
+        "1792642847 processing",
+        "1792642847 verifying",
+        "1792642847 processing",
+        "1792642847 verifying",
+        "1792642849 adapting",
+        "1792642851 restarting"
+      ]
+    },
+    {
+      "action": "refresh_seed",
+      "seconds": 5.3309,
+      "proxy_reload_calls": 0,
+      "backend_calls": 2,
+      "timeline": [
+        "1792642852 waiting_lock",
+        "1792642852 checking",
+        "1792642852 verifying",
+        "1792642852 downloading",
+        "1792642852 validating",
+        "1792642856 downloading",
+        "1792642856 validating",
+        "1792642856 processing",
+        "1792642856 verifying",
+        "1792642856 processing",
+        "1792642856 verifying",
+        "1792642857 adapting"
+      ]
+    },
+    {
+      "action": "reload_unchanged",
+      "seconds": 1.108,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792642857 waiting_lock",
+        "1792642857 checking",
+        "1792642857 verifying",
+        "1792642858 adapting"
+      ]
+    },
+    {
+      "action": "refresh_unchanged",
+      "seconds": 1.6451,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0,
+      "timeline": [
+        "1792642858 waiting_lock",
+        "1792642858 checking",
+        "1792642859 verifying",
+        "1792642859 downloading",
+        "1792642859 validating",
+        "1792642859 downloading",
+        "1792642859 validating",
+        "1792642859 adapting"
+      ]
+    },
+    {
+      "action": "refresh_header_and_order_only",
+      "seconds": 4.9321,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0
+    },
+    {
+      "action": "edit_disabled_source",
+      "seconds": 1.1714,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0
+    },
+    {
+      "action": "remove_disabled_source_cold_cache",
+      "seconds": 1.1564,
+      "proxy_reload_calls": 0,
+      "backend_calls": 0
+    },
+    {
+      "action": "batch_two_sources_and_routing_off",
+      "seconds": 6.1534,
+      "proxy_reload_calls": 1,
+      "precheck_downloads": 2
+    }
+  ],
+  "precheck_downloads": 7,
+  "batch_precheck_downloads": 2,
+  "scope": "real ctl/UCI/ucode; synthetic large rules; backend/download/NaiLink API/reload fixtures; not router or network timings"
+}

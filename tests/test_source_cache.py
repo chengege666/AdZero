@@ -93,7 +93,7 @@ class SourceCacheTest(unittest.TestCase):
         self.assertEqual(self.s.data()['items'][0]['domains'],2)
         self.assertEqual(self.s.data()['items'][0]['skipped'],0)
         self.assertEqual(len((self.root/'fetches').read_text().splitlines()),1)
-        self.assertEqual(json.loads(proof.read_text())['parser'],2)
+        self.assertEqual(json.loads(proof.read_text())['parser'],3)
         self.assertEqual(json.loads(parsed.read_text())['names'],['new-ads.example','new-track.example'])
 
     def test_cached_partial_domain_validation_retains_exclusion_count_without_refetch(self):
@@ -104,6 +104,54 @@ class SourceCacheTest(unittest.TestCase):
             self.s.run_source('begin','toggle',item['id'],item['url'],value);self.s.run_source('finish')
         self.assertEqual((self.s.data()['items'][0]['domains'],self.s.data()['items'][0]['skipped']),(1,2))
         self.assertEqual(len((self.root/'fetches').read_text().splitlines()),2)
+
+    def test_unchanged_refresh_keeps_body_and_parsed_files_even_when_cache_is_full(self):
+        directory=self.root/'tmp/adzero-source-cache'
+        body=next(directory.glob('*.body'));parsed=next(directory.glob('*.parsed'))
+        prior={p.name:(p.stat().st_ino,p.stat().st_mtime_ns,p.read_bytes()) for p in (body,parsed)}
+        # A sparse filler exceeds the optional cache budget without using RAM.
+        with (directory/'budget-fixture').open('wb') as f: f.truncate(96000000)
+        self.s.run_source('begin','refresh');self.s.run_source('finish')
+        self.assertEqual({p.name:(p.stat().st_ino,p.stat().st_mtime_ns,p.read_bytes()) for p in (body,parsed)},prior)
+        self.helper();self.assertEqual(len((self.root/'fetches').read_text().splitlines()),2)
+
+    def test_unchanged_refresh_cannot_renew_a_corrupt_parsed_array(self):
+        parsed=next((self.root/'tmp/adzero-source-cache').glob('*.parsed'))
+        parsed.write_text('{"format":"domains","names":["wrong.example"],"skipped":0}')
+        self.s.run_source('begin','refresh');self.s.run_source('finish')
+        self.assertEqual(json.loads(parsed.read_text())['names'],['new-ads.example','new-track.example'])
+        self.assertEqual(self.s.data()['items'][0]['domains'],2)
+
+    def test_disabled_source_changes_do_not_rebuild_or_reload_any_adapter(self):
+        # Place a disabled anonymous source before the active source. Deletion
+        # renumbers anonymous IDs, which must not look like a rule change.
+        for plugin in ('nailink','passwall','openclash','nikki'):
+            with self.subTest(plugin=plugin):
+                cfg=self.root/'etc/config/adblock-fast'
+                text=cfg.read_text().replace("config file_url 'adzero_src_1'","config file_url")
+                pos=text.index('\nconfig file_url')
+                cfg.write_text(text[:pos]+"\nconfig file_url\n option url 'https://disabled.example/one'\n option enabled '0'\n"+text[pos:])
+                self.f.select(plugin);self.f.ctl('enable')
+                for p in (self.root/'tmp/adzero-source-cache').glob('*.proof'):p.unlink()
+                backend=Path(self.env['ADZERO_BACKEND_INIT']);before=backend.read_text()
+                journal=self.root/'etc/adzero/adapter.json';adapter_before=journal.read_bytes()
+                backend.write_text('#!/bin/sh\necho called >> "$ADZERO_SOURCES_ROOT/disabled-rebuild"\nexit 77\n')
+                item=next(i for i in self.s.data()['items'] if not i['enabled'])
+                self.f.ctl('source-remove',item['id'],item['url'])
+                self.assertFalse((self.root/'disabled-rebuild').exists())
+                self.assertEqual(journal.read_bytes(),adapter_before)
+                backend.write_text(before);self.f.ctl('disable')
+
+    def test_format_edit_with_newly_downloaded_bytes_cannot_use_selection_shortcut(self):
+        self.f.ctl('enable')
+        listing=self.s.data();items=[{k:i[k] for k in ('id','name','url','format','enabled')} for i in listing['items']]
+        items[0]['format']='hosts';self.s.body.write_text('0.0.0.0 fresh-host.example\n')
+        for p in (self.root/'tmp/adzero-source-cache').glob('*.proof'):p.unlink()
+        backend=Path(self.env['ADZERO_BACKEND_INIT']);original=backend.read_text()
+        backend.write_text(original.replace("r=Path(os.environ['ADZERO_POLICY_ROOT']); output=", "r=Path(os.environ['ADZERO_POLICY_ROOT']); (r/'rebuild-log').open('a').write(sys.argv[1]+'\\n'); output="))
+        plan=self.f.write('format-plan.json',json.dumps({'revision':listing['revision'],'items':items,'routing_before':False,'routing_enabled':False}))
+        self.f.ctl('settings-apply',str(plan))
+        self.assertEqual((self.root/'rebuild-log').read_text().splitlines(),['stop','dl'])
 
     def test_unsupported_flags_disabled_source_and_foreign_output_are_not_intercepted(self):
         self.helper(extra=('--header','X-Test: private'),ok=False)
@@ -177,5 +225,85 @@ class SourceCacheTest(unittest.TestCase):
         self.f.ctl('source-refresh',ok=False)
         self.assertTrue((self.root/'rebuilds').exists())
         backend.write_text(original)
+
+    def test_domains_and_adblock_comment_or_order_changes_do_not_rebuild(self):
+        for kind in ('domains','adblock'):
+            with self.subTest(kind=kind):
+                item=self.s.data()['items'][0]
+                # Use an explicit selected kind for this independent source.
+                subprocess.run([self.env['ADZERO_UCI'],'set',f"adblock-fast.{item['id']}.adzero_format={kind}"],check=True)
+                subprocess.run([self.env['ADZERO_UCI'],'commit','adblock-fast'],check=True)
+                values=['new-ads.example','new-track.example']
+                if kind=='adblock':values=['||'+v+'^' for v in values]
+                self.s.body.write_text('\n'.join(values)+'\n')
+                self.s.run_source('begin','refresh');self.s.run_source('finish');self.f.ctl('enable')
+                backend=Path(self.env['ADZERO_BACKEND_INIT']);original=backend.read_text()
+                backend.write_text('#!/bin/sh\necho restart >> "$ADZERO_SOURCES_ROOT/semantic-rebuild"\nexit 77\n')
+                self.s.body.write_text('# Updated: later\n'+values[1]+'\n\n'+values[0]+'\n')
+                self.f.ctl('source-refresh')
+                self.assertFalse((self.root/'semantic-rebuild').exists())
+                backend.write_text(original);self.f.ctl('disable')
+
+    def test_changed_hosts_comment_semantics_still_rebuild(self):
+        item=self.s.data()['items'][0]
+        subprocess.run([self.env['ADZERO_UCI'],'set',f"adblock-fast.{item['id']}.adzero_format=hosts"],check=True)
+        subprocess.run([self.env['ADZERO_UCI'],'commit','adblock-fast'],check=True)
+        self.s.body.write_text('0.0.0.0 one.example\n0.0.0.0 two.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('finish');self.f.ctl('enable')
+        backend=Path(self.env['ADZERO_BACKEND_INIT']);original=backend.read_text()
+        backend.write_text(original.replace("r=Path(os.environ['ADZERO_POLICY_ROOT']); output=", "r=Path(os.environ['ADZERO_POLICY_ROOT']); (r/'hosts-rebuild-log').open('a').write(sys.argv[1]+'\\n'); output="))
+        self.s.body.write_text('0.0.0.0 one.example # localhost\n0.0.0.0 two.example\n')
+        self.f.ctl('source-refresh')
+        self.assertEqual((self.root/'hosts-rebuild-log').read_text().splitlines(),['stop','dl'])
+
+    def test_semantic_proof_corruption_never_skips_backend_rebuild(self):
+        self.f.ctl('enable')
+        parsed=next((self.root/'tmp/adzero-source-cache').glob('*.parsed'))
+        parsed.write_text('{"format":"domains","names":["different.example"],"skipped":0}')
+        self.s.body.write_text('genuinely-new.example\n')
+        backend=Path(self.env['ADZERO_BACKEND_INIT']);original=backend.read_text()
+        backend.write_text(original.replace("r=Path(os.environ['ADZERO_POLICY_ROOT']); output=", "r=Path(os.environ['ADZERO_POLICY_ROOT']); (r/'new-rebuild-log').open('a').write(sys.argv[1]+'\\n'); output="))
+        self.f.ctl('source-refresh')
+        self.assertEqual((self.root/'new-rebuild-log').read_text().splitlines(),['stop','dl'])
+
+    def test_metadata_apply_cannot_stamp_unapplied_snapshot_as_current(self):
+        self.f.ctl('enable');cache=self.root/'etc/adzero/backend-cache.json'
+        prior=json.loads(cache.read_text())['effective']
+        # Simulate a later subscription failing after an earlier one was
+        # downloaded: selection rolls back while disposable bytes are newer.
+        self.s.body.write_text('unapplied-new.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('rollback');self.s.run_source('discard')
+        self.s.run_source('cache-live',ok=False)
+        listing=self.s.data();items=[{k:i[k] for k in ('id','name','url','format','enabled')} for i in listing['items']]
+        items[0]['name']='Only a name change'
+        plan=self.f.write('rename-plan.json',json.dumps({'revision':listing['revision'],'items':items,'routing_before':False,'routing_enabled':False}))
+        self.f.ctl('settings-apply',str(plan))
+        self.assertEqual(json.loads(cache.read_text())['effective'],prior)
+        self.s.run_source('cache-live',ok=False)
+
+    def test_cached_start_preserves_the_inputs_of_restored_output(self):
+        self.f.ctl('enable');cache=self.root/'etc/adzero/backend-cache.json'
+        prior=json.loads(cache.read_text())['effective']
+        self.s.body.write_text('not-yet-applied.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('rollback');self.s.run_source('discard')
+        self.s.run_source('cache-save','preserve')
+        self.assertEqual(json.loads(cache.read_text())['effective'],prior)
+        self.s.run_source('cache-live',ok=False)
+
+    def test_legacy_cache_input_claim_is_not_promoted_to_current_proof(self):
+        self.f.ctl('enable');cache=self.root/'etc/adzero/backend-cache.json'
+        self.s.body.write_text('legacy-unapplied.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('rollback');self.s.run_source('discard')
+        # Reproduce an old proof claiming the latest downloaded bytes while
+        # the output is still the previous cached result. It cannot be reused.
+        old=json.loads(cache.read_text());old['schema']=1
+        snapshot=json.loads(next((self.root/'tmp/adzero-source-cache').glob('*.proof')).read_text())
+        for item in old['effective']:
+            if item['type']=='file_url':item['snapshot']=snapshot['body'];item.pop('semantic',None)
+        cache.write_text(json.dumps(old));self.s.run_source('cache-live',ok=False)
+        self.s.run_source('cache-save','preserve')
+        state=json.loads(cache.read_text())
+        self.assertEqual(state['schema'],2);self.assertIsNone(state['effective'])
+        self.s.run_source('cache-live',ok=False)
 
 if __name__=='__main__': unittest.main()

@@ -1,6 +1,6 @@
 # AdZero
 
-当前测试版 **v0.10.3** 修复 CNAME Trackers 等纯域名订阅无法独立计数的问题。上游夹杂后端本会排除的前导连字符、下划线记录时，显示有效域名数及排除条数；例外、修饰符、网页元素等不支持语法仍会拒绝。旧解析缓存重新检查，复用已验证的原始下载快照。保留批量应用、重新加载和四代理架构，不新增运行依赖。升级后点击一次「更新订阅」重新检查此前未独立计数的来源；「重新加载」不会强制刷新订阅。详见 [规则管理说明](docs/RULE_SOURCES.md)。
+当前测试版 **v0.10.4** 检查规则库及后端自带的 21 个 HTTPS 来源，修复 Hosts 系统头部、下划线及原生格式排除记录的识别与计数。相同正文复用解析缓存；已验证的域名/基础 Adblock 列表仅注释、顺序或大小写变化时跳过重建；只改名称或未启用规则时也跳过无关重建。保留批量应用、重新加载及四代理架构，不新增运行依赖。详见 [规则流程检查与性能边界](docs/RULE_WORKFLOW_AUDIT.md)。
 
 面向软路由的原生 LuCI 插件，无独立后台和二次登录。复用 adblock-fast 处理规则，把同一份有效规则接入当前代理的 DNS 链路。
 
@@ -40,10 +40,10 @@ v0.8.1 修正既有匿名订阅删除后的回滚比较，避免把 UCI 自动�
 在匹配上述固件版本与 target 的路由器上，以 root SSH 执行：
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.4/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ~~~
 
-安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.10.3)，解压后执行：
+安装器核对固件版本、target、包管理器、软件包架构及 SHA-256；备份 /etc/config，安装依赖，然后启用保护。未列入发行清单的固件或架构会停止安装。HTTPS 方式需要 curl，也可下载 [测试发行包](https://github.com/slobys/AdZero/releases/tag/v0.10.4)，解压后执行：
 
 ~~~sh
 sh install.sh --local-dir "$(pwd)"
@@ -52,7 +52,7 @@ sh install.sh --local-dir "$(pwd)"
 加 --no-enable 可只安装，之后在「服务 → AdZero」开启。**已有版本使用 --upgrade：先校验安装包、暂停后台调度并等当前任务完成，备份配置及恢复记录，再调用旧版关闭、安装并重新开启。**
 
 ~~~sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.10.4/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ~~~
 
 升级后刷新 LuCI 页面；旧资源缓存未更新时可用 Ctrl+F5 强制刷新。

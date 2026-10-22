@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -20,6 +21,8 @@ UPSTREAM_SHA256 = '19727b189472f380b9791b1fc37c4acdec60eea06650f7d845fea8fafbd49
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input', type=Path, required=True)
+    parser.add_argument('--format', choices=('domains','hosts','adblock'), default='domains')
+    parser.add_argument('--output', type=Path, default=ROOT/'artifacts/runtime/source-validation-result.json')
     args = parser.parse_args()
     before = source_hash(ROOT/'luci-app-adzero')
     ucode = shlex.split(os.environ.get('ADZERO_UCODE', ''))
@@ -35,8 +38,13 @@ def main():
                               capture_output=True, timeout=90).stdout
     with tempfile.TemporaryDirectory(prefix='adzero-source-validation-') as tmp:
         output = Path(tmp)/'native.txt'
-        expression = run(table+'print(list_formats.domains.filter);')
-        filtered = subprocess.run(['sed', expression, str(args.input.resolve())],
+        kind='adblockplus' if args.format=='adblock' else args.format
+        expression = run(table+'print(list_formats['+json.dumps(kind)+'].filter);')
+        source=args.input.resolve()
+        if args.format=='hosts':
+            source=Path(tmp)/'hosts.txt'
+            source.write_bytes(subprocess.run(['sed','/# Title: StevenBlack/,/# Custom host records are listed here/d',str(args.input.resolve())],check=True,capture_output=True).stdout)
+        filtered = subprocess.run(['sed', expression, str(source)],
                                   check=True, capture_output=True, timeout=30).stdout
         sorted_result = subprocess.run(['sort', '-u'], input=filtered,
                                        check=True, capture_output=True, timeout=30).stdout
@@ -54,16 +62,26 @@ def main():
         backend = json.loads(run("import {domains} from "+json.dumps(actual)
             +";import {readfile} from 'fs';print(sprintf('%J',domains(readfile("
             +json.dumps(str(output))+"),'smartdns.domainset')));"))
-        assert detected and detected['format'] == 'domains'
-        assert detected['names'] == backend, 'Independent count differs from native domain output'
+        assert detected and detected['format'] == args.format
+        # Native hosts sed can concatenate the broadcast system mapping into
+        # a fake domain. Do not add that artifact to the source's valid count.
+        # This sole exception is tied to the exact header in the input; all
+        # other missing/additional domains still fail the comparison.
+        artifacts=[]
+        header='255.255.255.255broadcasthost'
+        if args.format=='hosts' and header in backend and header not in detected['names'] and re.search(rb'^\s*255\.255\.255\.255\s+broadcasthost\s*(?:#.*)?$',raw,re.M):artifacts=[header]
+        usable=[name for name in backend if name not in artifacts]
+        assert detected['names'] == usable, ('Independent/native domain sets differ',
+            sorted(set(detected['names'])-set(usable))[:5],sorted(set(usable)-set(detected['names']))[:5])
         assert source_hash(ROOT/'luci-app-adzero') == before, 'Source changed during validation'
         report = {'source_sha256':before,
                   'body_sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw),
-                  'format':detected['format'],'valid_unique_domains':len(backend),
+                  'format':detected['format'],'valid_unique_domains':len(usable),'native_domain_count':len(backend),
                   'excluded_records':detected['skipped'],'native_upstream_sha256':UPSTREAM_SHA256,
-                  'same_sorted_domain_set':True,'parse_seconds_x86_userspace':round(seconds,3),
+                  'same_sorted_domain_set':detected['names']==backend,'native_header_artifacts':artifacts,
+                  'valid_source_domain_sets_match':True,'parse_seconds_x86_userspace':round(seconds,3),
                   'network_services_proxy_router':'not_run'}
-        path=ROOT/'artifacts/runtime/source-validation-result.json';path.parent.mkdir(parents=True,exist_ok=True)
+        path=args.output;path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 
 if __name__=='__main__': main()

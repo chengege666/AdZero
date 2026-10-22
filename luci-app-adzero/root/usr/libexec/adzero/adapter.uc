@@ -626,8 +626,9 @@ rules_signature = function(plugin) {
 	// alter the rules. The exact processed output hash above still gates reuse.
 	let backend_options=[];
 	uci.foreach('adblock-fast',null,s=>{
+		if(s['.type']=='file_url'&&s.enabled=='0')return;
 		let values={};for(let k in sort(keys(s)))if(substr(k,0,1)!='.'&&!(s['.type']=='file_url'&&(k=='name'||k=='size'||substr(k,0,7)=='adzero_')))values[k]=s[k];
-		push(backend_options,{id:s['.name'],type:s['.type'],values});
+		push(backend_options,{id:s['.type']=='file_url'?null:s['.name'],type:s['.type'],values});
 	});
 	dependencies['/etc/config/adblock-fast']=backend_options;
 	for(let name in paths){

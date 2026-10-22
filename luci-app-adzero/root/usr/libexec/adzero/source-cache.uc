@@ -40,14 +40,43 @@ export function load(address,root){
 export function parsed(snapshot,kind){
 	try{
 		let p=snapshot?.proof,path=snapshot.dir+'/'+snapshot.id+'.parsed';
-		if(p.parser!=2||p.kind!=kind||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		if(p.parser!=3||p.kind!=kind||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
 		let value=json(fs.readfile(path));
 		if(type(value?.names)!='array'||!length(value.names)||length(value.names)>500000)return null;
 		return value;
 	}catch(e){return null;}
 };
+// A digest of a verified normalized result can prove that only comments,
+// order or case changed. Hosts deliberately use byte identity: the native
+// hosts formatter has header/comment behavior beyond hostname normalization.
+export function semantic(snapshot){
+	try{
+		let p=snapshot?.proof,path=snapshot.dir+'/'+snapshot.id+'.parsed';
+		if(p.parser!=3||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		let f=fs.open(path,'r');if(!f)return null;let prefix=f.read(256);f.close();
+		let header=match(prefix??'',/^[[:space:]]*\{[[:space:]]*"format"[[:space:]]*:[[:space:]]*"(domains|adblock)"[[:space:]]*,[[:space:]]*"names"[[:space:]]*:[[:space:]]*\[/);
+		return header?'v3:'+header[1]+':'+p.parsed:null;
+	}catch(e){return null;}
+};
 export function invalidate(address,root){
 	try{let dir=directory(root),id=dir?key(dir,address):null;if(id)fs.unlink(dir+'/'+id+'.proof');}catch(e){}
+};
+// A fresh HTTP response with exactly the same bytes can keep its verified
+// parsed array. Restore the invalidated proof without serializing/copying MBs.
+export function renew(snapshot,kind){
+	let temp=null,renewed=false;
+	try{
+		if(!snapshot||snapshot.proof.kind!=kind||snapshot.proof.parser!=3||
+			!private_file(snapshot.path,limit)||hash(snapshot.path)!=snapshot.proof.body||
+			!private_file(snapshot.dir+'/'+snapshot.id+'.parsed',32000000)||
+			hash(snapshot.dir+'/'+snapshot.id+'.parsed')!=snapshot.proof.parsed)return false;
+		let nonce=trim(fs.readfile('/proc/sys/kernel/random/uuid')??'');if(!match(nonce,/^[a-f0-9-]{36}$/))return false;
+		temp=snapshot.dir+'/'+nonce+'.proof';let file=fs.open(temp,'wx',0600);if(!file)die('cache_open');
+		let data=sprintf('%J',snapshot.proof),written=file.write(data),closed=file.close();
+		if(written!=length(data)||!closed||!fs.rename(temp,snapshot.dir+'/'+snapshot.id+'.proof'))die('cache_renew');
+		renewed=true;
+	}catch(e){}
+	if(temp)fs.unlink(temp);return renewed;
 };
 export function save(address,raw,root,kind,result){
 	let temps=[];
@@ -65,7 +94,7 @@ export function save(address,raw,root,kind,result){
 			let path=dir+'/'+nonce+suffix,f=fs.open(path,'wx',0600);if(!f)die('cache_open');push(temps,path);
 			let written=f.write(text),closed=f.close();if(written!=length(text)||!closed)die('cache_write');return path;
 		}
-		let body=put('.body',raw),proof={schema:1,parser:2,body:hash(body),kind:kind??null};
+		let body=put('.body',raw),proof={schema:1,parser:3,body:hash(body),kind:kind??null};
 		if(!proof.body)die('cache_digest');
 		if(parsed){let data=put('.parsed',parsed);proof.parsed=hash(data);if(!proof.parsed||!fs.rename(data,dir+'/'+id+'.parsed'))die('cache_parsed');}
 		let meta=put('.proof',sprintf('%J',proof));
