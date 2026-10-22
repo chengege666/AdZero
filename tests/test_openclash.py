@@ -149,3 +149,48 @@ end
         self.env['RUBYOPT']='-r'+str(guard)
         self.run_adapter('apply')
         self.assertIn('adzero-dns',self.generated.read_text())
+
+    def test_emoji_and_control_characters_in_subscription_survive_conversion(self):
+        name='🚀 节点选择 🇭🇰'
+        payload={'dns':{'enable':True,'nameserver':['223.5.5.5']},
+                 'proxy-groups':[{'name':name,'type':'select','proxies':['DIRECT']}],
+                 'rules':['MATCH,'+name],
+                 'custom-text':'引号 " / 反斜杠 \\ 字面量 \\U0001F680 与控制符 \x1b\x07\x0b\u0085\u00a0\u2028\u2029'}
+        # A raw NEL is a YAML 1.1 line break; encode it explicitly to test
+        # conversion of the intended character rather than YAML folding.
+        self.source.write_text(json.dumps(payload,ensure_ascii=False).replace('\u0085','\\u0085'))
+        self.run_adapter('apply')
+        converted=json.loads(self.generated.read_text())
+        self.assertEqual(converted['proxy-groups'],payload['proxy-groups'])
+        self.assertEqual(converted['custom-text'],payload['custom-text'])
+        self.assertIn('MATCH,'+name,converted['rules'])
+
+    def test_unicode_proxy_configuration_accepts_both_start_orders_with_routing(self):
+        name='🚀 节点选择 🇭🇰'
+        config={'dns':{'enable':True,'nameserver':['8.8.8.8']},
+                'proxy-groups':[{'name':name,'type':'select','proxies':['DIRECT']}],
+                'rules':['MATCH,'+name]}
+        self.source.write_text(json.dumps(config,ensure_ascii=False))
+        self.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '1'\n")
+        dhcp=self.write('etc/config/dhcp',"config dnsmasq 'main'\n list server '8.8.8.8'\n")
+        self.write('etc/init.d/dnsmasq','#!/bin/sh\nexit 0\n')
+        data=self.write('country.json',json.dumps({'domain_raw':'server=/cn.example/114.114.114.114\n','cidr_raw':'223.5.5.0/24\n'}))
+        self.env.update(ADZERO_ROUTING_DATA_FIXTURE=str(data),ADZERO_ROUTING_DATA_PROGRAM=str(LIB/'routing-data'),ADZERO_UCODE=shlex.join(UCODE))
+        inventory=self.root/'inventory.json';active=inventory.read_text()
+        for order in ('openclash_first','adzero_first'):
+            with self.subTest(order=order):
+                before=dhcp.read_text()
+                if order=='adzero_first':
+                    inventory.write_text('{"plugins":[]}')
+                    self.run_adapter('apply')
+                    self.assertEqual(json.loads(self.run_adapter('status').stdout)['routing']['mode'],'direct')
+                inventory.write_text(active)
+                self.run_adapter('apply')
+                status=json.loads(self.run_adapter('status').stdout)
+                self.assertEqual((status['plugin'],status['stage'],status['routing']['mode']),('openclash','configured_unverified','proxy'))
+                generated=json.loads(self.generated.read_text())
+                self.assertEqual(generated['dns']['nameserver'],['tcp://1.1.1.1:53#'+name])
+                self.run_adapter('remove')
+                self.assertEqual(self.custom.read_text(),self.original)
+                # libuci restores the value and normalizes whitespace.
+                self.assertEqual(dhcp.read_text().split(),before.split())

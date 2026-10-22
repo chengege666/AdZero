@@ -141,10 +141,13 @@ def main():
                     ads=home/'ads.txt';ads.write_text('+.ads.example\n+.ads.cn.example\n')
                     cn=home/'cn.txt';cn.write_text('+.cn.example\n+.sub.ads.example\n')
                     ips=home/'ips.txt';ips.write_text('223.5.5.0/24\n2400:3200::/32\n')
-                    config={'mode':'global','log-level':'error','mixed-port':mixed_port,'bind-address':'127.0.0.1','dns':{'enable':True,'listen':f'127.0.0.1:{dns_port}','ipv6':True,'enhanced-mode':mode,'fake-ip-range':'198.18.0.1/16','nameserver':['223.5.5.5'],'fake-ip-filter':['+.real.foreign.example']},'proxies':[{'name':'test-node','type':'socks5','server':'127.0.0.1','port':socks_port}],'proxy-groups':[{'name':'My Proxy','type':'select','proxies':['test-node']}],'rules':['DOMAIN,override.cn.example,My Proxy','MATCH,My Proxy']}
+                    target='🚀 节点选择 🇭🇰'
+                    config={'mode':'global','log-level':'error','mixed-port':mixed_port,'bind-address':'127.0.0.1','dns':{'enable':True,'listen':f'127.0.0.1:{dns_port}','ipv6':True,'enhanced-mode':mode,'fake-ip-range':'198.18.0.1/16','nameserver':['223.5.5.5'],'fake-ip-filter':['+.real.foreign.example']},'proxies':[{'name':'test-node','type':'socks5','server':'127.0.0.1','port':socks_port}],'proxy-groups':[{'name':target,'type':'select','proxies':['test-node']}],'rules':['DOMAIN,override.cn.example,'+target,'MATCH,'+target]}
                     config=transform('adapter','mihomo',config,str(ads),False)
                     config=transform('routing','mihomo',config,str(cn),str(ips),settings)['config']
-                    path=home/'config.json';path.write_text(json.dumps(config))
+                    # Match production ucode's UTF-8 output. Python's default
+                    # surrogate-pair escapes are not accepted by YAML readers.
+                    path=home/'config.json';path.write_text(json.dumps(config,ensure_ascii=False))
                     p=subprocess.run([str(binary),'-t','-d',tmp,'-f',str(path)],text=True,capture_output=True)
                     assert p.returncode==0,p.stdout+p.stderr
                     with (home/'core.log').open('w+') as log:

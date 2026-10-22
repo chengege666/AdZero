@@ -12,6 +12,7 @@ import * as proxy from './proxy-state.uc';
 const root = getenv('ADZERO_ADAPTER_ROOT') ?? '';
 const state_dir = root + '/etc/adzero';
 const journal_path = state_dir + '/adapter.json';
+const yaml_reader = fs.dirname(sourcepath()) + '/yaml-json.rb';
 const uci = cursor(root + '/etc/config');
 const split_enabled = uci.get('adzero','main','routing_enabled') == '1';
 const dns_profile=route.profile(json(uci.get('adzero','main','dns_profile')??'null'));
@@ -159,9 +160,12 @@ function yaml(path, engine) {
 	if (!length(trim(text ?? ''))) return {};
 	let data;
 	if (engine == 'nikki') data = capture(['yq', '-o=json', '.', path]);
-	// Psych already ships JSON emission with ruby-yaml. OpenClash does not
-	// depend on the separate ruby-json package; avoid a hidden dependency.
-	else data = capture(['ruby', '-ryaml', '-e', 'puts YAML.to_json(YAML.safe_load(File.read(ARGV[0]), aliases: true))', path]);
+	// Keep OpenClash's existing ruby-yaml dependency, but emit strict JSON:
+	// Psych.to_json emits YAML-only escapes for emoji and control characters.
+	else {
+		try { data=capture(['ruby',yaml_reader,path]); }
+		catch(e) { progress.failure('openclash_yaml');die('OpenClash YAML conversion failed (private configuration omitted)'); }
+	}
 	let value = json(data);
 	if (value == null) return {};
 	if (type(value) != 'object') die('Expected a YAML mapping');

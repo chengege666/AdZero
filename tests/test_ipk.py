@@ -44,7 +44,7 @@ def list_tar(content):
 class IpkPackagingTest(unittest.TestCase):
     def test_ar_structure_and_control(self):
         package, version = build_ipk.build_bytes()
-        self.assertEqual(version, "0.14.1-r1")
+        self.assertEqual(version, "0.14.2-r1")
         members = parse_ar(package)
         self.assertEqual(set(members), {"debian-binary", "control.tar.gz", "data.tar.gz"})
         self.assertEqual(members["debian-binary"], b"2.0\n")
@@ -52,7 +52,7 @@ class IpkPackagingTest(unittest.TestCase):
         self.assertEqual(set(control), {"control", "conffiles", "postinst", "prerm"})
         body = control["control"][1].decode()
         self.assertIn("Package: luci-app-adzero\n", body)
-        self.assertIn("Version: 0.14.1-r1\n", body)
+        self.assertIn("Version: 0.14.2-r1\n", body)
         self.assertIn("Architecture: all\n", body)
         self.assertIn("Depends: luci-base, adblock-fast, curl, rpcd-mod-file, rpcd-mod-ucode, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus, ucode-mod-uloop, tcpdump-mini\n", body)
         self.assertEqual(control["conffiles"][1], b"/etc/config/adzero\n")
@@ -95,6 +95,7 @@ class IpkPackagingTest(unittest.TestCase):
             "usr/libexec/adzero/adapter",
             "usr/libexec/adzero/adapter.uc",
             "usr/libexec/adzero/adapter-lib.uc",
+            "usr/libexec/adzero/yaml-json.rb",
             "usr/libexec/adzero/backend",
             "usr/libexec/adzero/backend.uc",
             "usr/libexec/adzero/watch",

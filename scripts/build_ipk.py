@@ -100,6 +100,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/libexec/adzero/adapter",
         "usr/libexec/adzero/adapter.uc",
         "usr/libexec/adzero/adapter-lib.uc",
+        "usr/libexec/adzero/yaml-json.rb",
         "usr/libexec/adzero/backend",
         "usr/libexec/adzero/backend.uc",
         "usr/libexec/adzero/watch",

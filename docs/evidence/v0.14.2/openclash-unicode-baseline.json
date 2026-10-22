@@ -1,0 +1,6 @@
+{
+  "fixture_only": true,
+  "ruby_psych_json": "{\"name\": \"\\U0001F680 \u8282\u70b9\u9009\u62e9 \\U0001F1ED\\U0001F1F0\", \"literal\": \"\\\\U0001F680\", \"controls\": \"\\a\\v\\e\n    \u00a0\\L\\P\"}\n",
+  "valid_json": false,
+  "error": "Invalid \\escape: line 1 column 11 (char 10)"
+}

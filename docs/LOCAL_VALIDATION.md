@@ -1,3 +1,14 @@
+# v0.14.2 OpenClash Unicode 配置转换
+
+用户回传 0.14.1 的后台 `invalid string sequence`，本地用 Emoji 策略组名复现：Psych.to_json 可产生 JSON 不接受的 YAML 转义。新增基于安全解析数据的标准 JSON 转换器，保留 Unicode 和字面量反斜杠，无新增运行依赖。详见 [修复说明](OPENCLASH_UNICODE.md)。
+
+- 396 项 OpenWrt 原生回归、189 项界面断言全部通过，无跳过；覆盖 Emoji、中文、全部 ASCII 控制字符、YAML 转义、别名、拒绝异常对象与两种启动顺序。
+- 官方 OpenWrt rootfs 与 Ruby 包、原生 OpenClash 钩子阶段、真实 Mihomo 的 24 组 DNS 检查通过，使用含 Emoji 的策略组名，环境没有 ruby-json。
+- 带 Emoji 策略组的真实 Mihomo 分流检查 108 项通过，DNS/SOCKS/HTTP 为隔离的本地目标；55 项真实 RPC 检查通过。
+- 三个官方 SDK 构建通过，检查每包 39 个文件和交付界面代码；六项 LF/CRLF 安装交接检查通过。
+
+源码 SHA-256：`a61e9afefe3bdf056b1160842363bb71f45f9988e2abe1d196745878564c4fe9`。完整证据见 [evidence/v0.14.2](evidence/v0.14.2/)。没有连接用户路由器；用户 Google 与 ChatGPT 的实际访问差异仍待终端结果确认。
+
 # v0.14.1 OpenClash 开启与更新修复
 
 用户回传确认 OpenClash 是唯一活动代理，AdZero 因没有配置生成回执而撤销开启。修复了原生 `/tmp/<配置名>.yaml` 路径不被接受、快速启动跳过 provider 更新、隐藏的 ruby-json 依赖和统计区域 `null`；同时核对钩子之后的最终配置。详见 [OpenClash 修复记录](OPENCLASH_FIX.md)。

@@ -142,7 +142,13 @@ restart() { start; }
                 for mode in ('redir-host','fake-ip'):
                     source=base/'etc/openclash/config/test profile.yaml'
                     config={'mode':'rule','log-level':'error','dns':{'enable':True,'ipv6':True,'listen':'127.0.0.1:12053','enhanced-mode':mode,'nameserver':[f'udp://127.0.0.1:{upstream.getsockname()[1]}']},'rules':['MATCH,DIRECT']}
-                    source.write_text(json.dumps(config))
+                    # Exercise the actual strategy labels commonly seen in
+                    # subscriptions, rather than only ASCII fixture names.
+                    target='🚀 节点选择 🇭🇰'
+                    config['proxy-groups']=[{'name':target,'type':'select','proxies':['DIRECT']}]
+                    config['rules']=['MATCH,'+target]
+                    config['custom-text']='literal \\U0001F680 / 中文 / 🚀'
+                    source.write_text(json.dumps(config,ensure_ascii=False))
                     for phase in ('enabled','changed','disabled'):
                         if phase=='changed':rules.write_text('server=/ads.example/\nserver=/new.example/\n')
                         # Seed native quick-start cache before each operation.
@@ -168,7 +174,7 @@ restart() { start; }
             finally:stop.set();thread.join(timeout=2)
         assert not (base/'etc/adzero/adapter.json').exists()
         assert (base/'etc/openclash/custom/openclash_custom_overwrite.sh').read_text()=='#!/bin/sh\n# Retain user custom script\nexit 0\n'
-        output={'source_sha256':source_hash(ROOT/'luci-app-adzero'),'native_init_commit':REF,'native_init_blob':'7bc7e7568c74c197668ddf6372c7013de2baf152','core':VERSION,'checks':len(rows),'ruby_json_installed':False,'cases':rows,'scope':'Native rc.common + extracted OpenClash quick-start/hook stages + real Mihomo DNS; no firewall or router test'}
+        output={'source_sha256':source_hash(ROOT/'luci-app-adzero'),'native_init_commit':REF,'native_init_blob':'7bc7e7568c74c197668ddf6372c7013de2baf152','core':VERSION,'checks':len(rows),'unicode_strategy_labels':True,'ruby_json_installed':False,'cases':rows,'scope':'Native rc.common + extracted OpenClash quick-start/hook stages + real Mihomo DNS; no firewall or router test'}
         (ROOT/'artifacts/runtime/openclash-result.json').write_text(json.dumps(output,indent=2)+'\n')
         print(json.dumps(output,indent=2))
 

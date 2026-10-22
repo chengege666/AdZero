@@ -28,7 +28,7 @@ v0.14.0 的服务调用保留 `/etc/rc.common` 解释器参数，修复直接 `s
 
 ## OpenClash 原生覆写
 
-在官方 openclash_custom_overwrite.sh 的 shebang 后插入自有调用，确保现有 exit 0 前执行。v0.14.1 修正原生钩子实际传入 `/tmp/<当前配置名>.yaml` 的路径兼容问题；只允许当前选中配置对应的临时文件或生成文件，拒绝任意路径和符号链接，订阅原文保留。使用 OpenClash 已有 ruby-yaml 的安全读取与 JSON 输出，无需额外 ruby-json；支持 anchors，调用现有 clash_meta -t 检查后原子替换。
+在官方 openclash_custom_overwrite.sh 的 shebang 后插入自有调用，确保现有 exit 0 前执行。v0.14.1 修正原生钩子实际传入 `/tmp/<当前配置名>.yaml` 的路径兼容问题；只允许当前选中配置对应的临时文件或生成文件，拒绝任意路径和符号链接，订阅原文保留。v0.14.2 使用已有 ruby-yaml 安全读取，再把已解析数据转换为标准 JSON；不使用可能生成 YAML 专用转义的 Psych.to_json，也不对序列化文本做正则替换。支持中文、Emoji、控制字符和 anchors，拒绝对象标签、循环与非有限数字；无需额外 ruby-json。调用现有 clash_meta -t 检查后原子替换。
 
 增加文件域名 provider、指向 rcode://name_error 的 nameserver-policy，以及对应 Fake-IP 排除和 REJECT 规则。AdZero 规则发生变化或关闭恢复时，使 OpenClash 自己的临时快速启动清单失效，确保重新生成；未变化的周期检查不重载。重启后核对本次钩子回执与最终生成文件，不能只以服务返回零判断成功；钩子失败记录固定原因并及时回滚，避免错误输出被原生脚本隐藏后等待到超时。运行时缺少 Meta 核心、DNS 关闭或后续自定义覆写移除规则都会失败。
 

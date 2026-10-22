@@ -1,0 +1,16 @@
+{
+  "version": "0.14.2",
+  "source_sha256": "a61e9afefe3bdf056b1160842363bb71f45f9988e2abe1d196745878564c4fe9",
+  "native_tests": 396,
+  "ui_assertions": 189,
+  "sdk_builds": 3,
+  "payload_files": 39,
+  "delivery_checks": 6,
+  "rpc_checks": 55,
+  "openclash_dns_combinations": 24,
+  "routing_checks": 108,
+  "unicode_regression": "reproduced on old Psych output; strict JSON round-trip fixed",
+  "start_orders": "ucode/UCI/config conversion checked both orders with routing enabled; restarts are fixtures",
+  "router": "not_connected",
+  "google_chatgpt_access": "awaiting user terminal DNS and actual connection results"
+}
