@@ -1,0 +1,15 @@
+{
+  "source_sha256": "8415f8a6dbc957888f7fe1bcc143ed7cbe9e4c36cfcdc7227b601d570322e13d",
+  "exit_code": 0,
+  "checks": 58,
+  "skipped": 0,
+  "modules": [
+    "test_installer",
+    "test_release",
+    "test_ipk",
+    "test_contract",
+    "test_sdk"
+  ],
+  "shell": "official OpenWrt 24.10.8 BusyBox ash/awk",
+  "scope": "isolated roots; mock package managers and service lifecycle; actual generated catalog and tar archive; no router changed"
+}

@@ -3,7 +3,7 @@
 set -eu
 set -f
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.12.0}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.12.1}
 LOCAL_DIR=
 ENABLE=1
 UPGRADE=0
@@ -160,7 +160,9 @@ fetch() {
 	fi
 }
 fetch releases.tsv "$TMP/releases.tsv"
-ROW=$(awk -F '\t' -v fw="$FIRMWARE" -v ver="$VERSION" -v target="$TARGET" -v arch="$ARCH" -v ext="$EXT" 'NF==7 && $3==fw && $4==ver && $5==target && $6==arch && $7==ext {print $1 " " $2; n++} END {if(n!=1) exit 1}' "$TMP/releases.tsv") || fail '没有唯一匹配此固件版本的 SDK 安装包。'
+# A Windows-authored catalog may use CRLF. Remove only the line terminator;
+# retain exact firmware/target/ABI/format matching and duplicate rejection.
+ROW=$(awk -F '\t' -v fw="$FIRMWARE" -v ver="$VERSION" -v target="$TARGET" -v arch="$ARCH" -v ext="$EXT" '{ sub(/\r$/, "", $0) } NF==7 && $3==fw && $4==ver && $5==target && $6==arch && $7==ext {print $1 " " $2; n++} END {if(n!=1) exit 1}' "$TMP/releases.tsv") || fail "没有唯一匹配此固件版本的 SDK 安装包（$FIRMWARE $VERSION，target=$TARGET，架构=$ARCH，格式=$EXT）。"
 SUM=${ROW%% *}
 FILE=${ROW#* }
 [ "${#SUM}" = 64 ] || fail '校验清单格式错误。'

@@ -78,6 +78,22 @@ python3 scripts/build_release.py \
 
 不能把源码 all/noarch 视为跨固件保证。其他厂商、24.10 的其他补丁版本和 CPU 架构，须先补齐对应 SDK 和设备证据，才能写入安装清单。配置包的 SDK 成功仍不等于设备生命周期和终端 DNS 验收成功。
 
+## v0.12.1 发布文件检查
+
+`build_release.py` 对 `releases.tsv`、`install.sh`、`build-provenance.json` 和 `INSTALL.txt` 显式写 UTF-8 / LF，打包前直接检查文件字节、唯一目标条目及实际包 SHA-256。不能只用 `read_text()` 检查，因为它会自动隐藏 Windows 回车。
+
+Windows 上执行 `python -m unittest discover -s tests -p test_release.py -v`，检查实际行尾和压缩包内容。对应 CI 另设 Windows job。
+
+发行目录生成后，在 Linux / WSL 执行：
+
+~~~sh
+python3 scripts/check_release_delivery.py dist/v0.12.1/release
+~~~
+
+该检查使用最终发行的安装脚本、清单和真实 SDK 包字节，分别执行三个目标的 LF / CRLF 安装路径，核对选择、校验、备份、旧版恢复和包管理器调用顺序。包管理器与服务均为隔离替身，不向开发机或真实路由安装软件。设置 `ADZERO_TEST_SHELL` 可选择校验和固定的 OpenWrt BusyBox ash。
+
+发布后还应重新下载文件，检查校验和及清单行尾，并对下载回来的发行目录执行同样检查。
+
 ## 开发预览
 
 python3 scripts/build_ipk.py 仍能生成可重复的离线 OPKG 归档，供测试路径和权限。它不进入公开安装清单。正式发行来源与测试证据见 [LOCAL_VALIDATION.md](LOCAL_VALIDATION.md)。

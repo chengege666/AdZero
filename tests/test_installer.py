@@ -121,6 +121,35 @@ class InstallerTest(unittest.TestCase):
         self.assertIn("arm-test.apk", result.stdout)
         self.assertEqual(self.log.read_text().splitlines(), ["apk update", "apk add", "ctl enable"])
 
+    def crlf_catalog(self):
+        path = self.release / 'releases.tsv'
+        path.write_bytes(path.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
+
+    def test_crlf_catalog_selects_exact_ipk(self):
+        self.crlf_catalog()
+        self.run_installer('--no-enable')
+        self.assertEqual(self.log.read_text().splitlines(), ['opkg update', 'opkg install'])
+
+    def test_crlf_catalog_selects_user_rockchip_apk_and_upgrades(self):
+        self.arm_apk()
+        self.crlf_catalog()
+        self.upgrade_fixture()
+        result = self.run_installer('--upgrade', '--no-enable')
+        self.assertIn('arm-test.apk', result.stdout)
+        self.assertEqual(self.log.read_text().splitlines(), ['ctl disable', 'apk update', 'apk add'])
+
+    def test_crlf_duplicates_still_stop_before_restore_and_install(self):
+        self.arm_apk()
+        self.crlf_catalog()
+        path = self.release / 'releases.tsv'
+        path.write_bytes(path.read_bytes() * 2)
+        journal = self.upgrade_fixture()
+        result = self.run_installer('--upgrade', success=False)
+        self.assertIn('target=rockchip/armv8', result.stderr)
+        self.assertTrue(journal.exists())
+        self.assertFalse(self.log.exists())
+        self.assertFalse((self.root / 'etc/adzero-backups').exists())
+
     def test_apk_repository_arch_spelling_is_accepted_for_exact_target(self):
         self.arm_apk(arch="aarch64_generic")
         self.run_installer("--no-enable")

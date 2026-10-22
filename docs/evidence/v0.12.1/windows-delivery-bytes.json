@@ -1,0 +1,26 @@
+{
+  "bundled_on": "Windows",
+  "python": "3.13.7",
+  "files": {
+    "build-provenance.json": {
+      "bytes": 1826,
+      "crlf": 0,
+      "sha256": "5ad8037ce2eff36de790ca434ae4d51c5adf525c0b5275039dc59144a891385f"
+    },
+    "install.sh": {
+      "bytes": 11561,
+      "crlf": 0,
+      "sha256": "3a3e9a722efaaddbd329c19899acd7eb973ed8b17da1a2ed753d2bd4088fb18e"
+    },
+    "INSTALL.txt": {
+      "bytes": 412,
+      "crlf": 0,
+      "sha256": "bff4e8374a57321ee8b94e363a78297e56ab06748242884f4390fb813ab59309"
+    },
+    "releases.tsv": {
+      "bytes": 490,
+      "crlf": 0,
+      "sha256": "19ececc0e1d47d65d9b3a96309dae42ca8563b5370bd25f7f0289a61ab966130"
+    }
+  }
+}

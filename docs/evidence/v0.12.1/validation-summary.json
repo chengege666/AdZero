@@ -1,0 +1,11 @@
+{
+  "source_sha256": "8415f8a6dbc957888f7fe1bcc143ed7cbe9e4c36cfcdc7227b601d570322e13d",
+  "installer_release_checks": 58,
+  "native_skipped": 0,
+  "generated_delivery_checks": 6,
+  "sdk_builds": 3,
+  "package_payload_files": 37,
+  "delivered_ui_assertions": 156,
+  "runtime_change": "Makefile version only; filtering/DNS/proxy/UI/observer code identical to v0.12.0",
+  "router_and_lan": "not_run"
+}

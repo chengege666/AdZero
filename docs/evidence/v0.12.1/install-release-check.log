@@ -1,0 +1,93 @@
+{
+  "archive": "/tmp/tmp42232c3_/adzero-0.12.1-install.tar.gz",
+  "sha256": "f91a7d646d95ce9346950fd227f6e495177a08a290bda889478d0f6357dadc7d",
+  "rows": 3,
+  "source_sha256": "current"
+}
+{
+  "archive": "/tmp/tmpgq65y689/adzero-0.12.1-install.tar.gz",
+  "sha256": "43ab3ab05a408d95465c40b4b55c7b932b6331765dfd6cfd3eacea029c3f424f",
+  "rows": 1,
+  "source_sha256": "current"
+}
+{
+  "archive": "/tmp/tmp5qby6cn1/adzero-0.12.1-install.tar.gz",
+  "sha256": "592605b0f0940fb95b514683aefe7cb0ee68a5123a787223f348a0c1e441459e",
+  "rows": 1,
+  "source_sha256": "current"
+}
+{
+  "archive": "/tmp/tmpjcmr_vpv/adzero-0.12.1-install.tar.gz",
+  "sha256": "434852cf09fa64e1fa0c584ab463bf4c22fc20046201347e0f09d2597bb44bb8",
+  "rows": 1,
+  "source_sha256": "current"
+}
+{
+  "archive": "/tmp/tmp3hf8xrns/adzero-0.12.1-install.tar.gz",
+  "sha256": "5c4cba0ecdf07b74adfdfe83b128ff1a9b60f96888110b01bfb36b62ca7c8fc3",
+  "rows": 1,
+  "source_sha256": "current"
+}
+test_ambiguous_catalog_is_rejected (test_installer.InstallerTest.test_ambiguous_catalog_is_rejected) ... ok
+test_apk_repository_arch_spelling_is_accepted_for_exact_target (test_installer.InstallerTest.test_apk_repository_arch_spelling_is_accepted_for_exact_target) ... ok
+test_corrupt_package_or_path_traversal_do_not_install (test_installer.InstallerTest.test_corrupt_package_or_path_traversal_do_not_install) ... ok
+test_crlf_catalog_selects_exact_ipk (test_installer.InstallerTest.test_crlf_catalog_selects_exact_ipk) ... ok
+test_crlf_catalog_selects_user_rockchip_apk_and_upgrades (test_installer.InstallerTest.test_crlf_catalog_selects_user_rockchip_apk_and_upgrades) ... ok
+test_crlf_duplicates_still_stop_before_restore_and_install (test_installer.InstallerTest.test_crlf_duplicates_still_stop_before_restore_and_install) ... ok
+test_exact_matrix_checksum_backup_install_then_enable (test_installer.InstallerTest.test_exact_matrix_checksum_backup_install_then_enable) ... ok
+test_existing_adapter_journal_is_not_overwritten (test_installer.InstallerTest.test_existing_adapter_journal_is_not_overwritten) ... ok
+test_live_scheduler_paused_child_finishes_and_backup_is_after_drain (test_installer.InstallerTest.test_live_scheduler_paused_child_finishes_and_backup_is_after_drain) ... ok
+test_live_scheduler_resumes_after_real_restore_failure (test_installer.InstallerTest.test_live_scheduler_resumes_after_real_restore_failure) ... ok
+test_live_scheduler_resumes_when_existing_lock_never_drains (test_installer.InstallerTest.test_live_scheduler_resumes_when_existing_lock_never_drains) ... ok
+test_missing_target_is_reported_separately_without_installing (test_installer.InstallerTest.test_missing_target_is_reported_separately_without_installing) ... ok
+test_no_enable_option (test_installer.InstallerTest.test_no_enable_option) ... ok
+test_other_target_is_reported_even_with_x86_package_manager_fixture (test_installer.InstallerTest.test_other_target_is_reported_even_with_x86_package_manager_fixture) ... ok
+test_previously_stopped_scheduler_is_not_resumed (test_installer.InstallerTest.test_previously_stopped_scheduler_is_not_resumed) ... ok
+test_rockchip_cannot_select_x86_or_other_release_catalog (test_installer.InstallerTest.test_rockchip_cannot_select_x86_or_other_release_catalog) ... ok
+test_rockchip_mismatched_apk_cpu_is_rejected_before_install (test_installer.InstallerTest.test_rockchip_mismatched_apk_cpu_is_rejected_before_install) ... ok
+test_rockchip_mismatched_declared_abi_is_rejected (test_installer.InstallerTest.test_rockchip_mismatched_declared_abi_is_rejected) ... ok
+test_scheduler_exits_before_cleanup_without_missing_proc_warning (test_installer.InstallerTest.test_scheduler_exits_before_cleanup_without_missing_proc_warning) ... ok
+test_second_installer_does_not_remove_first_installer_lock (test_installer.InstallerTest.test_second_installer_does_not_remove_first_installer_lock) ... ok
+test_signal_interrupt_resumes_scheduler_preserves_recovery_and_lock (test_installer.InstallerTest.test_signal_interrupt_resumes_scheduler_preserves_recovery_and_lock) ... ok
+test_similar_command_with_extra_argument_is_not_signalled (test_installer.InstallerTest.test_similar_command_with_extra_argument_is_not_signalled) ... ok
+test_unsupported_version_and_vendor_do_not_install (test_installer.InstallerTest.test_unsupported_version_and_vendor_do_not_install) ... ok
+test_upgrade_bad_checksum_does_not_disable_current_protection (test_installer.InstallerTest.test_upgrade_bad_checksum_does_not_disable_current_protection) ... ok
+test_upgrade_exit_zero_with_remaining_journal_is_rejected (test_installer.InstallerTest.test_upgrade_exit_zero_with_remaining_journal_is_rejected) ... ok
+test_upgrade_no_enable_leaves_protection_off (test_installer.InstallerTest.test_upgrade_no_enable_leaves_protection_off) ... ok
+test_upgrade_persistent_busy_preserves_lock_and_recovery (test_installer.InstallerTest.test_upgrade_persistent_busy_preserves_lock_and_recovery) ... ok
+test_upgrade_restore_failure_is_not_retried_or_installed (test_installer.InstallerTest.test_upgrade_restore_failure_is_not_retried_or_installed) ... ok
+test_upgrade_retries_modern_zero_wait_busy_without_nested_30_second_wait (test_installer.InstallerTest.test_upgrade_retries_modern_zero_wait_busy_without_nested_30_second_wait) ... ok
+test_upgrade_retries_only_legacy_busy_then_installs (test_installer.InstallerTest.test_upgrade_retries_only_legacy_busy_then_installs) ... ok
+test_upgrade_verifies_package_and_backs_up_state_before_restore (test_installer.InstallerTest.test_upgrade_verifies_package_and_backs_up_state_before_restore) ... ok
+test_user_rockchip_metadata_selects_arm_apk_and_enables (test_installer.InstallerTest.test_user_rockchip_metadata_selects_arm_apk_and_enables) ... ok
+test_actual_generated_catalog_and_archive_pass_installer_for_all_targets (test_release.ReleaseTest.test_actual_generated_catalog_and_archive_pass_installer_for_all_targets) ... ok
+test_delivery_check_rejects_crlf_and_bom (test_release.ReleaseTest.test_delivery_check_rejects_crlf_and_bom) ... ok
+test_delivery_check_rejects_duplicate_and_changed_package (test_release.ReleaseTest.test_delivery_check_rejects_duplicate_and_changed_package) ... ok
+test_pinned_rockchip_sdk_and_unsupported_combinations (test_release.ReleaseTest.test_pinned_rockchip_sdk_and_unsupported_combinations) ... ok
+test_unknown_target_has_no_release_row (test_release.ReleaseTest.test_unknown_target_has_no_release_row) ... ok
+test_verified_arm_build_gets_distinct_target_and_sdk_arch_row (test_release.ReleaseTest.test_verified_arm_build_gets_distinct_target_and_sdk_arch_row) ... ok
+test_windows_defaults_cannot_put_crlf_in_delivered_text_or_archive (test_release.ReleaseTest.test_windows_defaults_cannot_put_crlf_in_delivered_text_or_archive) ... ok
+test_x86_output_cannot_be_relabelled_as_arm (test_release.ReleaseTest.test_x86_output_cannot_be_relabelled_as_arm) ... ok
+test_ar_structure_and_control (test_ipk.IpkPackagingTest.test_ar_structure_and_control) ... ok
+test_cli_writes_only_requested_output (test_ipk.IpkPackagingTest.test_cli_writes_only_requested_output) ... ok
+test_exact_installed_paths_and_modes (test_ipk.IpkPackagingTest.test_exact_installed_paths_and_modes) ... ok
+test_rejects_unexpected_payload_file (test_ipk.IpkPackagingTest.test_rejects_unexpected_payload_file) ... ok
+test_reproducible_byte_for_byte (test_ipk.IpkPackagingTest.test_reproducible_byte_for_byte) ... ok
+test_default_is_off_and_dependencies_explicit (test_contract.PackageContractTest.test_default_is_off_and_dependencies_explicit) ... ok
+test_manager_no_dns_or_firewall_rule_rewrite_command (test_contract.PackageContractTest.test_manager_no_dns_or_firewall_rule_rewrite_command) ... ok
+test_menu_and_view_path_match (test_contract.PackageContractTest.test_menu_and_view_path_match) ... ok
+test_no_unbounded_rpc_commands (test_contract.PackageContractTest.test_no_unbounded_rpc_commands) ... ok
+test_archive_checksum_is_required (test_sdk.SdkBuildTest.test_archive_checksum_is_required) ... ok
+test_different_existing_sources_are_not_overwritten (test_sdk.SdkBuildTest.test_different_existing_sources_are_not_overwritten) ... ok
+test_incorrect_package_format_is_rejected (test_sdk.SdkBuildTest.test_incorrect_package_format_is_rejected) ... ok
+test_ipk_and_apk_build_paths_and_provenance (test_sdk.SdkBuildTest.test_ipk_and_apk_build_paths_and_provenance) ... ok
+test_matrix_is_an_explicit_candidate_list (test_sdk.SdkBuildTest.test_matrix_is_an_explicit_candidate_list) ... ok
+test_missing_feed_is_not_silently_replaced (test_sdk.SdkBuildTest.test_missing_feed_is_not_silently_replaced) ... ok
+test_missing_real_output_cannot_be_reported_as_passed (test_sdk.SdkBuildTest.test_missing_real_output_cannot_be_reported_as_passed) ... ok
+test_old_sdk_outputs_are_preserved_but_not_selected (test_sdk.SdkBuildTest.test_old_sdk_outputs_are_preserved_but_not_selected) ... ok
+test_prepare_preserves_other_packages_and_is_repeatable (test_sdk.SdkBuildTest.test_prepare_preserves_other_packages_and_is_repeatable) ... ok
+
+----------------------------------------------------------------------
+Ran 58 tests in 10.066s
+
+OK
