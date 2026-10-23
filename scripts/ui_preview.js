@@ -116,7 +116,13 @@ document.getElementById('host-frame').addEventListener('change', ev => {
   host.classList.toggle('main-right', ev.target.checked); host.querySelector('header').hidden = !ev.target.checked;
 });
 Promise.all([fetch('/luci-static/resources/view/adzero/overview.js').then(r => r.text()),fetch('/source_catalog.json').then(r=>r.json())]).then(([source,catalog]) => {
-  sourceData.catalog=catalog; sourceData.items=[{...catalog[0],id:'adzero_default',catalog_id:catalog[0].id,enabled:true,https:true,domains:66425,updated:Math.floor(Date.now()/1000)}];
+  // Mixed, explicitly simulated rows exercise truncation, missing counts and
+  // exclusions as well as both library states. Never fetched from a router.
+  sourceData.catalog=catalog; sourceData.items=catalog.slice(0,2).map((rule,index)=>({...rule,id:'preview_'+index,catalog_id:rule.id,enabled:index===0,https:true,domains:index===0?66425:129400,updated:Math.floor(Date.now()/1000)})).concat([
+    {id:'preview_cname',name:'AdguardTeam - CNAME Trackers',url:'https://raw.githubusercontent.com/AdguardTeam/cname-trackers/master/data/combined_disguised_trackers_justdomains.txt',format:'domains',enabled:false,https:true,domains:245052,skipped:26,updated:Math.floor(Date.now()/1000)},
+    {id:'preview_oisd',name:'OISD - Big',url:'https://big.oisd.nl/',format:'unknown',enabled:false,https:true},
+    {id:'preview_hosts',name:'StevenBlack - Unified hosts',url:'https://cdn.jsdelivr.net/gh/StevenBlack/hosts/hosts',format:'hosts',enabled:false,https:true}
+  ]);
   app = Function('view', 'fs', 'dom', '_', 'E', 'document', 'L', 'rpc', 'poll', source)({ extend: x => x }, api,
     window.previewDom || { content: (el, content) => el.replaceChildren(content) }, x => x, window.E || fallbackE, document, { resource: x => '/luci-static/resources/' + x }, rpc, poll); initialMount(700);
 });

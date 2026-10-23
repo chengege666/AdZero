@@ -1,0 +1,29 @@
+{
+  "version": "0.18.1",
+  "source_sha256": "c8049d935741f39419ca24ec6323ad69a05eb95d110ca0981ad1c0a93ef0c9fd",
+  "python_tests": 497,
+  "ui_assertions": 310,
+  "new_ui_assertions": 17,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 49,
+  "installer_delivery_cases": 6,
+  "browser_qa": {
+    "production_view": true,
+    "data": "simulated RPC, rules, devices and DNS responses",
+    "cases": [
+      "desktop light: enhancements, mixed rule list, library",
+      "desktop dark: enhancements",
+      "360px viewport: rules, enhancement controls and library",
+      "editing a switch immediately disables tests of old settings",
+      "library available-only filter",
+      "expanded addresses and guidance persist across repaint"
+    ],
+    "desktop_source_row_height_px": 72
+  },
+  "scope": "UI, frontend action feedback and release version; backend source unchanged from v0.18.0",
+  "regression_environment": "First attempt omitted the existing bundled Ruby/yq environment and failed; rerun with those original tools passed, no product changes used to bypass checks.",
+  "new_runtime_dependencies": false,
+  "router_modified": false,
+  "device_acceptance": "not_run"
+}

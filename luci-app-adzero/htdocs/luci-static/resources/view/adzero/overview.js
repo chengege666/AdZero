@@ -292,6 +292,11 @@ function domainName(value) {
 }
 function coversDomain(a,b){return a===b||b.endsWith('.'+a);}
 return view.extend({
+	disclosure:function(key,title,body,kind){
+		var self=this;self.disclosures=self.disclosures||{};
+		return el('details',{id:'az-detail-'+key,'class':kind||'az-help-details',open:self.disclosures[key]?true:null,toggle:function(e){self.disclosures[key]=e.target.open;}},[
+			el('summary',{},[title,el('span',{'class':'az-chevron','aria-hidden':'true'})]),el('div',{'class':'az-help-body'},body)]);
+	},
 	pageKey:function(){return this.enhanceOpen?'enhance':this.controlsOpen?'controls':this.rulesOpen?'rules':'overview';},
 	unstagedEdits:function(){return !!(this.dnsForm&&this.dnsFormSaved&&JSON.stringify(this.dnsForm)!==this.dnsFormSaved||this.customSource&&(this.customSource.name||this.customSource.url));},
 	selectPage:function(page,fromHistory){
@@ -343,35 +348,39 @@ return view.extend({
 		self.enhanceRequest=request;return request;
 	},
 	enhanceDirty:function(){return this.enhanceDraft&&JSON.stringify(this.enhanceDraft.before)!==JSON.stringify(this.enhanceDraft.after);},
-	renderEnhanceRuntime:function(){var d=this.enhanceData||{},r=d.runtime||{},counts=r.counts||{},recovery=r.state==='recovery_required';if(this.enhanceError)return el('div',{},[pill(_('增强状态未更新'),'attention'),el('p',{},_('暂时无法取得新状态，上次结果仅供参考。编辑内容已保留，后台会继续读取。'))]);return el('div',{},[
-		pill(r.state==='active'?_('增强入口运行中'):recovery?_('增强入口退出待确认'):_('增强入口未接入'),r.state==='active'?'success':recovery?'warning':'neutral'),
-		el('p',{},r.state==='active'?_('当前入口：')+(r.plugin==='passwall'?'PassWall':_('路由器 DNS')):recovery?_('旧 DNS 会话清理尚未确认，恢复记录已保留。请查看系统日志，不要手动删除记录。'):_('仅接入确认可用的默认 IPv4 LAN DNS 路径。NaiLink、Mihomo、未知 ACL 或切换期间保留原生路径。')),
-		el('p',{},_('本次增强入口 · CNAME 拦截 ')+number(counts.cname)+_(' 次 · 设备附加拦截 ')+number(counts.device)+_(' 次'))]);},
+	renderEnhanceRuntime:function(){var d=this.enhanceData||{},r=d.runtime||{},counts=r.counts||{},recovery=r.state==='recovery_required';if(this.enhanceError)return el('div',{'class':'az-enhance-status'},[pill(_('增强状态未更新'),'attention'),el('p',{'class':'az-inline-warning'},_('暂时无法取得新状态。编辑已保留，后台将继续读取。'))]);return el('div',{'class':'az-enhance-status'},[
+		el('div',{'class':'az-enhance-status-line'},[pill(r.state==='active'?_('增强入口运行中'):recovery?_('增强入口退出待确认'):_('增强入口未接入'),r.state==='active'?'positive':recovery?'attention':'neutral'),el('span',{'class':'az-field-hint'},r.state==='active'?(r.plugin==='passwall'?'PassWall':_('路由器 DNS')):_('原生 DNS 路径保留'))]),
+		recovery?el('p',{'class':'az-inline-warning'},_('旧 DNS 会话清理尚未确认，恢复记录已保留。请查看系统日志，不要手动删除记录。')):null,
+		el('div',{'class':'az-enhance-counters','aria-label':_('本次增强入口统计')},[el('span',{},[_('CNAME 拦截'),el('strong',{},number(counts.cname))]),el('span',{},[_('设备附加拦截'),el('strong',{},number(counts.device))])])]);},
 	renderEnhance:function(){
 		var self=this,d=self.enhanceDraft,editable=!self.busy&&!operationActive(self.currentStatus||{})&&!(self.currentStatus||{}).stale;
 		if(!d)return el('section',{'class':'az-card az-enhance-loading','aria-busy':self.enhanceError?'false':'true',role:self.enhanceError?'alert':'status'},[el('h3',{},self.enhanceError?_('增强设置读取失败'):_('正在读取增强设置…')),el('p',{},self.enhanceError||_('设置读取完成后即可编辑，当前网络继续使用原有配置。')),el('button',{type:'button','class':'az-button',disabled:!self.enhanceError?true:null,click:function(){return self.loadEnhance();}},self.enhanceError?_('重新读取'):_('读取中…'))]);
 		var s=d.after;
-		function toggle(key,label){return el('label',{'class':'az-enhance-check'},[el('input',{type:'checkbox',checked:s[key]?true:null,disabled:!editable?true:null,change:function(e){s[key]=e.target.checked;}}),el('span',{},label)]);}
+		function updateDirty(){var dirty=self.enhanceDirty(),test=document.getElementById('az-dns-test'),hint=document.getElementById('az-enhance-dirty'),intro=document.getElementById('az-enhance-test-hint');if(test)test.disabled=!editable||dirty;if(hint)dom.content(hint,[dirty?_('有修改尚未保存'):_('修改后保存生效')]);if(intro)dom.content(intro,[dirty?_('先保存修改，再测试 DNS。'):_('测试已保存的地址，按组使用备用。')]);}
+		function toggle(key,label,hint){return el('label',{'class':'az-setting-row'},[el('span',{'class':'az-setting-copy'},[el('strong',{},label),hint?el('small',{},hint):null]),el('span',{'class':'az-setting-switch'},[el('input',{id:'az-enhance-'+key,type:'checkbox',role:'switch',checked:s[key]?true:null,disabled:!editable?true:null,change:function(e){s[key]=e.target.checked;updateDirty();}}),el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))])]);}
 		var tests=((self.enhanceData||{}).tests||{}).groups||{};
 		return el('div',{'class':'az-enhance-page'},[
-			el('section',{'class':'az-card'},[el('h3',{},_('增强过滤入口')),el('div',{id:'az-enhance-runtime','aria-live':'polite'},[self.renderEnhanceRuntime()]),
-				toggle('enabled',_('启用增强 DNS 入口')),toggle('cname',_('检查广告与追踪 CNAME 别名')),
-				el('p',{'class':'az-card-copy'},_('增强入口处理实际 DNS 应答，继续使用原生代理上游和缓存。不改变代理节点。设备使用独立加密 DNS 或 IPv6 等未接入路径时，这些附加规则不会生效。'))]),
-			el('section',{'class':'az-card'},[el('h3',{},_('DNS 上游连通性与备用')),
-				el('p',{'class':'az-card-copy'},_('国内使用 UDP 探测；国外经你指定的本机 SOCKS5 TCP 端口探测。连通性通过不代表解析未受污染，也不代表浏览器页面已通过验收。')),
-				el('label',{'class':'az-enhance-field'},[el('span',{},_('当前代理的本机 SOCKS5 端口（无认证）')),el('input',{id:'az-dns-proxy-port',type:'number',min:1024,max:65535,value:s.proxy_port||'',placeholder:_('留空时跳过国外测试'),disabled:!editable?true:null,input:function(e){s.proxy_port=e.target.value?Number(e.target.value):0;}})]),
-				toggle('failover',_('连续 3 轮失败时切换同组备用 DNS')),
-				el('p',{'class':'az-card-copy'},_('自动切换要求 AdZero 自动分流已应用；每分钟检查，切换后至少冷却 5 分钟。先保存设置再测试，国内、国外不会混组竞争。')),
-				el('button',{id:'az-dns-test',type:'button','class':'az-button az-button-primary',disabled:!editable||self.enhanceDirty()?true:null,click:function(){return self.runEnhance('test');}},_('测试已保存的 DNS')),
-				el('div',{'class':'az-dns-test-grid'},['domestic','foreign'].map(function(g){return el('div',{},[el('h4',{},g==='domestic'?_('国内组'):_('国外组'))].concat((tests[g]||[]).map(function(t){return el('p',{translate:'no'},t.address+' · '+(t.skipped?_('未配置代理端口'):t.ok?number(t.ms)+' ms':_('未通过')));})));}))]),
-			el('section',{'class':'az-card'},[el('div',{'class':'az-section-heading'},[el('h3',{},_('按设备设置附加规则')),el('button',{id:'az-device-add',type:'button','class':'az-button az-button-quiet',disabled:!editable||s.devices.length>=32?true:null,click:function(){s.devices.push({ip:'',name:'',enabled:true,allowed:[],blocked:[]});self.paint();}},_('添加设备'))]),
-				el('p',{'class':'az-card-copy'},_('使用固定的局域网 IPv4 地址区分设备。放行只豁免该设备的附加拦截和 CNAME 检查，不能撤销全局规则或其他插件的拦截；全局误杀请到“访问控制”处理。')),
+			el('div',{'class':'az-enhance-workbench'},[
+			el('section',{'class':'az-card az-enhance-entry'},[el('div',{'class':'az-section-heading'},[el('h3',{},_('增强过滤')),el('span',{'class':'az-section-caption'},_('可选功能'))]),el('p',{'class':'az-section-intro'},_('补充检查别名与设备规则，沿用原生上游。')),
+				el('div',{id:'az-enhance-runtime','aria-live':'polite'},[self.renderEnhanceRuntime()]),
+				toggle('enabled',_('增强 DNS 入口'),_('仅接入默认 IPv4 局域网 DNS')),
+				toggle('cname',_('CNAME 别名过滤'),_('检查广告与追踪别名，入口启用后生效')),
+				self.disclosure('enhance-scope',_('适用范围'),[el('p',{},_('仅接入确认可用的默认 IPv4 LAN DNS 路径。NaiLink、Mihomo、未知 ACL 或切换期间保留原生路径。')),el('p',{},_('继续使用原生代理上游和缓存，不改变节点。独立加密 DNS、IPv6 等未接入路径不受这些附加规则控制。'))])]),
+			el('section',{'class':'az-card az-enhance-upstream'},[el('div',{'class':'az-section-heading'},[el('h3',{},_('上游与备用')),el('button',{id:'az-dns-test',type:'button','class':'az-button az-button-compact',disabled:!editable||self.enhanceDirty()?true:null,click:function(){return self.runEnhance('test');}},[icon('refresh'),_('测试 DNS')])]),
+				el('p',{id:'az-enhance-test-hint','class':'az-section-intro'},self.enhanceDirty()?_('先保存修改，再测试 DNS。'):_('测试已保存的地址，按组使用备用。')),
+				el('label',{'class':'az-enhance-field az-port-field'},[el('span',{},_('本机 SOCKS5 端口')),el('input',{id:'az-dns-proxy-port',type:'number',min:1024,max:65535,value:s.proxy_port||'',placeholder:_('例如 1070…'),disabled:!editable?true:null,input:function(e){s.proxy_port=e.target.value?Number(e.target.value):0;updateDirty();}}),el('small',{},_('仅用于国外测试；留空跳过，无认证'))]),
+				toggle('failover',_('自动使用备用 DNS'),_('连续 3 轮失败后，在同组内切换')),
+				el('div',{'class':'az-dns-test-grid'},['domestic','foreign'].map(function(g){var rows=tests[g]||[];return el('div',{'class':'az-dns-test-group'},[el('h4',{},g==='domestic'?_('国内组'):_('国外组')),rows.length?rows.map(function(t){return el('div',{'class':'az-dns-test-result'},[el('span',{translate:'no'},t.address),el('span',{'class':t.skipped?'az-test-skipped':t.ok?'az-test-passed':'az-test-failed'},t.skipped?_('已跳过'):t.ok?number(t.ms)+' ms':_('未通过'))]);}):el('p',{'class':'az-test-empty'},_('尚未测试'))]);})),
+				self.disclosure('dns-test-help',_('测试与切换说明'),[el('p',{},_('国内使用 UDP；国外通过指定的本机 SOCKS5 TCP 端口。未配置代理端口时跳过国外测试。连通性通过不代表解析未受污染，也不代表浏览器访问正常。')),el('p',{},_('自动备用要求 AdZero 自动分流已应用；每分钟检查，切换后至少冷却 5 分钟。国内、国外不会混组竞争。'))])])]),
+			el('section',{'class':'az-card az-enhance-devices'},[el('div',{'class':'az-section-heading'},[el('div',{},[el('h3',{},_('设备附加规则')),el('p',{'class':'az-section-intro'},_('为固定 IPv4 设备补充拦截或豁免。'))]),el('button',{id:'az-device-add',type:'button','class':'az-button az-button-compact',disabled:!editable||s.devices.length>=32?true:null,click:function(){s.devices.push({ip:'',name:'',enabled:true,allowed:[],blocked:[]});self.paint('az-device-'+(s.devices.length-1)+'-name');}},_('添加设备'))]),
+				self.disclosure('device-scope',_('规则作用范围'),el('p',{},_('放行只豁免该设备的附加拦截和 CNAME 检查，不能撤销全局规则或其他插件的拦截；全局误杀请到“访问控制”处理。'))),
+				!s.devices.length?el('p',{'class':'az-device-empty'},_('暂无设备规则，所有设备沿用全局过滤。')):null,
 				el('div',{},s.devices.map(function(device,index){
-					function field(key,label,area){return el('label',{'class':'az-enhance-field'},[el('span',{},label),el(area?'textarea':'input',{id:'az-device-'+index+'-'+key,type:area?null:'text',rows:area?3:null,value:area?device[key].join('\n'):device[key],disabled:!editable?true:null,input:function(e){device[key]=area?e.target.value.split(/\r?\n/).map(function(v){return v.trim().toLowerCase();}).filter(Boolean):e.target.value;}},area?device[key].join('\n'):null)]);}
+					function field(key,label,area){return el('label',{'class':'az-enhance-field'},[el('span',{},label),el(area?'textarea':'input',{id:'az-device-'+index+'-'+key,type:area?null:'text',rows:area?3:null,value:area?device[key].join('\n'):device[key],disabled:!editable?true:null,input:function(e){device[key]=area?e.target.value.split(/\r?\n/).map(function(v){return v.trim().toLowerCase();}).filter(Boolean):e.target.value;updateDirty();}},area?device[key].join('\n'):null)]);}
 					return el('div',{'class':'az-device-card'},[el('div',{'class':'az-enhance-grid'},[field('name',_('设备名称')),field('ip',_('固定 IPv4 地址')),field('blocked',_('该设备附加拦截（每行一个域名）'),true),field('allowed',_('该设备附加放行（每行一个域名）'),true)]),
-						el('div',{'class':'az-action-row'},[el('label',{'class':'az-enhance-check'},[el('input',{type:'checkbox',checked:device.enabled?true:null,disabled:!editable?true:null,change:function(e){device.enabled=e.target.checked;}}),el('span',{},_('启用设备附加规则'))]),el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){s.devices.splice(index,1);self.paint();}},_('移除设备'))])]);
+						el('div',{'class':'az-action-row'},[el('label',{'class':'az-enhance-check'},[el('input',{type:'checkbox',checked:device.enabled?true:null,disabled:!editable?true:null,change:function(e){device.enabled=e.target.checked;updateDirty();}}),el('span',{},_('启用设备附加规则'))]),el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){s.devices.splice(index,1);self.paint();}},_('移除设备'))])]);
 				}))]),
-			el('div',{'class':'az-action-row'},[el('button',{id:'az-enhance-save',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.runEnhance('save');}},_('保存增强设置')),el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){self.enhanceDraft=null;return self.loadEnhance();}},_('撤销编辑并重新读取'))])]);
+			el('div',{'class':'az-enhance-savebar'},[el('span',{id:'az-enhance-dirty','class':'az-field-hint'},self.enhanceDirty()?_('有修改尚未保存'):_('修改后保存生效')),el('div',{'class':'az-action-row'},[el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){self.enhanceDraft=null;return self.loadEnhance();}},_('撤销编辑')),el('button',{id:'az-enhance-save',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.runEnhance('save');}},_('保存设置'))])])]);
 	},
 	runEnhance:function(action,receipt){
 		var self=this;if(self.busy||!receipt&&operationActive(self.currentStatus||{}))return Promise.resolve();self.busy=action==='save'?'enhance':'dns-test';self.notice=null;self.paint();
@@ -636,7 +645,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.18.0 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.18.1 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -724,12 +733,11 @@ return view.extend({
 		function date(value) { return value ? new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value*1000)) : _('尚无记录'); }
 		return el('div',{'class':'az-rules-page'},[
 			el('section',{'class':'az-card az-source-header'},[
-				el('div',{},[el('h3',{},_('我的过滤规则')),el('p',{'class':'az-card-copy'},_('先选择、添加或修改规则，再统一应用。选择时不会下载规则或重载网络。'))]),
+				el('div',{},[el('div',{'class':'az-source-title'},[el('h3',{},_('我的过滤规则')),pill(items.filter(function(i){return i.enabled;}).length+' / '+items.length+_(' 已启用'))]),el('p',{'class':'az-card-copy'},_('选择规则，改完统一应用。'))]),
 				el('div',{'class':'az-action-row'},[
 					el('button',{id:'az-source-reload',type:'button','class':'az-button az-button-primary',disabled:!editable || (!self.draftCount()&&!enabled) ? true:null,click:function(){return self.reloadCurrent();}},[icon('refresh'),_('重新加载')]),
 					el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},_('更新订阅')),
 					el('button',{id:'az-source-verify',type:'button','class':'az-button az-button-quiet',disabled:!editable||!items.some(function(i){return i.enabled;})||!!self.draftCount()?true:null,click:function(){return self.runSource('source_verify',[]);}},_('手动校验'))]) ]),
-			el('p',{'class':'az-source-footnote'},_('默认沿用上次校验结果；文件未变化时不重新完整解析。手动校验只检查本地快照，不下载、不重载。新文件保留基础格式检查。')),
 			self.renderRuleAdvice(items,catalog),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
@@ -737,34 +745,33 @@ return view.extend({
 			el('section',{'class':'az-card az-source-list'},items.length ? [
 				el('div',{'class':'az-source-table-heading','aria-hidden':'true'},[el('span',{},_('规则名称 / 地址')),el('span',{},_('校验数量 / 最近检查')),el('span',{},_('操作'))]),
 				items.map(function(item) { return el('div',{'class':'az-source-row'},[
-					el('div',{'class':'az-source-identity'},[el('strong',{},item.name),el('span',{'class':'az-source-url',translate:'no'},item.url),el('small',{},item._new?_('新增 · 待应用'):self.sourceChanged(item)?_('已修改 · 待应用'):item.format==='unknown'?_('后端已有格式'):item.format)]),
+					el('div',{'class':'az-source-identity'},[el('div',{'class':'az-source-name'},[el('strong',{},item.name),item._new?pill(_('新增 · 待应用'),'attention'):self.sourceChanged(item)?pill(_('已修改 · 待应用'),'attention'):null]),self.disclosure('source-'+sourceKey(item),el('span',{'class':'az-source-url',translate:'no',title:item.url},item.url),[el('p',{'class':'az-source-full-url',translate:'no'},item.url),el('small',{},item.format==='unknown'?_('后端已有格式'):item.format)],'az-source-origin')]),
 					el('div',{'class':'az-source-metadata'},[el('strong',{},typeof item.domains==='number'?number(item.domains):item.validation==='backend_only'?_('格式未识别'):_('待校验')),el('span',{},(item.checked||item.updated)?date(item.checked||item.updated):item.enabled?_('更新时自动校验'):_('启用后校验')),
 						item.skipped>0?el('small',{},_('已排除不支持的记录：')+number(item.skipped)):item.validation==='backend_only'?el('small',{},_('仅由后端处理；更新订阅可重新校验。')):null]),
 					el('div',{'class':'az-source-actions'},[
 						el('button',{type:'button','class':'az-toggle'+(item.enabled?' is-on':''),role:'switch','aria-checked':item.enabled?'true':'false','aria-label':_('启用规则 ')+item.name,disabled:!editable || !item.https && !item.enabled?true:null,
 							click:function(){return self.stageSource('source_toggle',[sourceKey(item),item.url,!item.enabled]);}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))),
-						el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){self.editSource=sourceKey(item);self.editForm={name:item.name,url:item.url,format:item.format==='unknown'?'domains':item.format};self.paint();}},_('编辑')),
-						el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){self.removeSource=sourceKey(item);self.paint();}},_('删除')) ]),
+						el('button',{type:'button','class':'az-button az-button-quiet az-button-compact','aria-label':_('编辑规则 ')+item.name,disabled:!editable?true:null,click:function(){self.editSource=sourceKey(item);self.editForm={name:item.name,url:item.url,format:item.format==='unknown'?'domains':item.format};self.paint();}},_('编辑')),
+						el('button',{type:'button','class':'az-button az-button-quiet az-button-compact','aria-label':_('删除规则 ')+item.name,disabled:!editable?true:null,click:function(){self.removeSource=sourceKey(item);self.paint();}},_('删除')) ]),
 					self.editSource===sourceKey(item)?self.renderSourceEdit(item,editable):null,
 					self.removeSource===sourceKey(item) ? el('div',{'class':'az-source-confirm',role:'group','aria-label':_('确认删除规则')},[el('span',{},_('加入待删除列表？应用后生效，个人放行名单会保留。')),
 						el('button',{type:'button','class':'az-button az-button-danger',disabled:!editable?true:null,click:function(){return self.stageSource('source_remove',[sourceKey(item),item.url]);}},_('待删除')),
 						el('button',{type:'button','class':'az-button az-button-quiet',click:function(){self.removeSource=null;self.paint();}},_('取消'))]) : null ]); })
 			] : !data ? el('div',{'class':'az-source-empty'},_('规则列表尚未就绪。')) : el('div',{'class':'az-source-empty'},[el('strong',{},_('还没有添加订阅')),el('p',{},_('从下方规则库选择，或添加自己的 HTTPS 订阅地址。'))])),
-			el('p',{'class':'az-source-footnote'},_('数量为各列表下载校验后的域名数，可能互相重叠；合并去重及个人放行后，以概览的有效域名数为准。关闭保护时保留选择。')),
-			el('section',{'class':'az-card az-custom-source'},[
-				el('div',{'class':'az-section-heading'},[el('h3',{},_('添加自定义订阅')),pill(_('HTTPS'))]),
+			self.disclosure('source-help',_('更新、校验与数量说明'),[el('p',{},_('默认沿用上次校验结果；文件未变化时不重新完整解析。手动校验只检查本地快照，不下载、不重载。新文件保留基础格式检查。')),el('p',{},_('数量为各列表下载校验后的域名数，可能互相重叠；合并去重及个人放行后，以概览的有效域名数为准。关闭保护时保留选择。'))]),
+			self.disclosure('custom-source',el('span',{'class':'az-custom-title'},[el('strong',{},_('添加自定义订阅')),el('small',{},_('使用自己的 HTTPS 规则地址'))]),[
 				el('p',{'class':'az-card-copy'},_('支持域名、Hosts 和 ||domain^ 基础 DNS 规则。网页元素、正则、修饰符及高级例外不能导入。')),
 				el('div',{'class':'az-custom-grid'},[
 					el('label',{},[el('span',{},_('名称')),el('input',{id:'az-source-name',type:'text',maxlength:100,value:form.name,placeholder:_('例如：我的广告列表'),disabled:!editable?true:null,input:updateField('name')})]),
 					el('label',{},[el('span',{},_('订阅地址')),el('input',{id:'az-source-url',type:'url',maxlength:2048,value:form.url,placeholder:'https://example.com/domains.txt',disabled:!editable?true:null,input:updateField('url'),'autocomplete':'off'})]),
 					el('label',{},[el('span',{},_('文件格式')),el('select',{id:'az-source-format',disabled:!editable?true:null,change:updateField('format')},[['domains',_('域名列表')],['hosts','Hosts'],['adblock',_('基础 DNS Adblock')]].map(function(option){return el('option',{value:option[0],selected:form.format===option[0]?true:null},option[1]);}))]) ]),
 				el('div',{'class':'az-custom-submit'},[el('span',{},_('加入待应用列表，统一应用时再校验并同步。')),
-					el('button',{id:'az-source-add',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.stageSource('source_add',['',form.name.trim(),form.url.trim(),form.format]);}},_('加入待应用'))]) ]),
-			el('div',{'class':'az-library-title'},[el('h3',{},_('规则库')),el('span',{},_('按需添加；同系列列表通常选一项即可，叠加不一定更好。'))]),
-			el('div',{'class':'az-library-grid'},catalog.map(function(rule){var added=items.some(function(i){return i.url===rule.url;});return el('section',{'class':'az-card az-library-item'},[
-				el('div',{'class':'az-section-heading'},[el('h3',{},rule.name),pill(rule.group)]),el('p',{},rule.description),
-				el('div',{'class':'az-library-footer'},[el('a',{href:rule.home,target:'_blank',rel:'noopener noreferrer'},_('项目主页')),
-					el('button',{type:'button','class':'az-button '+(added?'az-button-quiet':'az-button-primary'),disabled:added || !editable?true:null,click:function(){return self.stageSource('source_add',[rule.id,'','','domains']);}},added?_('已添加'):_('添加规则'))]) ]);})),
+					el('button',{id:'az-source-add',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.stageSource('source_add',['',form.name.trim(),form.url.trim(),form.format]);}},_('加入待应用'))]) ],'az-card az-custom-source'),
+			el('div',{'class':'az-library-title'},[el('div',{},[el('h3',{},_('规则库')),el('p',{},_('按用途补充，同系列通常选一项即可。'))]),el('div',{'class':'az-library-filters',role:'group','aria-label':_('筛选规则库')},[['all',_('全部')],['available',_('未添加')]].map(function(option){var selected=(self.libraryFilter||'all')===option[0];return el('button',{id:'az-library-'+option[0],type:'button','class':'az-filter'+(selected?' is-active':''),'aria-pressed':selected?'true':'false',click:function(){self.libraryFilter=option[0];self.paint('az-library-'+option[0]);}},option[1]);}))]),
+			el('div',{'class':'az-card az-library-list'},catalog.filter(function(rule){return self.libraryFilter!=='available'||!items.some(function(i){return i.url===rule.url;});}).map(function(rule){var added=items.some(function(i){return i.url===rule.url;});return el('section',{'class':'az-library-item'},[
+				el('div',{'class':'az-library-copy'},[el('div',{'class':'az-library-name'},[el('h3',{},rule.name),pill(rule.group)]),el('p',{},rule.description)]),
+				el('div',{'class':'az-library-footer'},[el('a',{href:rule.home,target:'_blank',rel:'noopener noreferrer','aria-label':rule.name+_(' 项目主页（新窗口）')},_('主页')),
+					el('button',{type:'button','class':'az-button az-button-compact'+(added?' az-button-quiet':''),'aria-label':(added?_('已添加 '):_('添加规则 '))+rule.name,disabled:added || !editable?true:null,click:function(){return self.stageSource('source_add',[rule.id,'','','domains']).then(function(){if(self.libraryFilter==='available')self.paint('az-library-available');});}},added?[icon('check'),_('已添加')]:_('添加规则'))]) ]);}).concat(self.libraryFilter==='available'&&catalog.length&&catalog.every(function(rule){return items.some(function(i){return i.url===rule.url;});})?[el('p',{'class':'az-library-empty',role:'status'},_('规则库中的列表均已添加，无需重复添加。'))]:[])),
 			data && data.last ? el('p',{'class':'az-source-footnote'},_('最近完成：')+date(data.last.at)+(enabled?_(' · 当前接入已同步。'):_(' · 开启保护后应用所选规则。'))) : null ]);
 	},
 	openRules: function() {
@@ -1026,7 +1033,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.18.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.18.1' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();
