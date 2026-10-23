@@ -114,7 +114,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.17.0'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.17.1'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -250,6 +250,9 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   statusPending = true; root = app.render(initial);
   check(typeof root.then !== 'function' && text(root).includes('正在读取运行状态'), 'view renders immediately while status is pending');
   check(find('az-toggle').disabled && !find('az-update'), 'initial actions locked until fresh status');
+  const help = nodes(root, n => n.tag === 'a' && /az-help-link/.test(n.attrs.class || ''));
+  check(help.length === 3 && help.map(n => n.attrs.href).join('|') === 'https://slobys.github.io/AdZero/|https://www.youtube.com/@naiyou|https://t.me/naiyous', 'help destinations remain available before status is ready');
+  check(help.every(n => n.attrs.target === '_blank' && n.attrs.rel === 'noopener noreferrer' && n.attrs['aria-label'] && !n.disabled), 'external help links have accessible names and isolated new windows');
   check(commands.join(',') === 'status', 'exactly one initial request');
   resolveStatus(); await app.initialRequest;
   check(app.currentStatus.state === 'disabled' && !find('az-toggle').disabled, 'initial response hydrates view');

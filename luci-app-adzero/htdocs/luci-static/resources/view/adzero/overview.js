@@ -6,6 +6,12 @@
 'require poll';
 
 var policyCalls = {};
+// Static help links stay available while the router is loading or applying changes.
+var helpLinks = [
+	['https://slobys.github.io/AdZero/', _('在线文档'), 'book', _('在线使用文档（新窗口）')],
+	['https://www.youtube.com/@naiyou', 'YouTube', 'youtube', _('YouTube 频道（新窗口）')],
+	['https://t.me/naiyous', 'Telegram', 'telegram', _('Telegram 群组（新窗口）')]
+];
 var observationCalls = {
 	read:rpc.declare({object:'adzero',method:'observation',params:[]}),
 	test:rpc.declare({object:'adzero',method:'verification_start',params:[]}),
@@ -141,6 +147,9 @@ function finishJob(self) {
 
 // Phosphor Icons (MIT), license: /usr/share/licenses/luci-app-adzero/.
 var icons = {
+	book: 'M32,40H96c13,0,24,5,32,14,8-9,19-14,32-14h64v168h-64c-10,0-18,4-24,12h-16c-6-8-14-12-24-12H32Zm16,16v136h48c9,0,17,2,24,6V76c-5-13-13-20-24-20Zm88,142c7-4,15-6,24-6h48V56h-48c-11,0-19,7-24,20Z',
+	youtube: 'M224,64c-5-13-13-17-26-19-23-3-117-3-140,0C45,47,37,51,32,64c-8,22-8,106,0,128,5,13,13,17,26,19,23,3,117,3,140,0,13-2,21-6,26-19,8-22,8-106,0-128ZM48,70c2-5,5-7,12-9,22-3,114-3,136,0,7,2,10,4,12,9,7,19,7,97,0,116-2,5-5,7-12,9-22,3-114,3-136,0-7-2-10-4-12-9-7-19-7-97,0-116Zm56,18v80l64-40Z',
+	telegram: 'M232,24,24,108c-10,4-9,17,1,20l53,16,23,69c3,10,15,12,21,4l30-32,48,35c8,6,18,1,20-8L248,42c2-12-5-22-16-18ZM43,116,221,44,88,130Zm57,27,101-77-84,96-9,30Zm31,29,94-108-20,139Z',
 	shield: 'M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z',
 	refresh: 'M224,48V96a8,8,0,0,1-8,8H168a8,8,0,0,1,0-16h28.69L182.06,73.37a79.56,79.56,0,0,0-56.13-23.43h-.45A79.52,79.52,0,0,0,69.59,72.71,8,8,0,0,1,58.41,61.27a96,96,0,0,1,135,.79L208,76.69V48a8,8,0,0,1,16,0ZM186.41,183.29a80,80,0,0,1-112.47-.66L59.31,168H88a8,8,0,0,0,0-16H40a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V179.31l14.63,14.63A95.43,95.43,0,0,0,130,222.06h.53a95.36,95.36,0,0,0,67.07-27.33,8,8,0,0,0-11.18-11.44Z',
 	settings: 'M40,88H73a32,32,0,0,0,62,0h81a8,8,0,0,0,0-16H135a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16Zm64-24A16,16,0,1,1,88,80,16,16,0,0,1,104,64ZM216,168H199a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16h97a32,32,0,0,0,62,0h17a8,8,0,0,0,0-16Zm-48,24a16,16,0,1,1,16-16A16,16,0,0,1,168,192Z',
@@ -549,6 +558,9 @@ return view.extend({
 		var nodes = [ el('div', { 'class': 'az-header' }, [
 			el('div', { 'class': 'az-brand' }, [ el('span', { 'class': 'az-brand-mark', 'aria-hidden': 'true' }, icon('shield')),
 				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, self.enhanceOpen?_('DNS 增强'):self.controlsOpen?_('访问控制'):self.rulesOpen?_('过滤规则'):_('运行概览')) ]) ]),
+			el('nav', { 'class': 'az-help-links', 'aria-label': _('帮助与社区') }, helpLinks.map(function(link) {
+				return el('a', { href: link[0], 'class': 'az-button az-help-link az-help-' + link[2], target: '_blank', rel: 'noopener noreferrer', 'aria-label': link[3] }, [icon(link[2]), link[1]]);
+			})),
 			el('div', { 'class': 'az-header-actions' }, [ el('span', { 'class': 'az-last-checked' }, s.stale ? (self.busy==='status' ? _('上次概览 · 后台核对') : _('上次概览 · 待重新检测')) : self.lastChecked ? _('刚刚检测于 ') + checked : _('正在连接路由器')),
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
@@ -934,7 +946,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.17.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.17.1' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);

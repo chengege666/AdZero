@@ -1,0 +1,9 @@
+<h2 id="support">自动识别和适配范围</h2>
+<table><thead><tr><th>插件</th><th>当前范围</th></tr></thead><tbody><tr><td>NaiLink / dae</td><td>基础 DNS 与可选分流适配；区分管理服务和实际内核。</td></tr><tr><td>PassWall</td><td>原生屏蔽名单接入，保留 dnsmasq / ChinaDNS-NG。</td></tr><tr><td>OpenClash、Nikki</td><td>原生配置接口适配，保留代理选择。</td></tr><tr><td>SSR Plus+</td><td>原生域名屏蔽名单；需关闭 AdZero 自动分流。</td></tr><tr><td>PassWall 2、HomeProxy</td><td>目前仅检测，不代表已支持接管。</td></tr></tbody></table>
+<p>基础适配和<a href="enhancements.html#entry">增强 DNS 入口</a>支持范围不同。各插件不同版本仍需实机验证。无代理时可使用路由器 DNS；多个或状态不明的代理同时启用时，会暂缓接管。</p>
+<h2 id="switch">切换代理的建议顺序</h2>
+<ol><li>有未应用草稿先应用或撤销。</li><li>关闭 AdZero 保护并等待恢复完成。</li><li>停止旧代理内核，开启新代理，确认它独立联网正常。</li><li>打开 AdZero，点击「重新检测」，再开启保护。</li><li>核对当前接入并从电脑做效果检测。</li></ol>
+<p>后台也会检查代理变化。切换过程中看到正在同步、等待锁或状态尚未确认时，先等待；不要同时反复开启、关闭或删锁。刷新只会更新显示，不能证明整条网络已恢复。</p>
+<h2 id="handoff">旧 DNS 会话与缓存</h2>
+<p>PassWall 默认 IPv4 LAN 模式会每五秒检查旧 UDP DNS 会话，入口稳定后只处理仍走旧入口的连接，不清空全网 conntrack。自定义 ACL、IPv6、未知规则或多代理会跳过，并给出原因。</p>
+<p>路由器无法远程清除电脑已缓存的坏答案。若每次切换都要清缓存才能用，应检查实际 DNS 路径和旧连接，而不是把清缓存当作常规修复。<a href="troubleshooting.html#dns">继续排查</a>。</p>

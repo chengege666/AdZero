@@ -1,0 +1,14 @@
+<h2 id="backup">升级前与配置备份</h2>
+<p>安装器会显示备份位置，通常在 <code>/etc/adzero-backups/时间/config.tar.gz</code>。请保留终端输出，并把需要的备份另存到安全位置。备份可能包含网络配置和私人列表，不要公开上传。</p>
+<p>大版本或固件升级前，另外使用 LuCI「系统 → 备份/升级」保存系统配置。两类备份用途不同。不要用旧备份整包覆盖当前代理配置来处理一个报错。</p>
+<h2 id="update">日常维护</h2>
+<p>需要新规则时更新订阅；规则没变化时重用已有快照。升级步骤见<a href="installation.html#upgrade">安装与升级</a>。统计为运行期数据，最近拦截只在内存中，不能作为长期日志备份。</p>
+<h2 id="uninstall">安全卸载</h2>
+<p>先在页面关闭保护并等待恢复完成，再卸载。SSH 可用一条命令串联：只有恢复成功才继续删除插件包。</p>
+<p>使用 APK 的固件：</p><pre><code>/usr/libexec/adzero/ctl disable &amp;&amp; apk del luci-app-adzero</code></pre>
+<p>使用 opkg 的固件：</p><pre><code>/usr/libexec/adzero/ctl disable &amp;&amp; opkg remove luci-app-adzero</code></pre>
+<p>恢复失败或正在等待操作锁时，先处理原因，不强制卸载、不删 <code>/etc/adzero/adapter.json</code> 等恢复记录。卸载后核对原代理和普通 DNS 正常。</p>
+<h2 id="scope">配置与依赖的保留</h2>
+<p>不要为了卸载 AdZero 顺手删除其他插件共用的 DNS、代理或软件包依赖。需要彻底清理配置时，先保留备份并确认不再需要恢复；不要手动删除仍被 dnsmasq 引用的文件。</p>
+<h2 id="source">源码和文档维护</h2>
+<p>源码、发行包和验证范围在 <a href="https://github.com/slobys/AdZero">GitHub</a>。本手册与源码一起维护，侧栏显示对应测试版版本。开发者可查看<a href="https://github.com/slobys/AdZero/tree/main/docs/site">文档构建说明</a>，修改后自动发布。</p>

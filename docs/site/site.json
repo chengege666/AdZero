@@ -1,0 +1,25 @@
+{
+  "title": "AdZero",
+  "url": "https://slobys.github.io/AdZero/",
+  "version": "0.17.1",
+  "release": "v0.17.1",
+  "groups": [
+    {"title": "开始使用", "pages": [
+      {"id":"index","title":"使用文档","description":"从开启保护到日常设置，按需使用 AdZero。"},
+      {"id":"installation","title":"安装与升级","description":"确认固件兼容范围，安装、备份与升级。"},
+      {"id":"quick-start","title":"第一次使用","description":"选择规则、开启保护，并从电脑验证效果。"}
+    ]},
+    {"title": "日常设置", "pages": [
+      {"id":"dashboard","title":"概览与效果检测","description":"读懂实时统计、应答耗时、清零与临时暂停。"},
+      {"id":"rules","title":"过滤规则","description":"添加订阅，区分重新加载、更新订阅和手动校验。"},
+      {"id":"access-control","title":"拦截与放行","description":"查命中来源、处理误拦截、添加自定义规则和临时放行。"},
+      {"id":"dns","title":"DNS 与分流","description":"编辑地址与备选库，保留当前代理的原生 DNS 路径。"},
+      {"id":"enhancements","title":"DNS 增强","description":"按需测试上游、启用同组备用、CNAME 和设备附加规则。"}
+    ]},
+    {"title": "维护与排查", "pages": [
+      {"id":"proxies","title":"代理兼容与切换","description":"自动识别的范围、安全切换顺序和状态判断。"},
+      {"id":"troubleshooting","title":"常见问题","description":"按症状处理页面提示、统计不变、解析异常和升级失败。"},
+      {"id":"maintenance","title":"备份与卸载","description":"找到配置备份，先恢复网络设置再卸载插件。"}
+    ]}
+  ]
+}

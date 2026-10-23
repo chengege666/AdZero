@@ -1,0 +1,43 @@
+name: Online documentation
+on:
+  push:
+    branches: [main]
+    paths: ['docs/site/**', 'tests/docs/**', '.github/workflows/docs.yml', 'luci-app-adzero/Makefile', 'scripts/install.sh']
+  pull_request:
+    paths: ['docs/site/**', 'tests/docs/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check and build public handbook
+        run: |
+          python3 -m unittest discover -s tests/docs -p 'test_*.py'
+          python3 docs/site/build.py
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          path: .build/docs-site
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment

@@ -28,6 +28,18 @@
 .az-root .az-summary-end, .az-root .az-plugin-row { display: flex; align-items: center; }
 .az-root .az-header { justify-content: space-between; gap: 16px; margin: 0 0 22px; padding: 0; position: static; color: var(--az-text); background: transparent; width: auto; height: auto; }
 .az-root .az-header::before, .az-root .az-header::after { content: none; display: none; }
+.az-root .az-header { display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr); }
+.az-root .az-header-actions { justify-content: flex-end; }
+.az-root .az-help-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.az-root a.az-help-link { text-decoration: none; }
+.az-root .az-help-link:focus-visible { outline: 2px solid var(--az-accent); outline-offset: 3px; }
+.az-root .az-help-book .az-icon { color: var(--az-accent); }
+.az-root .az-help-youtube .az-icon { color: #e4414b; }
+.az-root .az-help-telegram .az-icon { color: #238cc0; }
+@media (max-width: 1100px) {
+  .az-root .az-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .az-root .az-help-links { grid-column: 1 / -1; grid-row: 2; }
+}
 .az-root .az-brand { gap: 13px; }
 .az-root .az-brand p { color: var(--az-muted); font-size: 12px; margin-top: 1px; }
 .az-root .az-brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; background: var(--az-accent); color: var(--az-on-accent); }

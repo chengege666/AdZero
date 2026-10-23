@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>$title</title>
+    <meta name="description" content="$description" />
+    <link rel="canonical" href="$canonical" />
+    <link rel="icon" type="image/png" href="assets/adzero-logo.png" />
+    <link rel="stylesheet" href="site.css" />
+    <script src="site.js" defer></script>
+  </head>
+  <body data-page="$page_id">
+    <a class="skip-link" href="#content">跳转到正文</a>
+    <header class="header">
+      <a class="brand" href="index.html" aria-label="AdZero 文档首页"
+        ><img src="assets/adzero-logo.png" width="40" height="40" alt="" /><span
+          >AdZero<small>使用文档</small></span
+        ></a
+      >
+      <button class="search-trigger" type="button" data-search-open>
+        <span aria-hidden="true">⌕</span> 搜索文档 <kbd>Ctrl K</kbd>
+      </button>
+      <nav class="header-links" aria-label="快捷入口">
+        <a href="quick-start.html">快速开始</a
+        ><a href="https://github.com/slobys/AdZero">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="切换深浅主题" aria-pressed="false">
+        ◐
+      </button>
+      <button class="menu-button" id="menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false">
+        目录
+      </button>
+    </header>
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="文档目录">
+        <nav>$navigation</nav>
+        <div class="sidebar-footer">
+          <span class="version">v$version · 测试版</span><a href="https://www.youtube.com/@naiyou">YouTube 频道 ↗</a
+          ><a href="https://t.me/naiyous">Telegram 群组 ↗</a>
+        </div>
+      </aside>
+      <main id="content" tabindex="-1">
+        <article class="article">
+          <div class="page-heading">
+            <p class="eyebrow">ADZERO HANDBOOK</p>
+            <h1>$page_title</h1>
+            <p class="lead">$page_description</p>
+          </div>
+          $content
+          <nav class="pager" aria-label="相邻文章">$pager</nav>
+          <footer class="article-footer">
+            AdZero <span>软路由上的广告过滤与 DNS 分流。</span
+            ><a href="https://github.com/slobys/AdZero/issues">反馈文档问题 ↗</a>
+          </footer>
+        </article>
+      </main>
+      <aside class="toc" aria-label="本页目录">
+        <span>本页目录</span>$toc<a class="back-top" href="#content">返回顶部 ↑</a>
+      </aside>
+    </div>
+    <dialog id="search-dialog" aria-labelledby="search-title">
+      <div class="search-header">
+        <label id="search-title" for="search-input">搜索使用文档</label
+        ><button type="button" class="icon-button" id="search-close" aria-label="关闭搜索">×</button>
+      </div>
+      <input id="search-input" type="search" placeholder="试试：安装、规则、放行、DNS、统计…" autocomplete="off" />
+      <p id="search-status" role="status" aria-live="polite">输入功能名称或问题关键词</p>
+      <div id="search-results" aria-label="搜索结果"></div>
+      <div class="search-footer"><span>↑ ↓ 切换 · Enter 打开 · Esc 关闭</span><span>本地搜索，无需登录</span></div>
+    </dialog>
+    <noscript><div class="noscript">正文和目录可直接阅读；搜索、主题与命令复制需要启用 JavaScript。</div></noscript>
+  </body>
+</html>

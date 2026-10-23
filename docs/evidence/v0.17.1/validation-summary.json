@@ -1,0 +1,112 @@
+{
+  "version": "0.17.1",
+  "scope": "Online handbook and static LuCI help links only. No DNS, proxy, or router runtime changes.",
+  "handbook": {
+    "pages": 11,
+    "search_sections": 50,
+    "integrity_tests": 5,
+    "checks": [
+      "internal links and anchors",
+      "search targets",
+      "version and installer consistency",
+      "public output allowlist",
+      "404 project base path"
+    ]
+  },
+  "ui": {
+    "assertions": 272,
+    "native_luci_poll": [
+      "24.10.8",
+      "25.12.5"
+    ],
+    "browser_checks": [
+      "desktop header destinations",
+      "Chinese search to exact section",
+      "copy completion",
+      "light and dark themes",
+      "360px rendering via iframe"
+    ],
+    "preview_data": "local RPC fixtures, not router statistics"
+  },
+  "sdk": [
+    {
+      "firmware_declared": "openwrt",
+      "release_declared": "24.10.8",
+      "target_declared": "x86/64",
+      "target_observed": "x86/64",
+      "package_arch_observed": "x86_64",
+      "package_format": "ipk",
+      "sdk_archive_sha256_supplied": "ac4a0405d2eea821b06f93c14ba13ffa90ad0457648903df7dde02570027ab21",
+      "source_sha256": "81c0642de75ba1b2421b909eff2ed8beea161348f0d086ac553ebc0f8592fea1",
+      "package": "luci-app-adzero_0.17.1-r1_all.ipk",
+      "sha256": "04a6449d5f1feae98d05951e9b47f3801ade31e6a63f9a8d103425375ae9c2e7",
+      "sdk_build": "passed",
+      "device_acceptance": "not_run"
+    },
+    {
+      "firmware_declared": "openwrt",
+      "release_declared": "25.12.5",
+      "target_declared": "x86/64",
+      "target_observed": "x86/64",
+      "package_arch_observed": "x86_64",
+      "package_format": "apk",
+      "sdk_archive_sha256_supplied": "0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c",
+      "source_sha256": "81c0642de75ba1b2421b909eff2ed8beea161348f0d086ac553ebc0f8592fea1",
+      "package": "luci-app-adzero-0.17.1-r1.apk",
+      "sha256": "a89766e0ede10e6968f52b910d86f8c87c6df1a5ffcc3caa2c72e5d82ded3f7a",
+      "sdk_build": "passed",
+      "device_acceptance": "not_run"
+    },
+    {
+      "firmware_declared": "openwrt",
+      "release_declared": "25.12.5",
+      "target_declared": "rockchip/armv8",
+      "target_observed": "rockchip/armv8",
+      "package_arch_observed": "aarch64_generic",
+      "package_format": "apk",
+      "sdk_archive_sha256_supplied": "59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba",
+      "source_sha256": "81c0642de75ba1b2421b909eff2ed8beea161348f0d086ac553ebc0f8592fea1",
+      "package": "luci-app-adzero-0.17.1-r1.apk",
+      "sha256": "a89766e0ede10e6968f52b910d86f8c87c6df1a5ffcc3caa2c72e5d82ded3f7a",
+      "sdk_build": "passed",
+      "device_acceptance": "not_run"
+    }
+  ],
+  "delivery": {
+    "checks": 6,
+    "cases": [
+      {
+        "target": "24.10.8-x86-ipk",
+        "catalog_ending": "LF",
+        "selection_checksum_backup_restore_install": "passed"
+      },
+      {
+        "target": "24.10.8-x86-ipk",
+        "catalog_ending": "CRLF",
+        "selection_checksum_backup_restore_install": "passed"
+      },
+      {
+        "target": "25.12.5-x86-apk",
+        "catalog_ending": "LF",
+        "selection_checksum_backup_restore_install": "passed"
+      },
+      {
+        "target": "25.12.5-x86-apk",
+        "catalog_ending": "CRLF",
+        "selection_checksum_backup_restore_install": "passed"
+      },
+      {
+        "target": "25.12.5-rockchip-apk",
+        "catalog_ending": "LF",
+        "selection_checksum_backup_restore_install": "passed"
+      },
+      {
+        "target": "25.12.5-rockchip-apk",
+        "catalog_ending": "CRLF",
+        "selection_checksum_backup_restore_install": "passed"
+      }
+    ],
+    "scope": "actual delivered installer, catalog and SDK package bytes; mock PM/service operations in private roots; not a real router installation"
+  },
+  "device_acceptance": "not_run"
+}

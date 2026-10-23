@@ -1,0 +1,16 @@
+<h2 id="compatibility">先确认兼容范围</h2>
+<p>以下组合提供官方 SDK 构建包。固件版本、设备目标和架构必须匹配，不能只看“都是 ARM64”。</p>
+<table><thead><tr><th>固件</th><th>设备目标</th><th>格式</th></tr></thead><tbody><tr><td>OpenWrt 24.10.8</td><td>x86/64</td><td>IPK</td></tr><tr><td>OpenWrt 25.12.5</td><td>x86/64</td><td>APK</td></tr><tr><td>OpenWrt 25.12.5</td><td>rockchip/armv8</td><td>APK</td></tr></tbody></table>
+<p>其他版本、架构、ImmortalWrt 和 iStoreOS 按兼容矩阵逐步推进。安装器拒绝未匹配组合时，不要强制安装其他机型包。<a href="https://github.com/slobys/AdZero/blob/main/docs/COMPATIBILITY.md">查看详细兼容矩阵</a>。</p>
+<h2 id="install">首次安装</h2>
+<p>以 root 登录路由器 SSH，确认网络可用，执行：</p>
+<pre><code>curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/$release/scripts/install.sh -o /tmp/adzero-install.sh &amp;&amp; sh /tmp/adzero-install.sh</code></pre>
+<p>安装器核对固件与包校验值、准备依赖并备份配置。完成后进入 <strong>服务 → AdZero</strong>。也可在 <a href="https://github.com/slobys/AdZero/releases/tag/$release">发行页面</a> 下载匹配的包；手动安装与恢复见 <a href="https://github.com/slobys/AdZero/blob/main/docs/INSTALLATION.md">详细安装说明</a>。</p>
+<h2 id="upgrade">升级已有安装</h2>
+<pre><code>curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/$release/scripts/install.sh -o /tmp/adzero-install.sh &amp;&amp; sh /tmp/adzero-install.sh --upgrade</code></pre>
+<p>升级先检查安装条件，再让旧版恢复它接管的设置并替换包。过程中可能短暂重载 DNS 或当前代理；等待命令结束。安装器不会替你改写第三方软件源。</p>
+<p>升级后用 Ctrl F5 刷新页面；在 SSH 查看实际安装版本：</p>
+<pre><code>apk list --installed luci-app-adzero</code></pre>
+<p>使用 opkg 的固件执行：</p><pre><code>opkg list-installed luci-app-adzero</code></pre>
+<h2 id="failure">安装中断怎么办</h2>
+<p>保留终端报错并确认仍安装哪个版本、保护当前是否开启。软件源下载失败应先处理对应源，不要删除配置或反复卸载。可从 <a href="troubleshooting.html#upgrade">升级失败排查</a> 继续。</p>
