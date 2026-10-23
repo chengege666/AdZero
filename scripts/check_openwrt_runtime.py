@@ -77,7 +77,7 @@ def main():
     env = {**os.environ, "PATH": str(wrappers) + os.pathsep + os.environ["PATH"],
            "ADZERO_TEST_SHELL": shlex.join(command + ["ash"]),
            "ADZERO_UCODE": shlex.join([str(runtime / "libc.so"), "--library-path", str(runtime), str(runtime / "ucode"), "-L", str(runtime)])}
-    for program in ('adapter', 'probe', 'policy', 'sources', 'routing-data', 'cache-curl', 'observe'):
+    for program in ('adapter', 'probe', 'policy', 'sources', 'routing-data', 'cache-curl', 'observe', 'dns-handoff'):
         subprocess.run(shlex.split(env['ADZERO_UCODE']) + ['-c', '-o', str(runtime / (program + '.ucb')),
                        str(ROOT / ('luci-app-adzero/root/usr/libexec/adzero/' + program + '.uc'))], check=True)
     subprocess.run(shlex.split(env["ADZERO_UCODE"]) + ["-c", "-o", str(runtime / "rpc.ucb"), str(ROOT / "luci-app-adzero/root/usr/share/rpcd/ucode/adzero")], check=True)

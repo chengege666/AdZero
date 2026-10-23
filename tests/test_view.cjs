@@ -526,5 +526,12 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(root).includes('暂时无法确认 NaiLink 内核状态')&&find('az-toggle').disabled,'unknown core is explained rather than reported as multiple active proxies');
   check(nodes(root,n=>n.tag==='details'&&(n.attrs.class||'').includes('az-network-settings')&&!n.open).length===1,'DNS and routing are collapsed by default');
   check(text(root).includes('不代表网页广告个数')&&text(root).includes('加密 DNS'),'statistics explain their actual measurement scope');
+  app.observation={available:true,active:true,current:{}};
+  app.currentStatus={dns_handoff:{state:'ready',repaired:2}};
+  check(text(app.renderObservationHealth()).includes('旧 UDP DNS 会话：2')&&text(app.renderObservationHealth()).includes('不代表网站连接已验证'),'handoff count does not imply end-to-end verification');
+  app.currentStatus.dns_handoff={reason:'conntrack_missing'};
+  check(text(app.renderObservationHealth()).includes('缺少 conntrack'),'missing handoff dependency is actionable');
+  app.currentStatus.dns_handoff={state:'skipped',reason:'unsupported_context'};
+  check(text(app.renderObservationHealth()).includes('已跳过处理'),'unknown DNS topology is explicitly skipped');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

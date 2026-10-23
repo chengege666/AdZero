@@ -1,0 +1,17 @@
+{
+  "version": "0.15.4",
+  "source_sha256": "ea88e850a771898aef40bb0935e1cd78a83ff650d5a4616c233c3bc5b56a777b",
+  "view_sha256": "d87598951dcd03856cd3bfb3b6ee75b51558cc2040b63193867f14e27757d6af",
+  "native_tests": 432,
+  "ui_assertions": 243,
+  "rpc_checks": 61,
+  "native_luci_poll_versions": 2,
+  "sdk_builds": 3,
+  "payload_files": 42,
+  "delivery_cases": 6,
+  "router": "not_connected",
+  "runtime_dependencies_added": [
+    "conntrack"
+  ],
+  "scope": "production handoff + real kernel NAT, conntrack and nonroot dnsmasq in two net namespaces; native inventory and LAN ubus fixtures; no router or public network acceptance"
+}

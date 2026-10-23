@@ -27,21 +27,21 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.15.3 测试版**，区分代理切换中的后台同步与恢复失败，避免重复关闭；锁超时会明确显示本次请求尚未执行。保留本地升级、统计清零和独立「访问控制」。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.15.4 测试版**，增加切换到 PassWall 后的旧 UDP DNS 会话自动交接，减少新旧 DNS 路径并存。保留批量应用、实时统计和独立「访问控制」。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.4/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.4/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.15.3) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.15.4) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
@@ -70,6 +70,8 @@ NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus
 PassWall 的默认 dnsmasq 和 SSR Plus+ 接入会核对运行进程、配置加载路径与屏蔽规则样本。未加载时有限重试并显示提示，页面仍可操作；这不能代替终端效果检测。内容未变且运行配置正常时，不重复重启代理。
 
 切换时先停止旧代理、启动新代理，再点击「重新检测」。NaiLink 的管理服务和代理内核分别判断；说明见 [切换代理](docs/PROXY_SWITCHING.md)。
+
+PassWall 默认 IPv4 LAN DNS 接管模式下，会每五秒检查旧 UDP DNS 会话；入口稳定后只处理仍走旧入口的连接，不清空全网连接。需要小型 `conntrack` 依赖；自定义 ACL、未知规则或多代理状态会跳过。已缓存的错误解析不会被路由器远程清除，IPv6、TCP 异常和 nftset 报错需分别验收。
 
 ## 卸载
 

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Independent of ctl's long rule/adapter operation lock. No firewall changes.
+umask 077
+exec ucode -S "$(dirname "$0")/dns-handoff.uc" -- "$@"

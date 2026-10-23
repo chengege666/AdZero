@@ -67,10 +67,13 @@ def payload() -> dict[str, tuple[bytes, int]]:
             name = (Path(prefix) / relative).as_posix()
             if name in output:
                 raise ValueError(f"Duplicate package path: {name}")
-            mode = 0o755 if name in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "usr/libexec/adzero/observe", "etc/init.d/adzero"} else 0o644
+            mode = 0o755 if name in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "etc/init.d/adzero"} else 0o644
             output[name] = (src.read_bytes(), mode)
 
     expected = {
+        "usr/libexec/adzero/dns-handoff",
+        "usr/libexec/adzero/dns-handoff.uc",
+        "usr/libexec/adzero/dns-handoff-lib.uc",
         "usr/libexec/adzero/observe",
         "usr/libexec/adzero/observe.uc",
         "usr/libexec/adzero/observe-lib.uc",
@@ -157,7 +160,7 @@ def build_bytes() -> tuple[bytes, str]:
         "Architecture: all\n"
         "Section: luci\n"
         "Priority: optional\n"
-        "Depends: luci-base, adblock-fast, curl, rpcd-mod-file, rpcd-mod-ucode, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus, ucode-mod-uloop, tcpdump-mini\n"
+        "Depends: luci-base, adblock-fast, curl, rpcd-mod-file, rpcd-mod-ucode, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus, ucode-mod-uloop, tcpdump-mini, conntrack\n"
         "Maintainer: AdZero project\n"
         "Description: One-click safe DNS ad blocking on OpenWrt LuCI\n"
     ).encode("utf-8")

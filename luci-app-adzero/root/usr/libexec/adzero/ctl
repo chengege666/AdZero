@@ -310,12 +310,17 @@ print_status() {
 		[ -n "$observation_status" ] || observation_status=null
 		if [ "$state" = configured_unverified ] && [ "$(printf '%s' "$observation_status" | jsonfilter -e '@.client_dns_verified' 2>/dev/null)" = true ]; then client_verified=true; fi
 	fi
-	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":%s,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s,"policy":%s,"observation":%s,"operation":%s}\n' \
+	handoff_status=null
+	if [ "$STATE_DIR" = /etc/adzero ] && [ -x "$(dirname "$0")/dns-handoff" ]; then
+		handoff_status=$("$(dirname "$0")/dns-handoff" status 2>/dev/null) || handoff_status=null
+		[ -n "$handoff_status" ] || handoff_status=null
+	fi
+	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":%s,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s,"policy":%s,"observation":%s,"operation":%s,"dns_handoff":%s}\n' \
 		"$state" "$(json_bool "$owner")" "$(json_bool "$configured")" \
 		"$(json_bool "$actual")" "$(resolver_mode)" "$(json_bool "$nailink")" \
 		"$(json_bool "$nailink_active")" "$(json_bool "$nailink_enabled")" \
 		"$(json_bool "$agh")" "$(json_bool "$safe_mode")" "$(json_bool "$dns_review")" \
-		"$port_hint" "$force_status" "$tls_status" "$client_verified" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status" "$policy_status" "$observation_status" "$(operation_status)"
+		"$port_hint" "$force_status" "$tls_status" "$client_verified" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status" "$policy_status" "$observation_status" "$(operation_status)" "$handoff_status"
 }
 release_lock() {
 	# Never remove a lock whose owner record was replaced by another operation.

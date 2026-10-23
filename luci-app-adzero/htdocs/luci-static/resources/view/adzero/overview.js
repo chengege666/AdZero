@@ -433,6 +433,10 @@ return view.extend({
 		if(o.connection&&o.connection.runtime_retry_exhausted)return el('p',{'class':'az-inline-warning'},_('自动同步多次未完成，已暂停重试。请检查代理后点击“重新加载”；仍可关闭保护或调整规则。'));
 		if(o.connection&&o.connection.runtime&&o.connection.runtime.state==='missing')return el('p',{'class':'az-inline-warning'},_('代理 DNS 尚未加载当前屏蔽规则，后台将有限重试。也可点击“重新加载”；无需重新下载订阅。'));
 		if(c.matched_positive>0)return el('p',{'class':'az-inline-warning'},_('当前接入期间，有 ')+number(c.matched_positive)+_(' 条命中规则的查询仍返回了 IP 地址。请用“效果检测”核对实际过滤；DNS 查询量增加不等于拦截量增加。'));
+		var handoff=(this.currentStatus||{}).dns_handoff||{};
+		if(handoff.reason==='conntrack_missing')return el('p',{'class':'az-inline-warning'},_('缺少 conntrack，旧 DNS 会话暂不能自动切换；请补齐安装依赖。过滤与统计可继续工作。'));
+		if(handoff.reason==='unsupported_context')return el('p',{'class':'az-live-caption'},_('当前 DNS 方式或访问控制不支持旧会话自动切换，已跳过处理。'));
+		if(handoff.state==='ready'&&handoff.repaired>0)return el('p',{'class':'az-live-caption'},_('已切换旧 UDP DNS 会话：')+number(handoff.repaired)+_(' 条。电脑已缓存的旧解析需等待过期；这不代表网站连接已验证。'));
 		return el('p',{'class':'az-live-caption'},_('收到新的拦截应答才会增加计数；没有广告查询或设备直接使用缓存时，数字保持不变。'));
 	},
 	startVerification:function(){
