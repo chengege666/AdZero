@@ -15,6 +15,8 @@ var observationCalls = {
 [ ['enable', []], ['disable', []], ['refresh', []], ['reload', []], ['routing_on', []], ['routing_off', []], ['lookup', ['domain']], ['allow', ['domain', 'scope']], ['revoke', ['domain', 'scope']], ['pause', ['seconds']], ['resume', []] ].forEach(function(method) {
 	policyCalls[method[0]] = rpc.declare({ object: 'adzero', method: method[0], params: method[1] });
 });
+policyCalls.temporary=rpc.declare({object:'adzero',method:'temporary',params:['domain','scope','seconds']});
+var enhanceCalls={read:rpc.declare({object:'adzero',method:'enhance_status',params:[]}),save:rpc.declare({object:'adzero',method:'enhance_save',params:['payload']}),test:rpc.declare({object:'adzero',method:'dns_test',params:[]})};
 var sourceCalls = {};
 var controlsApply=rpc.declare({object:'adzero',method:'controls_apply',params:['payload']});
 [ ['source_list', []], ['source_add', ['catalog','name','url','format']], ['source_toggle', ['id','expected_url','enabled']], ['source_remove', ['id','expected_url']], ['source_refresh', []], ['source_verify', []], ['settings_apply', ['payload']], ['job_status', ['job']] ].forEach(function(method) {
@@ -190,10 +192,11 @@ function pagePolling(self, panel) {
 	function read() {
 		if(!attached() || document.hidden)return Promise.resolve();
 		var pending=[];
+		if(self.enhanceOpen&&ticks%5===0&&!self.busy)pending.push(self.loadEnhance(true));
 		if(!self.rulesOpen)pending.push(self.refreshObservation());
 		var previous=self.currentStatus||{},recovering=needsStatusRecheck(self);
 		if(!recovering || revision!==(self.statusRecheckRevision||0)){rechecks=0;revision=self.statusRecheckRevision||0;}
-		if(ticks++%5===0 && !self.busy && !previous.stale && (recovering||flags(previous).paused) && !statusReading){
+		if(ticks++%5===0 && !self.busy && !previous.stale && (recovering||flags(previous).paused||((previous.policy||{}).temporary||[]).length) && !statusReading){
 			if(recovering&&rechecks>=(operationActive(previous)?60:12)){
 				if(operationActive(previous)&&!self.notice){self.notice={kind:'warning',text:_('当前操作耗时较长，请重新检测。'),detail:_('操作进程仍持有锁，页面已暂停自动核对。请保留当前状态，不要手动删除锁。')};self.paint();}
 				if(self.notice&&self.notice.expectedState&&self.notice.kind==='warning'){self.notice=Object.assign({},self.notice,{kind:'error',text:_('配置状态仍未确认，请重新检测；不要重复提交原操作。')});self.paint();}
@@ -267,7 +270,43 @@ return view.extend({
 	observation:null, observationBusy:false, verificationCommands:'', verificationNotice:null, networkOpen:false,
 	draft: null, applyingDraft: null,
 	controlsOpen:false,controlDraft:null,controlSearch:'',controlFilter:'all',controlInput:'',controlKind:'blocked',recentSearch:'',statsBusy:false,statsIntent:null,statsNotice:null,
-	openControls:function(){this.rulesOpen=false;this.controlsOpen=true;this.notice=null;this.paint();return Promise.resolve();},
+	openControls:function(){this.enhanceOpen=false;this.rulesOpen=false;this.controlsOpen=true;this.notice=null;this.paint();return Promise.resolve();},
+	loadEnhance:function(quiet){var self=this;return enhanceCalls.read().then(function(r){if(!r||!r.ok||!r.data)throw Error(_('DNS 增强状态读取失败。'));self.enhanceData=r.data;self.enhanceError=null;if(!self.enhanceDraft)self.enhanceDraft={before:JSON.parse(JSON.stringify(r.data.config)),after:JSON.parse(JSON.stringify(r.data.config))};if(quiet){var node=document.getElementById('az-enhance-runtime');if(node)dom.content(node,[self.renderEnhanceRuntime()]);}else self.paint();}).catch(function(e){self.enhanceError=String(e.message||e);if(!quiet)self.paint();});},
+	enhanceDirty:function(){return this.enhanceDraft&&JSON.stringify(this.enhanceDraft.before)!==JSON.stringify(this.enhanceDraft.after);},
+	renderEnhanceRuntime:function(){var d=this.enhanceData||{},r=d.runtime||{},counts=r.counts||{};return el('div',{},[
+		pill(r.state==='active'?_('增强入口运行中'):_('增强入口未接入'),r.state==='active'?'success':'neutral'),
+		el('p',{},r.state==='active'?_('当前入口：')+(r.plugin==='passwall'?'PassWall':_('路由器 DNS')):_('仅接入确认可用的默认 IPv4 LAN DNS 路径。NaiLink、Mihomo、未知 ACL 或切换期间保留原生路径。')),
+		el('p',{},_('本次增强入口 · CNAME 拦截 ')+number(counts.cname)+_(' 次 · 设备附加拦截 ')+number(counts.device)+_(' 次'))]);},
+	renderEnhance:function(){
+		var self=this,d=self.enhanceDraft,editable=!self.busy&&!operationActive(self.currentStatus||{})&&!(self.currentStatus||{}).stale;
+		if(!d)return el('section',{'class':'az-card'},[el('h3',{},_('DNS 增强')),el('p',{},self.enhanceError||_('正在读取…')),el('button',{type:'button','class':'az-button',click:function(){return self.loadEnhance();}},_('重新读取'))]);
+		var s=d.after;
+		function toggle(key,label){return el('label',{'class':'az-enhance-check'},[el('input',{type:'checkbox',checked:s[key]?true:null,disabled:!editable?true:null,change:function(e){s[key]=e.target.checked;}}),el('span',{},label)]);}
+		var tests=((self.enhanceData||{}).tests||{}).groups||{};
+		return el('div',{'class':'az-enhance-page'},[
+			el('section',{'class':'az-card'},[el('h3',{},_('DNS 增强')),el('div',{id:'az-enhance-runtime','aria-live':'polite'},[self.renderEnhanceRuntime()]),
+				toggle('enabled',_('启用增强 DNS 入口')),toggle('cname',_('检查广告与追踪 CNAME 别名')),
+				el('p',{'class':'az-card-copy'},_('增强入口处理实际 DNS 应答，继续使用原生代理上游和缓存。不改变代理节点。设备使用独立加密 DNS 或 IPv6 等未接入路径时，这些附加规则不会生效。'))]),
+			el('section',{'class':'az-card'},[el('h3',{},_('DNS 上游连通性与备用')),
+				el('p',{'class':'az-card-copy'},_('国内使用 UDP 探测；国外经你指定的本机 SOCKS5 TCP 端口探测。连通性通过不代表解析未受污染，也不代表浏览器页面已通过验收。')),
+				el('label',{'class':'az-enhance-field'},[el('span',{},_('当前代理的本机 SOCKS5 端口（无认证）')),el('input',{id:'az-dns-proxy-port',type:'number',min:1024,max:65535,value:s.proxy_port||'',placeholder:_('留空时跳过国外测试'),disabled:!editable?true:null,input:function(e){s.proxy_port=e.target.value?Number(e.target.value):0;}})]),
+				toggle('failover',_('连续 3 轮失败时切换同组备用 DNS')),
+				el('p',{'class':'az-card-copy'},_('自动切换要求 AdZero 自动分流已应用；每分钟检查，切换后至少冷却 5 分钟。先保存设置再测试，国内、国外不会混组竞争。')),
+				el('button',{id:'az-dns-test',type:'button','class':'az-button az-button-primary',disabled:!editable||self.enhanceDirty()?true:null,click:function(){return self.runEnhance('test');}},_('测试已保存的 DNS')),
+				el('div',{'class':'az-dns-test-grid'},['domestic','foreign'].map(function(g){return el('div',{},[el('h4',{},g==='domestic'?_('国内组'):_('国外组'))].concat((tests[g]||[]).map(function(t){return el('p',{translate:'no'},t.address+' · '+(t.skipped?_('未配置代理端口'):t.ok?number(t.ms)+' ms':_('未通过')));})));}))]),
+			el('section',{'class':'az-card'},[el('div',{'class':'az-section-heading'},[el('h3',{},_('按设备设置附加规则')),el('button',{id:'az-device-add',type:'button','class':'az-button az-button-quiet',disabled:!editable||s.devices.length>=32?true:null,click:function(){s.devices.push({ip:'',name:'',enabled:true,allowed:[],blocked:[]});self.paint();}},_('添加设备'))]),
+				el('p',{'class':'az-card-copy'},_('使用固定的局域网 IPv4 地址区分设备。放行只豁免该设备的附加拦截和 CNAME 检查，不能撤销全局规则或其他插件的拦截；全局误杀请到“访问控制”处理。')),
+				el('div',{},s.devices.map(function(device,index){
+					function field(key,label,area){return el('label',{'class':'az-enhance-field'},[el('span',{},label),el(area?'textarea':'input',{id:'az-device-'+index+'-'+key,type:area?null:'text',rows:area?3:null,value:area?device[key].join('\n'):device[key],disabled:!editable?true:null,input:function(e){device[key]=area?e.target.value.split(/\r?\n/).map(function(v){return v.trim().toLowerCase();}).filter(Boolean):e.target.value;}},area?device[key].join('\n'):null)]);}
+					return el('div',{'class':'az-device-card'},[el('div',{'class':'az-enhance-grid'},[field('name',_('设备名称')),field('ip',_('固定 IPv4 地址')),field('blocked',_('该设备附加拦截（每行一个域名）'),true),field('allowed',_('该设备附加放行（每行一个域名）'),true)]),
+						el('div',{'class':'az-action-row'},[el('label',{'class':'az-enhance-check'},[el('input',{type:'checkbox',checked:device.enabled?true:null,disabled:!editable?true:null,change:function(e){device.enabled=e.target.checked;}}),el('span',{},_('启用设备附加规则'))]),el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){s.devices.splice(index,1);self.paint();}},_('移除设备'))])]);
+				}))]),
+			el('div',{'class':'az-action-row'},[el('button',{id:'az-enhance-save',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.runEnhance('save');}},_('保存增强设置')),el('button',{type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){self.enhanceDraft=null;return self.loadEnhance();}},_('撤销编辑并重新读取'))])]);
+	},
+	runEnhance:function(action,receipt){
+		var self=this;if(self.busy||!receipt&&operationActive(self.currentStatus||{}))return Promise.resolve();self.busy=action==='save'?'enhance':'dns-test';self.notice=null;self.paint();
+		return (receipt?Promise.resolve(receipt):action==='save'?enhanceCalls.save(JSON.stringify(self.enhanceDraft)):enhanceCalls.test()).then(function(r){return trackJob(r,'enhance',action,self);}).then(function(){if(action==='save')self.enhanceDraft=null;self.notice={kind:'success',text:action==='save'?_('增强设置已保存；是否接入以入口运行状态为准。'):_('DNS 连通性测试完成。')};}).catch(function(e){self.notice={kind:'error',text:_('DNS 增强操作未完成。'),detail:String(e.message||e)};}).then(function(){finishJob(self);return self.loadEnhance();});
+	},
 	controlCount:function(){var d=this.controlDraft;if(!d)return 0;return ['allowed','blocked'].reduce(function(n,k){return n+d.before[k].filter(function(v){return d.after[k].indexOf(v)<0;}).length+d.after[k].filter(function(v){return d.before[k].indexOf(v)<0;}).length;},0);},
 	canControl:function(){var s=this.currentStatus||{};return !this.busy&&!s.stale&&!operationActive(s)&&!this.draftCount()&&!(s.policy||{}).pending&&(flags(s).enabled||s.state==='disabled'&&!s.managed);},
 	stageControls:function(kind,raw,remove){
@@ -310,7 +349,7 @@ return view.extend({
 		if(!items.length)return el('div',{'class':'az-empty'},[el('strong',{},_('没有符合条件的自定义规则')),el('p',{},_('可在下方添加域名，也可从最近拦截中检查并放行。'))]);
 		return el('div',{'class':'az-control-list'},items.map(function(i){return el('div',{'class':'az-control-row'},[
 			el('span',{'class':'az-control-kind '+(i.kind==='blocked'?'is-blocked':'is-allowed')},i.kind==='blocked'?_('拦截'):_('放行')),
-			el('div',{'class':'az-control-domain'},[el('strong',{translate:'no'},i.domain),el('small',{},i.pending?_('待应用 · 包含子域'):_('已保存 · 包含子域'))]),
+			el('div',{'class':'az-control-domain'},[el('strong',{translate:'no'},i.domain),el('small',{},i.pending?_('待应用 · 包含子域'):(function(){var t=(((self.currentStatus||{}).policy||{}).temporary||[]).find(function(t){return t.scope===i.domain;});return t?_('临时放行 · 剩余约 ')+Math.ceil(t.remaining/60)+_(' 分钟，到期自动恢复'):_('已保存 · 包含子域');})())]),
 			el('button',{type:'button','class':'az-button az-button-quiet','aria-label':_('移除规则 ')+i.domain,disabled:!self.canControl()?true:null,click:function(){return self.stageControls(i.kind,i.domain,true);}},_('移除'))
 		]);}));
 	},
@@ -509,14 +548,15 @@ return view.extend({
 		}, el('span', { 'class': 'az-toggle-track', 'aria-hidden': 'true' }, el('span', { 'class': 'az-toggle-thumb' })));
 		var nodes = [ el('div', { 'class': 'az-header' }, [
 			el('div', { 'class': 'az-brand' }, [ el('span', { 'class': 'az-brand-mark', 'aria-hidden': 'true' }, icon('shield')),
-				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, self.controlsOpen?_('访问控制'):self.rulesOpen?_('过滤规则'):_('运行概览')) ]) ]),
+				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, self.enhanceOpen?_('DNS 增强'):self.controlsOpen?_('访问控制'):self.rulesOpen?_('过滤规则'):_('运行概览')) ]) ]),
 			el('div', { 'class': 'az-header-actions' }, [ el('span', { 'class': 'az-last-checked' }, s.stale ? (self.busy==='status' ? _('上次概览 · 后台核对') : _('上次概览 · 待重新检测')) : self.lastChecked ? _('刚刚检测于 ') + checked : _('正在连接路由器')),
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') }, [
-			el('button',{id:'az-tab-overview',type:'button','class':!self.rulesOpen&&!self.controlsOpen?'is-selected':'','aria-current':!self.rulesOpen&&!self.controlsOpen?'page':null,click:function(){self.rulesOpen=false;self.controlsOpen=false;self.paint();}},_('运行概览')),
+			el('button',{id:'az-tab-overview',type:'button','class':!self.enhanceOpen&&!self.rulesOpen&&!self.controlsOpen?'is-selected':'','aria-current':!self.enhanceOpen&&!self.rulesOpen&&!self.controlsOpen?'page':null,click:function(){self.enhanceOpen=false;self.rulesOpen=false;self.controlsOpen=false;self.paint();}},_('运行概览')),
 			el('button',{id:'az-tab-rules',type:'button','class':self.rulesOpen?'is-selected':'','aria-current':self.rulesOpen?'page':null,click:function(){return self.openRules();}},_('过滤规则')),
-			el('button',{id:'az-tab-controls',type:'button','class':self.controlsOpen?'is-selected':'','aria-current':self.controlsOpen?'page':null,click:function(){return self.openControls();}},_('访问控制')) ]));
+			el('button',{id:'az-tab-controls',type:'button','class':self.controlsOpen?'is-selected':'','aria-current':self.controlsOpen?'page':null,click:function(){return self.openControls();}},_('访问控制')),
+			el('button',{id:'az-tab-enhance',type:'button','class':self.enhanceOpen?'is-selected':'','aria-current':self.enhanceOpen?'page':null,click:function(){self.enhanceOpen=true;self.rulesOpen=false;self.controlsOpen=false;self.paint();return self.loadEnhance();}},_('DNS 增强')) ]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -528,6 +568,7 @@ return view.extend({
 			self.jobProgress && phaseText[self.jobProgress.stage] ? phaseText[self.jobProgress.stage] + (self.jobProgress.elapsed>=10 ? _(' · 总计 ') + self.jobProgress.elapsed + _(' 秒') + (typeof self.jobProgress.phase_elapsed==='number' ? _(' · 本阶段 ') + self.jobProgress.phase_elapsed + _(' 秒') : '') : '') : busy === 'routing_on' ? _('正在开启自动分流…') : busy === 'routing_off' ? _('正在关闭自动分流…') : busy === 'rules' ? _('正在下载、校验并应用规则；离开页面后任务仍会继续。') : busy === 'enable' ? _('正在开启过滤…') : busy === 'disable' ? _('正在关闭并恢复…') : busy === 'refresh' ? _('正在更新并同步规则…') : busy === 'lookup' ? _('正在查询当前规则…') : busy === 'allow' || busy === 'revoke' ? _('正在应用放行名单并同步代理…') : busy === 'pause' ? _('正在暂停保护…') : busy === 'resume' ? _('正在恢复保护…') : _('正在检测状态…') ]));
 		if (self.rulesOpen) { nodes.push(self.renderRules(s)); return el('div',{'class':'az-app'},nodes); }
 		if (self.controlsOpen) { nodes.push(self.renderControls(s));return el('div',{'class':'az-app'},nodes); }
+		if (self.enhanceOpen) {nodes.push(self.renderEnhance());return el('div',{'class':'az-app'},nodes);}
 		nodes.push(el('section', { 'class': 'az-card az-hero' + (f.enabled && !operating ? ' is-on' : '') + (loading ? ' is-loading' : ''), 'aria-busy': loading || confirming || operating ? 'true' : 'false' }, [
 			el('div', { 'class': 'az-hero-main' }, [ el('div', { 'class': 'az-hero-heading' }, [ icon('shield'),
 				el('h3', { 'class': 'az-hero-title' }, titles[s.state] || _('状态暂未确认')),
@@ -646,6 +687,7 @@ return view.extend({
 			data && data.last ? el('p',{'class':'az-source-footnote'},_('最近完成：')+date(data.last.at)+(enabled?_(' · 当前接入已同步。'):_(' · 开启保护后应用所选规则。'))) : null ]);
 	},
 	openRules: function() {
+		this.enhanceOpen=false;
 		this.controlsOpen=false;this.rulesOpen=true;this.paint();
 		return this.loadSources();
 	},
@@ -787,9 +829,11 @@ return view.extend({
 		return el('div', { 'class': 'az-lookup-result' }, [
 			el('div', {}, [ el('strong', {}, r.match === 'allowed' ? _('已在个人放行名单中') : hit ? _('命中 AdZero 过滤规则') : _('未命中当前规则')),
 				el('p', { translate: 'no' }, r.domain), hit ? el('p', {}, [ _('命中规则：'), el('strong', { translate: 'no' }, r.rule) ]) : null,
+				hit?el('p',{},r.provenance&&r.provenance.items&&r.provenance.items.length?_('命中来源：')+r.provenance.items.map(function(v){return v.name;}).join('、')+(r.provenance.incomplete?_('（部分来源暂不可确认）'):''):_('来源暂不可确认；只核对当前已应用的来源快照。')):null,
 				hit ? el('p', { 'class': 'az-scope-note' }, [_('将放行 '), el('strong', { translate: 'no' }, r.scope), _(' 及其所有子域。')]) : el('p', {}, _('这是当前规则匹配结果，不能代替终端 DNS 实测。')) ]),
 			hit ? el('button', { id: 'az-allow', type: 'button', 'class': 'az-button az-button-primary', disabled: !self.canControl() ? true : null,
-				click: function() { return self.stageControls('allowed',r.scope); } }, _('加入放行待应用')) : el('button',{id:'az-block',type:'button','class':'az-button az-button-quiet',disabled:!self.canControl()?true:null,click:function(){return self.stageControls('blocked',r.domain);}},_('加入拦截待应用')) ]);
+				click: function() { return self.stageControls('allowed',r.scope); } }, _('加入放行待应用')) : el('button',{id:'az-block',type:'button','class':'az-button az-button-quiet',disabled:!self.canControl()?true:null,click:function(){return self.stageControls('blocked',r.domain);}},_('加入拦截待应用')),
+			hit?el('div',{'class':'az-action-row'},[600,3600].map(function(seconds){return el('button',{id:'az-temporary-'+seconds,type:'button','class':'az-button az-button-quiet',disabled:!self.canControl()||self.controlCount()||self.draftCount()?true:null,click:function(){return self.runPolicy('temporary',[r.domain,r.scope,seconds]);}},seconds===600?_('临时放行 10 分钟'):_('临时放行 1 小时'));})):null ]);
 	},
 	lookupDomain: function() {
 		var self = this;
@@ -805,7 +849,7 @@ return view.extend({
 	},
 	runPolicy: function(action, args, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (['allow','revoke','pause','resume','routing_on','routing_off'].indexOf(action)<0 || self.busy || !receipt && (operationActive(self.currentStatus||{})||(self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','revoke','pause','routing_on','routing_off'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
+		if (['allow','temporary','revoke','pause','resume','routing_on','routing_off'].indexOf(action)<0 || self.busy || !receipt && (operationActive(self.currentStatus||{})||(self.currentStatus || {}).stale || !((action === 'resume' && f.paused) || (['allow','temporary','revoke','pause','routing_on','routing_off'].indexOf(action) >= 0 && f.enabled)))) return Promise.resolve();
 		self.busy = action; self.notice = null; self.jobProgress=null;self.jobUncertain=false;self.paint();
 		var failure;
 		return (receipt ? Promise.resolve(receipt) : policyCalls[action].apply(null,args)).then(function(result) {
@@ -813,11 +857,12 @@ return view.extend({
 		}).catch(function(err) { failure = String(err.message || err); }).then(function(){return taskStatus(self);}).then(function(s) {
 			self.currentStatus = s; self.lastChecked = new Date(); self.domainResult = null;
 			var allowed = (s.policy || {}).allowed || [], expected = action === 'pause' ? s.state === 'paused' : s.state === 'configured_unverified';
-			if (action === 'allow' && !receipt) expected = expected && allowed.indexOf(args[1]) >= 0;
+			if ((action === 'allow'||action==='temporary') && !receipt) expected = expected && allowed.indexOf(args[1]) >= 0;
+			if(action==='temporary'&&!receipt)expected=expected&&((s.policy||{}).temporary||[]).some(function(t){return t.scope===args[1]&&t.remaining>0;});
 			if (action === 'revoke' && !receipt) expected = expected && allowed.indexOf(args[1]) < 0;
 			if (action === 'routing_on' || action === 'routing_off') expected = expected && (s.policy || {}).routing_enabled === (action === 'routing_on') && (action === 'routing_off' || ['proxy','direct'].indexOf(((s.adapter || {}).routing || {}).mode)>=0);
 			self.notice = failure || !expected ? {kind:'error',text:_('操作未确认完成，已重新读取当前状态。'),detail:failure || _('请检查当前状态后重试。')} :
-				{kind:'success',text: action === 'routing_on' ? _('分流配置已应用，请在设备上验证实际出口。') : action === 'routing_off' ? _('自动分流已关闭，广告过滤继续运行。') : action === 'pause' ? _('保护已暂停，到期后自动尝试恢复。') : action === 'resume' ? _('保护已恢复。') : action === 'allow' ? _('放行名单已应用，并同步到当前接入。') : _('已撤销放行，并同步到当前接入。')};
+				{kind:'success',text: action==='temporary'?_('临时放行已应用，到期由路由器自动尝试恢复；无需保持页面打开。'):action === 'routing_on' ? _('分流配置已应用，请在设备上验证实际出口。') : action === 'routing_off' ? _('自动分流已关闭，广告过滤继续运行。') : action === 'pause' ? _('保护已暂停，到期后自动尝试恢复。') : action === 'resume' ? _('保护已恢复。') : action === 'allow' ? _('放行名单已应用，并同步到当前接入。') : _('已撤销放行，并同步到当前接入。')};
 		}).catch(function(err) {
 			self.currentStatus = {state:'error',error:String(err)};
 			self.notice = {kind:'error',text:_('操作结果暂时无法确认，请重新检测。'),detail:failure || String(err)};
@@ -884,12 +929,12 @@ return view.extend({
 	render: function(status) {
 		var self = this;
 		if(typeof window!=='undefined'&&!self.draftLeaveHandler){
-			self.draftLeaveHandler=function(e){if((self.draftCount()||self.controlCount())&&!self.busy){e.preventDefault();e.returnValue='';}};
+			self.draftLeaveHandler=function(e){if((self.draftCount()||self.controlCount()||self.enhanceDirty())&&!self.busy){e.preventDefault();e.returnValue='';}};
 			window.addEventListener('beforeunload',self.draftLeaveHandler);
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.16.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.17.0' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);
@@ -902,6 +947,7 @@ return view.extend({
 				if (pendingJob.kind==='action') return self.runAction(pendingJob.action,receipt);
 				if (pendingJob.kind==='controls') {self.controlsOpen=true;return self.applyControls(receipt);}
 				if (pendingJob.kind==='policy') return self.runPolicy(pendingJob.action,[],receipt);
+				if (pendingJob.kind==='enhance') {self.enhanceOpen=true;self.rulesOpen=false;self.controlsOpen=false;return self.runEnhance(pendingJob.action,receipt);}
 				if (pendingJob.kind==='source') { self.rulesOpen=true; self.loadSources(); return self.continueSourceJob(receipt); }
 				if (pendingJob.kind==='settings') { return self.applyDraft(receipt); }
 			});

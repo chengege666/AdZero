@@ -19,7 +19,7 @@ function status(){
 	return s;
 }
 if(action=='status'){print(sprintf('%J\n',status()));exit(0);}
-if(action!='run'&&!(action=='step'&&root))exit(2);
+if(action!='run'&&action!='context'&&!(action=='step'&&root))exit(2);
 if(!root&&uid!=0)exit(1);
 if(!fs.stat(dir)&&!fs.mkdir(dir,0700))exit(1);
 let stat=fs.lstat(dir);if(stat?.type!='directory'||stat.uid!=uid||(stat.mode&077)!=0)exit(1);
@@ -130,6 +130,9 @@ function sole_passwall(){
 }
 function key(c){return sprintf('%J',c);}
 function tick(){
+	let enhanced=decode(read(root+'/tmp/adzero-enhance/status.json',4096));
+	let stamp=clock(true),now=stamp?stamp[0]+stamp[1]/1000000000.0:null;
+	if(enhanced?.state=='active'&&now!=null&&now>=enhanced.updated&&now-enhanced.updated<5){previous=null;publish('skipped','enhanced_entry');return;}
 	let current=context();
 	if(!current){previous=null;publish('skipped',gate()??'unsupported_context');return;}
 	let conntrack=binary('conntrack');if(!conntrack){publish('unavailable','conntrack_missing');return;}
@@ -150,6 +153,12 @@ function tick(){
 	publish('ready',null);
 }
 try{
+	if(action=='context'){
+		let c=context();if(!c||!sole_passwall())exit(1);
+		let chain=filter(c.dispatch.nftables,e=>!!e.chain)[0]?.chain;
+		if(type(chain?.prio)!='int'||chain.prio< -100||chain.prio>100)exit(1);
+		print(sprintf('%J\n',{port:c.port,lan:c.lan,pid:c.pid,identity:c.identity,priority:chain.prio}));exit(0);
+	}
 	if(action=='step'){
 		// Test-only step supports an explicit previous fingerprint fixture.
 		previous=read(dir+'/previous',65536);tick();

@@ -5,6 +5,7 @@ import { cursor } from 'uci';
 import * as lib from './policy-lib.uc';
 import * as rulecache from './rules-cache.uc';
 import * as progress from './progress-lib.uc';
+import * as provenance from './provenance.uc';
 
 const root = getenv('ADZERO_POLICY_ROOT') ?? '';
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
@@ -12,6 +13,7 @@ const uci = cursor(root + '/etc/config');
 const mirror_path = dir + '/allow-state.json', pending_path = dir + '/allow-pending.json', pause_path = dir + '/pause.json';
 const routing_path=dir+'/routing-pending.json';
 const block_mirror_path=dir+'/block-state.json';
+const temporary_path=dir+'/temporary-allow.json';
 let query_rules=null;
 function same(a,b) { return sprintf('%J', a) == sprintf('%J', b); }
 function read(path) { let data = fs.readfile(path); return data == null ? null : json(data); }
@@ -34,6 +36,15 @@ function backend(value) {
 }
 function own() { return lib.list(uci.get('adzero','main','allowed_domain')); }
 function own_blocked() { return lib.list(uci.get('adzero','main','blocked_domain')); }
+function temporary() {
+	let rows=read(temporary_path)??[],boot=trim(fs.readfile(root+'/proc/sys/kernel/random/boot_id')??''),now=int(fs.readfile(root+'/proc/uptime')??'0');
+	if(type(rows)!='array'||length(rows)>100)die('临时放行记录无效。');
+	return map(rows,r=>{
+		if(lib.hostname(r.scope)!=r.scope||index([600,3600],r.duration)<0||type(r.deadline)!='int'||type(r.boot)!='string')die('临时放行记录无效。');
+		return {...r,remaining:boot==r.boot?max(0,r.deadline-now):0,retry_remaining:boot==r.retry_boot?max(0,(r.retry_after??0)-now):0};
+	});
+}
+function temp_save(rows){atomic(temporary_path,map(rows,r=>({scope:r.scope,boot:r.boot,deadline:r.deadline,duration:r.duration,retry_boot:r.retry_boot,retry_after:r.retry_after})));}
 function backend_block(value) {
 	let ok=value==null?(uci.get('adblock-fast','config','blocked_domain')==null||uci.delete('adblock-fast','config','blocked_domain')):uci.set('adblock-fast','config','blocked_domain',value);
 	if(!ok||!uci.commit('adblock-fast'))die('无法保存过滤后端的拦截配置。');
@@ -90,6 +101,7 @@ function rollback() {
 		if(pending.block_mirror_before==null)fs.unlink(block_mirror_path);else atomic(block_mirror_path,pending.block_mirror_before);
 	}
 	set('adzero','allowed_domain',pending.before);
+	if(pending.temporary_before!=null)temp_save(pending.temporary_before);
 	backend(pending.backend_before);
 	if (pending.mirror_before == null) fs.unlink(mirror_path); else atomic(mirror_path,pending.mirror_before);
 }
@@ -135,7 +147,8 @@ function query(value) {
 	let rules = query_rules??=rulecache.load(root + output,mode,root), adapter = read(dir + '/adapter.json');
 	let suffix=mode!='dnsmasq.addnhosts'||index(['nailink','passwall','openclash','nikki','ssrplus'],adapter?.plugin)>=0;
 	let result = lib.lookup(name,rules,own(),suffix,true);
-	return {...result,available:true,scope_includes_subdomains:suffix,source:'processed_rules'};
+	return {...result,available:true,scope_includes_subdomains:suffix,source:'processed_rules',
+		provenance:provenance.explain(root,dir,root+output,result.rule,adapter)};
 }
 function controls_plan(path){
 	if(fs.lstat(path)?.type!='file')die('访问控制请求无效。');
@@ -158,7 +171,7 @@ function pause_info() {
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 try {
-	if (action == 'status') print(sprintf('%J\n',{allowed:own(),blocked:own_blocked(),pending:!!read(pending_path),pause:pause_info(),routing_enabled:uci.get('adzero','main','routing_enabled')=='1',routing_pending:!!read(routing_path)}));
+	if (action == 'status') print(sprintf('%J\n',{allowed:own(),blocked:own_blocked(),temporary:temporary(),pending:!!read(pending_path),pause:pause_info(),routing_enabled:uci.get('adzero','main','routing_enabled')=='1',routing_pending:!!read(routing_path)}));
 	else if (action == 'lookup') print(sprintf('%J\n',query(shift(ARGV))));
 	else if (action == 'apply') { if (read(pending_path)) die('放行事务尚未恢复。'); apply(); }
 	else if (action == 'validate') validate();
@@ -179,10 +192,23 @@ try {
 		set('adzero','allowed_domain',length(p.after.allowed)?p.after.allowed:null);set('adzero','blocked_domain',length(p.after.blocked)?p.after.blocked:null);
 		if(uci.get('adzero','main','enabled')=='1')apply();
 	}
-	else if (action == 'begin-allow' || action == 'begin-revoke') {
+	else if(action=='temporary-backoff'){
+		let boot=trim(fs.readfile(root+'/proc/sys/kernel/random/boot_id')??''),now=int(fs.readfile(root+'/proc/uptime')??'0');
+		temp_save(map(temporary(),r=>r.remaining? r:{...r,retry_boot:boot,retry_after:now+60}));
+	}
+	else if(action=='temporary-due')exit(length(filter(temporary(),r=>r.remaining==0&&!r.retry_remaining))?0:1);
+	else if(action=='begin-expire') {
+		validate();let rows=temporary(),expired=map(filter(rows,r=>r.remaining==0),r=>r.scope),before=uci.get('adzero','main','allowed_domain'),after=filter(own(),d=>index(expired,d)<0);
+		if(!length(expired))exit(0);
+		atomic(pending_path,{schema:1,before,after,backend_before:uci.get('adblock-fast','config','allowed_domain'),mirror_before:read(mirror_path),temporary_before:rows});
+		set('adzero','allowed_domain',length(after)?after:null);temp_save(filter(rows,r=>r.remaining>0));apply();
+	}
+	else if (action == 'begin-allow' || action == 'begin-temporary' || action == 'begin-revoke') {
 		if (read(pending_path)) die('上一项放行操作尚未恢复，请先关闭并恢复。');
 		let domain = lib.hostname(shift(ARGV)), scope = lib.hostname(shift(ARGV)), before = uci.get('adzero','main','allowed_domain'), after = own();
-		if (action == 'begin-allow') {
+		let rows=temporary(),duration=action=='begin-temporary'?int(shift(ARGV)):null;
+		if(action=='begin-temporary'&&(index([600,3600],duration)<0||index(after,scope)>=0))die('请选择 10 分钟或 1 小时；已有放行不转换为临时规则。');
+		if (action == 'begin-allow'||action=='begin-temporary') {
 			let result = query(domain);
 			if (!result.available || index(['exact','parent'],result.match) < 0 || result.scope != scope) die('命中规则已变化，请重新查询并确认放行范围。');
 			let mode = uci.get('adblock-fast','config','dns'), path = mode == 'unbound.adb_list' ? '/var/lib/unbound/adb_list.adblock-fast' : '/var/run/adblock-fast/' + mode;
@@ -193,7 +219,10 @@ try {
 			if (domain != scope || index(after,scope) < 0) die('该域名不在个人放行名单中。');
 			after = filter(after,d => d != scope);
 		}
-		atomic(pending_path,{schema:1,before,after,backend_before:uci.get('adblock-fast','config','allowed_domain'),mirror_before:read(mirror_path)});
+		atomic(pending_path,{schema:1,before,after,backend_before:uci.get('adblock-fast','config','allowed_domain'),mirror_before:read(mirror_path),temporary_before:rows});
+		rows=filter(rows,r=>r.scope!=scope);
+		if(duration){let boot=trim(fs.readfile(root+'/proc/sys/kernel/random/boot_id')??''),now=int(fs.readfile(root+'/proc/uptime')??'0');if(!boot||now<=0)die('无法读取启动时钟。');push(rows,{scope,boot,duration,deadline:now+duration});}
+		temp_save(rows);
 		set('adzero','allowed_domain',length(after) ? after : null); apply();
 	}
 	else if (action == 'rollback') rollback();

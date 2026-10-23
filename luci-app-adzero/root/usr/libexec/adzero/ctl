@@ -438,6 +438,8 @@ enable_protection() {
 	[ ! -e "$STATE_DIR/pause.json" ] || { resume_protection; return; }
 	verify_supported
 	policy_clean || error '上次放行操作尚未恢复，请先关闭并恢复。'
+	# A reboot or time spent disabled must not turn a timed exception permanent.
+	expire_allow || error '临时放行到期恢复未完成，请检查恢复记录。'
 	"$ADAPTER" check >/dev/null || error '代理 DNS 适配前置检查失败，请查看诊断。'
 	previous=$(get_uci adblock-fast.config.enabled)
 	[ "$previous" = 1 ] || previous=0
@@ -732,7 +734,7 @@ change_controls() {
 change_allow() {
 	require_active
 	# Journal intent before UCI writes; both backend and adapter must succeed.
-	if "$POLICY" "begin-$1" "$2" "$3" && backend_restart dl && "$ADAPTER" apply; then
+	if "$POLICY" "begin-$1" "$2" "$3" "$4" && backend_rebuild_if_changed && "$ADAPTER" apply; then
 		"$POLICY" finish || error '放行已同步，完成记录清理失败。'
 		printf 'personal allow policy synchronized\n'
 		return 0
@@ -746,6 +748,20 @@ change_allow() {
 		error '放行操作未完成，恢复记录已保留；请关闭并恢复。'
 	fi
 	error '放行未应用，请重新查询并确认范围。'
+}
+expire_allow() {
+	[ -s "$STATE_DIR/temporary-allow.json" ] || return 0
+	"$POLICY" temporary-due || return 0
+	# Expiry must also work after protection was disabled, without re-enabling it.
+	"$POLICY" begin-expire || { "$POLICY" temporary-backoff; return 1; }
+	if [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adblock-fast.config.enabled)" = 1 ]; then
+		backend_rebuild_if_changed && "$ADAPTER" apply || {
+			"$POLICY" rollback && backend_restart dl && "$ADAPTER" apply && "$POLICY" finish
+			"$POLICY" temporary-backoff
+			return 1
+		}
+	fi
+	"$POLICY" finish
 }
 pause_protection() {
 	case "$1" in 300|900|1800) ;; *) error '暂停时长仅支持 5、15、30 分钟。' ;; esac
@@ -780,6 +796,16 @@ resume_protection() {
 
 case "$1" in
 	status) print_status ;;
+	enhance-status) "$(dirname "$0")/dns-enhance" status ;;
+	enhance-save) acquire_lock enhance-save;
+		"$(dirname "$0")/dns-enhance" save "$2" || error '增强设置未保存。'
+		if [ "$(get_uci adzero.main.enabled)" = 1 ] && [ -x /etc/init.d/adzero ]; then
+			/etc/init.d/adzero reload || error '设置已保存，但增强实例未确认启动。'
+		fi ;;
+	dns-test) "$(dirname "$0")/dns-enhance" test ;;
+	dns-switch) acquire_lock dns-switch; require_active;
+		plan=$("$(dirname "$0")/dns-enhance" switch-plan "$2" "$3" "$4") || error '备用 DNS 未通过切换前检查。'
+		apply_settings "$plan" ;;
 	sources-list) "$SOURCES" list ;;
 	source-add) acquire_lock source-add; shift; change_sources add "$@" ;;
 	source-toggle) acquire_lock source-toggle; shift; change_sources toggle "$@" ;;
@@ -795,12 +821,14 @@ case "$1" in
 	disable) acquire_lock disable; disable_protection ;;
 	refresh) acquire_lock refresh; refresh_blocklists ;;
 	lookup) acquire_lock lookup; require_active; "$POLICY" lookup "$2" ;;
-	allow|revoke) acquire_lock "$1"; change_allow "$1" "$2" "$3" ;;
+	allow|revoke|temporary) acquire_lock "$1"; change_allow "$1" "$2" "$3" "$4" ;;
+	temporary-expire) acquire_lock temporary-expire; expire_allow ;;
 	pause) acquire_lock pause; pause_protection "$2" ;;
 	resume) acquire_lock resume; resume_protection ;;
 	routing-on|routing-off) acquire_lock "$1"; if [ "$1" = routing-on ]; then change_routing 1; else change_routing 0; fi ;;
 	reconcile)
 		if acquire_lock reconcile && [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ]; then
+			expire_allow || exit 1
 			if [ -e "$STATE_DIR/pause.json" ]; then
 				if "$POLICY" pause-due; then resume_protection; fi
 			else

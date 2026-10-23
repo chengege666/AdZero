@@ -1,0 +1,20 @@
+{
+  "version": "0.17.0",
+  "source_sha256": "7273a32f7960c1492828933f4b8edeb1d8c00b3530abbaf5deb8d9af62a75943",
+  "python_tests": 469,
+  "ui_assertions": 270,
+  "rpc_checks": 66,
+  "sdk_targets": 3,
+  "payload_files_per_package": 48,
+  "installer_delivery_cases": 6,
+  "dns_enhance": "native ucode/socket, dnsmasq and nft with a separate veth client namespace; UDP/TCP CNAME, per-device rules, hot edits, stale edit rejection and cleanup passed",
+  "optional_workers": "disabled features create no extra instances; 4 init cases passed",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "limits": [
+    "enhanced entry supports default IPv4 system/PassWall paths only",
+    "device exceptions affect supplementary rules; global/native blocks still apply",
+    "foreign probes require an explicitly configured local unauthenticated SOCKS5 endpoint",
+    "connectivity probes are not DNS authenticity or browser business verification"
+  ]
+}

@@ -40,9 +40,14 @@ const api = { exec: async (program, args) => {
   if (args[0] === 'status') { if (statusPending) await new Promise(r => { resolveStatus = r; }); if (failStatus) throw new Error('status unreachable'); let next=statusSteps.shift();if(typeof next==='function')next=next();return { code: 0, stdout: JSON.stringify(next||state) }; }
 } };
 let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked = false, sessionID = 'b'.repeat(32), jobSteps=[], ruleData, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
+let enhanceFixture;
 const storage = new Map();
 const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
+	if(spec.method==='enhance_status')return {ok:true,data:structuredClone(enhanceFixture)};
+	if(spec.method==='enhance_save'){enhanceFixture.config=JSON.parse(args[0]).after;return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
+	if(spec.method==='dns_test')return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+	if(spec.method==='temporary'){state.policy.allowed.push(args[1]);state.policy.temporary=[{scope:args[1],duration:args[2],remaining:args[2]}];return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');return {ok:true,data:structuredClone(observationFixture)};}
   if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
   if(spec.method==='stats_reset'){observationFixture={...observationFixture,queries:0,blocked:0,reset_token:'f'.repeat(32)};return {ok:true,token:'f'.repeat(32)};}
@@ -89,6 +94,8 @@ function reset(overrides = {}) {
       dns: { active_proxy_count: 1 }, plugins: ['nailink', 'passwall', 'passwall2', 'openclash', 'nikki'].map((id, i) => ({ id, installed: true, enabled: i === 0, runtime: i === 0 ? 'running' : 'unknown' })) }, ...overrides };
   failAction = failStatus = pending = staleResult = statusPending = rpcFailure = rpcStale = rpcListFailure = storageBlocked = false; sessionID='b'.repeat(32); commands.length = 0;
   app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
+	app.enhanceOpen=false;app.enhanceData=null;app.enhanceDraft=null;app.enhanceError=null;
+	enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[]},runtime:{state:'waiting',reason:'disabled'}};
   observationFixture={available:false,verification:{state:'idle'}};observationFailure=false;
   app.observation=null;app.observationReading=false;app.observationBusy=false;app.verificationCommands='';app.verificationNotice=null;app.networkOpen=false;
   app.recentBusy=false;app.recentIntent=null;app.recentNotice=null;app.recentPaintKey=null;
@@ -107,7 +114,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.16.0'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.17.0'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -557,5 +564,24 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(app.renderRuleAdvice(adviceItems,adviceCatalog)===null,'disabled lists cause no overlap warning');
   adviceItems.push({name:'Other',url:adviceCatalog[2].url,enabled:true});
   check(app.renderRuleAdvice(adviceItems,adviceCatalog)===null,'different rule purposes do not get a false overlap warning');
+  reset({state:'configured_unverified',managed:true,configured:true,backend_enabled:true});
+  lookup={available:true,domain:'ads.example',match:'exact',rule:'ads.example',scope:'ads.example',provenance:{state:'known',items:[{name:'Verified source <script>'}],incomplete:false}};
+  app.controlsOpen=true;app.domainInput='ads.example';await app.lookupDomain();
+  check(text(root).includes('Verified source <script>'),'applied source label is rendered as text');
+  check(!!find('az-temporary-600')&&!!find('az-temporary-3600'),'temporary exception durations are offered beside explicit scope');
+  await find('az-temporary-600').events.click();
+  check(app.notice.kind==='success'&&state.policy.temporary[0].remaining===600,'temporary success requires actual timer receipt');
+  check(text(app.renderControlList()).includes('临时放行'),'temporary exceptions are distinguished from permanent choices');
+  await find('az-tab-enhance').events.click();
+  check(app.enhanceOpen&&!app.controlsOpen&&!app.rulesOpen,'enhancements have a separate menu');
+  check(text(root).includes('仅接入确认可用')&&text(root).includes('不能撤销全局规则'),'unsupported paths and device exception scope are explicit');
+  await find('az-device-add').events.click();
+  check(!!find('az-device-0-ip')&&!!find('az-device-0-blocked'),'device policy provides identity and real rule editor');
+  app.enhanceDraft.after.devices[0]={ip:'192.168.2.10',name:'TV',enabled:true,allowed:[],blocked:['ads.example']};
+  await app.runEnhance('save');
+  check(enhanceFixture.config.devices[0].ip==='192.168.2.10'&&app.notice.kind==='success','typed save roundtrip keeps device identity');
+  enhanceFixture.runtime={state:'active',plugin:'passwall',counts:{cname:2,device:3}};
+  await app.loadEnhance(true);
+  check(text(find('az-enhance-runtime')).includes('CNAME 拦截 2')&&text(find('az-enhance-runtime')).includes('设备附加拦截 3'),'enhanced counts are distinct and refresh without replacing the editor');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

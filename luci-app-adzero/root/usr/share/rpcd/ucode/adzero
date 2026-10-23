@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as sources from '../../../libexec/adzero/source-lib.uc';
 import * as progress from '../../../libexec/adzero/progress-lib.uc';
 import * as observation from '../../../libexec/adzero/observe-state.uc';
+import * as enhance from '../../../libexec/adzero/dns-enhance-lib.uc';
 const bus = connect();
 function invoke(request, action, args, output) {
 	// Nested asynchronous exec keeps rpcd free to serve NaiLink's local session.
@@ -55,7 +56,9 @@ function source_change(r,action) {
 function settings(r,control){
 	let path;
 	try{
-		let p=control?controls(r.args.payload):sources.plan(r.args.payload),dir='/tmp/adzero-requests';
+		let input=r.args.payload;if(type(input)!='string'||length(input)>100000)die('请求内容无效。');
+		let value=control=='enhance'?json(input):null;
+		let p=control=='enhance'?{before:enhance.config(value.before),after:enhance.config(value.after)}:control?controls(input):sources.plan(input),dir='/tmp/adzero-requests';
 		if(!fs.lstat(dir)&&!fs.mkdir(dir,0700))die('无法准备批量任务。');
 		if(fs.lstat(dir)?.type!='directory'||(fs.stat(dir).mode&0777)!=0700||fs.stat(dir).uid!=0)die('批量任务目录无效。');
 		let id=trim(fs.readfile('/proc/sys/kernel/random/uuid')??'');
@@ -64,12 +67,15 @@ function settings(r,control){
 		let file=fs.open(path,'wx',0600),raw=sprintf('%J',p);
 		if(!file)die('无法保存批量请求。');
 		let size=file.write(raw),closed=file.close();if(size!=length(raw)||!closed)die('批量请求保存不完整。');
-		let result=job(r,control?'controls-apply':'settings-apply',[path]);
+		let result=job(r,control=='enhance'?'enhance-save':control?'controls-apply':'settings-apply',[path]);
 		if(!result.ok)fs.unlink(path);
 		return result;
 	}catch(e){if(path)fs.unlink(path);return {ok:false,message:e.message};}
 }
 return {adzero:{
+	enhance_status:{call:r=>invoke(r,'enhance-status',[],true)},
+	enhance_save:{args:{payload:''},call:r=>settings(r,'enhance')},
+	dns_test:{call:r=>job(r,'dns-test',[])},
 	stats_reset:{call:r=>bus.defer('file','exec',{command:'/usr/libexec/adzero/observe',params:['reset-stats']},function(code,result){let value={ok:false,message:'清零请求未完成，请稍后重试。'};if(code==0&&result?.code==0)try{value=json(result.stdout);}catch(e){}r.reply(value);})},
 	controls_apply:{args:{payload:''},call:r=>settings(r,true)},
 	observation:{call:r=>{let value=observation.snapshot();delete value.pid;delete value.sample;delete value.generation;delete value.boot;return {ok:true,data:value};}},
@@ -125,6 +131,10 @@ return {adzero:{
 	}},
 	lookup:{args:{domain:''},call:r => domain(r,'lookup',false)},
 	allow:{args:{domain:'',scope:''},call:r => domain(r,'allow',true)},
+	temporary:{args:{domain:'',scope:'',seconds:600},call:r=>{
+		try{if(index([600,3600],r.args.seconds)<0)die('请选择 10 分钟或 1 小时。');return job(r,'temporary',[hostname(r.args.domain),hostname(r.args.scope),''+r.args.seconds]);}
+		catch(e){return {ok:false,message:e.message};}
+	}},
 	revoke:{args:{domain:'',scope:''},call:r => domain(r,'revoke',true)},
 	pause:{args:{seconds:0},call:function(r) {
 		if (index([300,900,1800],r.args.seconds) < 0) return {ok:false,message:'请选择 5、15、30 分钟。'};

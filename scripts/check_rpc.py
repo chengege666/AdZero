@@ -100,7 +100,7 @@ def main():
             target=base/relative; target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(ROOT/'luci-app-adzero/root'/relative,target)
             if relative.endswith('/job'): target.chmod(0o755)
-        for name in ('observe','observe.uc','observe-lib.uc','rules-cache.uc','adapter-lib.uc'):
+        for name in ('observe','observe.uc','observe-lib.uc','rules-cache.uc','adapter-lib.uc','dns-enhance-lib.uc'):
             target=base/'usr/libexec/adzero'/name
             shutil.copyfile(ROOT/'luci-app-adzero/root/usr/libexec/adzero'/name,target);target.chmod(0o755)
         uuid=base/'proc/sys/kernel/random/uuid';uuid.parent.mkdir(parents=True,exist_ok=True)
@@ -119,7 +119,7 @@ pause) echo source_download > "$ADZERO_JOB_CONTEXT/reason"; exit 1;;
    sleep 2
    echo 'private-backend-token-not-for-browser';;
  source-add) sleep 2;;
- settings-apply|controls-apply)
+ settings-apply|controls-apply|enhance-save)
    [ -f "$2" ] || exit 1
    cat "$2" > /tmp/received-batch.json
    sleep 2;;
@@ -168,6 +168,14 @@ esac
             assert finished(call('resume',{}))['ok']
             assert call('source_list',{})['data']['items']==[]
             assert not call('settings_apply',{'payload':'invalid'})['ok']
+            assert not call('temporary',{'domain':'ads.example','scope':'ads.example','seconds':60})['ok']
+            enhanced={'before':{},'after':{'devices':[{'ip':'192.168.2.10','name':'TV','blocked':['ads.example']}]}}
+            receipt=call('enhance_save',{'payload':json.dumps(enhanced)})
+            assert finished(receipt)['ok'],receipt
+            received=json.loads((base/'tmp/received-batch.json').read_text())
+            assert received['after']['devices'][0]['blocked']==['ads.example']
+            assert not list((base/'tmp/adzero-requests').iterdir())
+            assert not call('enhance_save',{'payload':json.dumps({'before':{},'after':{'devices':[{'ip':'8.8.8.8'}]}})})['ok']
             payload={'revision':'a'*64,'routing_before':False,'routing_enabled':True,'items':[{'id':None,'name':'Private source','url':'https://example.com/list?token=private-batch-marker','format':'domains','enabled':True}]}
             receipt=call('settings_apply',{'payload':json.dumps(payload)})
             assert finished(receipt)['ok'],receipt
@@ -248,7 +256,7 @@ esac
             assert not (base/'tmp/service-was-called').exists(),'observation invoked network lifecycle'
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':61,'controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
+                    'checks':66,'controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

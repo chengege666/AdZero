@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "source_sha256": "7273a32f7960c1492828933f4b8edeb1d8c00b3530abbaf5deb8d9af62a75943",
+  "native_context": true,
+  "udp_cname": true,
+  "tcp_cname": true,
+  "device_block": true,
+  "other_device_unaffected": true,
+  "normal_domain": true,
+  "hot_policy_change": true,
+  "stale_policy_rejected": true,
+  "native_dns_not_restarted": true,
+  "owned_table_removed": true,
+  "native_path_restored": true,
+  "device_acceptance": "not_run"
+}

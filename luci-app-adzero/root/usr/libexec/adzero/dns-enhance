@@ -1,0 +1,17 @@
+#!/bin/sh
+umask 077
+base=$(dirname "$0")
+if [ "$1" = run ]; then
+	ucode -S "$base/dns-enhance.uc" -- context-loop & context_pid=$!
+	ucode -S "$base/dns-enhance.uc" -- serve & relay_pid=$!
+	cleanup() {
+		kill "$relay_pid" "$context_pid" 2>/dev/null || :
+		wait "$relay_pid" "$context_pid" 2>/dev/null || :
+		ucode -S "$base/dns-enhance.uc" -- cleanup
+	}
+	trap cleanup EXIT
+	trap 'exit 0' TERM INT
+	wait "$relay_pid"
+	exit $?
+fi
+exec ucode -S "$base/dns-enhance.uc" -- "$@"

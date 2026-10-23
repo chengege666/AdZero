@@ -396,3 +396,13 @@
   .az-root .az-stat-actions { align-items:flex-start; }
   .az-root .az-stat-actions .az-live-caption { line-height:1.7; max-width:65%; }
 }
+.az-enhance-page { display: grid; gap: 20px; }
+.az-root .az-enhance-page .az-card { padding: 24px; }
+.az-enhance-page h3 { margin: 0 0 16px; }
+.az-enhance-page p { line-height: 1.65; }
+.az-enhance-grid, .az-dns-test-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.az-enhance-field { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+.az-enhance-field input, .az-enhance-field textarea { width: 100%; box-sizing: border-box; }
+.az-enhance-check { display: flex; align-items: center; gap: 10px; margin: 16px 0; cursor: pointer; }
+.az-device-card { border-top: 1px solid var(--az-line, #e0e9e5); padding-top: 18px; margin-top: 18px; }
+@media (max-width: 720px) { .az-enhance-grid, .az-dns-test-grid { grid-template-columns: minmax(0, 1fr); } .az-root .az-enhance-page .az-card { padding: 18px; } }

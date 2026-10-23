@@ -46,6 +46,16 @@ export function parsed(snapshot,kind){
 		return value;
 	}catch(e){return null;}
 };
+// Exact canonical domain token in a digest-proven parser receipt. The only
+// other string field is format (domains/hosts/adblock), never a hostname.
+// Avoid allocating hundreds of thousands of JSON values for an explanation.
+export function contains(snapshot,domain){
+	try{
+		let p=snapshot?.proof,path=snapshot.dir+'/'+snapshot.id+'.parsed';
+		if(!match(domain??'',/^[a-z0-9-]+(\.[a-z0-9-]+)+$/)||p.parser!=3||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		return index(fs.readfile(path),sprintf('%J',domain))>=0;
+	}catch(e){return null;}
+};
 // Read only a small receipt instead of decoding the full domain array again.
 export function summary(snapshot,kind){
 	try{

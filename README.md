@@ -20,6 +20,9 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 - **最近拦截**：按需开启 5 分钟的内存记录，查看域名、次数并检查误杀。
 - **效果检测**：复制页面提供的查询命令，在电脑执行后自动核对拦截与正常解析。
 - **访问控制**：集中查询域名、查看最近拦截，搜索和批量管理自定义放行／拦截名单；改完统一应用。
+- **命中来源**：查询拦截来自哪个已应用列表；来源快照缺失时明确提示，不猜测。
+- **临时放行**：支持 10 分钟或 1 小时，到期由路由器尝试恢复，重启后失效。
+- **DNS 增强**：上游连通性测试、同组备用切换，以及可选的 CNAME 过滤和按设备附加规则。具体路径和限制见 [增强功能说明](docs/DNS_ENHANCEMENTS.md)。
 - **临时暂停**：网站或 App 异常时，暂停几分钟做对比，到期尝试自动恢复。
 - **可编辑 DNS**：国内、国外 DNS 都有默认地址，可以自行添加、删除和调整顺序。
 - **可选自动分流**：有受支持代理时，国内直连、国外走当前代理；无代理时使用国内 DNS 和本地直连。默认关闭。
@@ -28,26 +31,26 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.16.0 测试版**，新增 DNS 应答耗时、慢应答与未观察到应答统计，优化大规则库查询，并提示同系列规则重复选择。保留批量应用、实时统计和独立「访问控制」。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.17.0 测试版**，新增命中来源、临时放行和独立「DNS 增强」菜单。增强 DNS 入口与自动备用默认关闭，保留现有代理工作路径。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.17.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.17.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.16.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.17.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
 1. **选规则**：在「过滤规则」添加需要的列表，也可以粘贴自己的订阅地址。
-2. **按需改设置**：修改 DNS 或分流开关，选择会进入「待应用」。每组第一条 DNS 为当前地址，其余仅作备选保存，不会自动测速或切换。
+2. **按需改设置**：修改 DNS 或分流开关，选择会进入「待应用」。每组第一条 DNS 为当前地址；在「DNS 增强」可测试保存的地址，按需启用同组备用切换。
 3. **统一应用**：改完后点击「应用并重新加载」。平时用「重新加载」应用当前配置，用「更新订阅」获取新规则；「手动校验」只检查本地已下载规则。
 
 「访问控制」集中管理最近拦截和自定义名单；用法及范围见 [统计与访问控制](docs/ACCESS_CONTROL.md)。

@@ -15,7 +15,8 @@
           "lookup",
           "source_list",
           "job_status",
-          "observation"
+          "observation",
+          "enhance_status"
         ]
       },
       "uci": [
@@ -33,6 +34,7 @@
           "routing_on",
           "routing_off",
           "allow",
+          "temporary",
           "revoke",
           "pause",
           "resume",
@@ -45,7 +47,9 @@
           "verification_start",
           "recent_set",
           "stats_reset",
-          "controls_apply"
+          "controls_apply",
+          "enhance_save",
+          "dns_test"
         ]
       },
       "uci": [

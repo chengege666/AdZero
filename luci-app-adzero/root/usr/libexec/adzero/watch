@@ -3,7 +3,7 @@
 # ctl serializes mutations. Unchanged content does not restart a proxy.
 ticks=12
 while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
-	if [ -e /etc/adzero/pause.json ] || [ "$ticks" -ge 12 ]; then
+	if [ -e /etc/adzero/pause.json ] || { [ -s /etc/adzero/temporary-allow.json ] && /usr/libexec/adzero/policy temporary-due; } || [ "$ticks" -ge 12 ]; then
 		/usr/libexec/adzero/ctl reconcile >/dev/null || {
 			[ "$ticks" -lt 12 ] || logger -t adzero 'DNS synchronization/resume failed; check AdZero recovery state'
 		}

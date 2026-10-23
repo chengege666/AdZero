@@ -27,9 +27,14 @@ const api = { exec: async (_program, args) => {
 } };
 let sourceData={revision:'a'.repeat(64),items:[],catalog:[]},jobTick=0;
 let observerFixture={available:true,active:true,queries:8420,blocked:1154,answered:8403,verification:{state:'idle'},latency:{scope:'lan_observed',normal:{samples:600,average_ms:3.42,maximum_ms:615,slow:2},blocked:{samples:100,average_ms:0.21,maximum_ms:4,slow:0},unanswered:{udp:1,tcp:0}}};
+let enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[{ip:'192.168.2.10',name:'电视',enabled:true,allowed:[],blocked:['ads.example']}]},runtime:{state:'waiting',reason:'disabled',counts:{cname:0,device:0}},tests:{groups:{domestic:[{address:'223.5.5.5',ok:true,ms:5}],foreign:[{address:'1.1.1.1',skipped:true}]}}};
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
+  if(spec.method==='enhance_status')return {ok:true,data:structuredClone(enhanceFixture)};
+  if(spec.method==='enhance_save'){enhanceFixture.config=JSON.parse(args[0]).after;return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
+  if(spec.method==='dns_test')return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  if(spec.method==='temporary'){state.policy.allowed.push(args[1]);state.policy.temporary=[{scope:args[1],duration:args[2],remaining:args[2]}];return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='observation')return {ok:true,data:document.getElementById('scenario').value==='observer-pending'?{available:true,active:false,queries:0,blocked:0,reason:'adapter_pending',verification:{state:'idle'}}:{...structuredClone(observerFixture),active:state.state==='configured_unverified'}};
   if(spec.method==='verification_start'){
     observerFixture.verification={state:'waiting',remaining:120,marker:false,blocked:false,normal:false};

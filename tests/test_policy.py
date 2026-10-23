@@ -44,6 +44,32 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(self.query('normal.example')['match'],'none')
         self.assertEqual(before,{str(p):p.read_bytes() for p in (self.root/'etc/config').glob('*')})
 
+    def test_temporary_expiry_and_rollback_preserve_permanent_entries(self):
+        self.run_policy('begin-temporary','ads.example','ads.example','600')
+        self.run_policy('finish')
+        self.assertEqual(self.status()['temporary'][0]['remaining'],600)
+        self.run_policy('temporary-due',ok=False)
+        self.write('proc/uptime','1601.0 0')
+        self.run_policy('temporary-due')
+        self.run_policy('begin-expire')
+        self.assertEqual(self.status()['allowed'],[])
+        self.run_policy('rollback')
+        self.assertEqual(self.status()['allowed'],['ads.example'])
+        self.assertEqual(self.status()['temporary'][0]['remaining'],0)
+        self.run_policy('finish')
+        self.run_policy('begin-expire'); self.run_policy('finish')
+        self.assertEqual(self.status()['temporary'],[])
+        self.assertIn('original.example',(self.root/'etc/config/adblock-fast').read_text())
+
+    def test_temporary_reboot_expiry_and_invalid_duration(self):
+        self.run_policy('begin-temporary','ads.example','ads.example','60',ok=False)
+        self.run_policy('begin-temporary','ads.example','ads.example','3600')
+        self.run_policy('finish')
+        self.write('proc/sys/kernel/random/boot_id','fixture-boot-2')
+        self.run_policy('temporary-due')
+        self.run_policy('begin-expire'); self.run_policy('finish')
+        self.assertEqual(self.status()['allowed'],[])
+
     def test_domain_input_is_strictly_data(self):
         for name in ('ads.example;id','$(id).example','https://user:pass@ads.example/','*.example','127.0.0.1','localhost','file:///etc/passwd','bad..example','-bad.example','a'*64+'.example','测试.example','https://ads.example:bad/'):
             with self.subTest(name=name): self.run_policy('lookup',name,ok=False)
