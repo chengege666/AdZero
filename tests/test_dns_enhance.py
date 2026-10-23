@@ -37,6 +37,20 @@ class EnhanceTest(unittest.TestCase):
         self.call('decision',[q,bytes(r),{},[],None,True],[0,1],ok=False)
         self.call('message',[query()[:12]+b'\xc0\x0c'+b'\0\1\0\1'],[0],ok=False)
         self.call('message',[query()+b'garbage'],[0],ok=False)
+    def test_alias_domain_boundaries_and_explicit_exemptions(self):
+        q=query();rules={'ads.example':True}
+        for target in ('notads.example','ads.example.safe.example'):
+            r=answer(q,[('shop.example',target)])
+            self.assertFalse(self.call('decision',[q,r,rules,[],None,True],[0,1])['blocked'])
+        r=answer(q,[('shop.example','sub.ads.example')])
+        self.assertFalse(self.call('decision',[q,r,rules,['ads.example'],None,True],[0,1])['blocked'])
+        d=dict(enabled=True,allowed=['shop.example'],blocked=[])
+        self.assertFalse(self.call('decision',[q,r,rules,[],d,True],[0,1])['blocked'])
+    def test_truncated_and_failed_answers_are_not_cname_blocks(self):
+        q=query();raw=bytearray(answer(q,[('shop.example','ads.example')]))
+        for flags in (0x8380,0x8182,0x8183):
+            raw[2:4]=struct.pack('!H',flags)
+            self.assertFalse(self.call('decision',[q,bytes(raw),{'ads.example':True},[],None,True],[0,1])['blocked'])
     def test_device_exception_and_synthetic_ad_clear(self):
         q=query();d={'enabled':True,'allowed':[],'blocked':['example']}
         self.assertTrue(self.call('decision',[q,None,{},[],d,True],[0])['blocked'])

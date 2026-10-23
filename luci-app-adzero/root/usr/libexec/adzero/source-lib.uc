@@ -116,6 +116,10 @@ export function parse(raw,kind) { return inspect(raw,kind).names; };
 // three strict formats; other native formats remain explicitly backend-only.
 export function detect(raw) {
 	if(type(raw)!='string'||length(raw)>25000000)die('规则文件为空或超过 25 MB。');
+	// Legacy native formats may remain backend-only, but a successful HTTP
+	// response containing a CDN/login/error page is not a usable rule list.
+	let prefix=lc(trim(replace(substr(raw,0,1024),/^\uFEFF/,'')));
+	if(match(prefix,/^<!doctype[[:space:]]+html|^<(html|head|body|meta)([[:space:]>])/))die('订阅返回了 HTML 网页，未替换已有规则快照。');
 	for(let kind in ['domains','hosts','adblock']){
 		try{return inspect(raw,kind,true);}
 		catch(e){if(e.message=='单个列表超过 50 万个域名。')die(e);}

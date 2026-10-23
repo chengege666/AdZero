@@ -61,7 +61,8 @@ function list() {
 		push(items,{id:s['.name'],name:s.name ?? builtin?.name ?? '已有规则',url:s.url,enabled:s.enabled != '0',
 			format:s.adzero_format ?? builtin?.format ?? s.adzero_detected_format ?? 'unknown',catalog_id:builtin?.id ?? null,https:valid,
 			validation:s.adzero_validation ?? (s.adzero_domains?'validated':'unchecked'),
-			domains: s.adzero_domains ? int(s.adzero_domains) : null,skipped:int(s.adzero_skipped??'0'),updated:s.adzero_updated ? int(s.adzero_updated) : null});
+			domains: s.adzero_domains ? int(s.adzero_domains) : null,skipped:int(s.adzero_skipped??'0'),updated:s.adzero_updated ? int(s.adzero_updated) : null,
+			checked:s.adzero_checked?int(s.adzero_checked):s.adzero_updated?int(s.adzero_updated):null});
 	}
 	return {catalog:lib.catalog,items,revision:checksum(config),dns:dns_profile(),pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
@@ -85,9 +86,8 @@ function download(address,kind,fresh,manual) {
 			snapshots.save(address,raw,root,kind,checked);return checked?{...checked,bytes:length(raw)}:null;
 		}catch(e){}
 	}
-	// A failed optional cache write must never replay the old body after an
-	// explicit refresh. Invalidate its proof before requesting fresh bytes.
-	if(fresh)snapshots.invalidate(address,root);
+	// Fetch and validate first. A failed refresh must not destroy the last
+	// verified snapshot needed by a later independent reload or recovery.
 	progress.stage('downloading');
 	let path=root+'/tmp/adzero-source-check';
 	if (root && !fs.stat(root+'/tmp')) fs.mkdir(root+'/tmp',0700);
@@ -105,6 +105,9 @@ function download(address,kind,fresh,manual) {
 			if(identical)result=snapshots.summary(snapshot,kind)??snapshots.parsed(snapshot,kind);
 			if(!result){progress.stage('validating');result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);}
 		}catch(e){progress.failure('source_format');die(e);}
+		// From here the fresh response was accepted. If its optional cache
+		// write fails, the backend must not replay older bytes as this update.
+		if(fresh)snapshots.invalidate(address,root);
 		let reused=!!result&&identical&&snapshots.renew(snapshot,kind,result);
 		if(!reused){if(result&&!result.names)result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);snapshots.save(address,raw,root,kind,result);}
 		fs.unlink(path);return result?{...result,bytes:length(raw),reused}:null;
@@ -116,6 +119,7 @@ function validate_sources(only,fresh,manual) {
 		if(only && (type(only)=='array' ? index(only,s['.name'])<0 : s['.name']!=only))continue;
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
 		let checked=download(s.url,kind,fresh,manual);
+		if(!uci.set('adblock-fast',s['.name'],'adzero_checked',''+time()))die('无法保存规则检查时间。');
 		// The backend uses this size to schedule downloads. Without it, a new
 		// source triggers another HEAD request despite already being downloaded.
 		let snapshot=checked?null:snapshots.load(s.url,root),bytes=checked?.bytes??(snapshot?fs.stat(snapshot.path)?.size:null);
@@ -214,7 +218,7 @@ function begin_batch(path){
 		if(!old||item.format!=old_kind)values.adzero_format=item.format;
 		for(let key in keys(values))if(!uci.set('adblock-fast',id,key,values[key]))die('无法保存待应用规则。');
 		if(item.enabled&&(!old||old.enabled=='0'||old.url!=item.url||old_kind!=item.format))push(checks,id);
-		if(old&&(old.url!=item.url||old_kind!=item.format))for(let key in ['adzero_domains','adzero_skipped','adzero_updated','adzero_validation','adzero_detected_format'])uci.delete('adblock-fast',id,key);
+		if(old&&(old.url!=item.url||old_kind!=item.format))for(let key in ['adzero_domains','adzero_skipped','adzero_updated','adzero_checked','adzero_validation','adzero_detected_format'])uci.delete('adblock-fast',id,key);
 	}
 	if(uci.get('adblock-fast','config','enabled')=='1'&&!length(filter(selected(),s=>s.enabled!='0'))&&!length(uci.get('adblock-fast','config','blocked_domain')??[]))die('至少保留一项启用的规则；暂停全部过滤请使用保护开关。');
 	if(length(checks))validate_sources(checks);

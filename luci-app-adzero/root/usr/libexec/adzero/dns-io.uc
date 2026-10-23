@@ -3,7 +3,14 @@ import * as fs from 'fs';
 import * as net from 'socket';
 import * as wire from './dns-enhance-lib.uc';
 export function now(){let t=clock(true);if(!t)die('monotonic_clock_unavailable');return t[0]+t[1]/1000000000.0;};
-function ready(s,flags,until){let ms=int((until-now())*1000);return ms>0&&length(net.poll(ms,[s,flags])??[])>0;}
+let idle=null;
+export function wait(milliseconds){
+	// OpenWrt 24.10's socket module has no pair(). Poll a quiet loopback
+	// socket with no requested events, without blocking any DNS socket.
+	if(!idle){idle=net.create(net.AF_INET,net.SOCK_DGRAM|net.SOCK_NONBLOCK);if(!idle||!idle.bind({address:'127.0.0.1',port:0}))die('dns_timer');}
+	net.poll(milliseconds,[idle,0]);
+};
+function ready(s,flags,until){let ms=int((until-now())*1000);return ms>0&&length(filter(net.poll(ms,[s,flags])??[],e=>e[1]!=0))>0;}
 function send(s,data,until){while(length(data)){if(!ready(s,net.POLLOUT,until))die('dns_timeout');let n=s.send(data,net.MSG_DONTWAIT|net.MSG_NOSIGNAL);if(n==null||n<=0)die('dns_send');data=substr(data,n);}}
 function read(s,size,until){let data='';while(length(data)<size){if(!ready(s,net.POLLIN,until))die('dns_timeout');let part=s.recv(size-length(data),net.MSG_DONTWAIT);if(!length(part))die('dns_read');data+=part;}return data;}
 // Numeric endpoints only: no dependency on the DNS path being tested.

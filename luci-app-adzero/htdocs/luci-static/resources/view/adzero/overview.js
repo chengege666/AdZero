@@ -282,9 +282,9 @@ return view.extend({
 	openControls:function(){this.enhanceOpen=false;this.rulesOpen=false;this.controlsOpen=true;this.notice=null;this.paint();return Promise.resolve();},
 	loadEnhance:function(quiet){var self=this;return enhanceCalls.read().then(function(r){if(!r||!r.ok||!r.data)throw Error(_('DNS 增强状态读取失败。'));self.enhanceData=r.data;self.enhanceError=null;if(!self.enhanceDraft)self.enhanceDraft={before:JSON.parse(JSON.stringify(r.data.config)),after:JSON.parse(JSON.stringify(r.data.config))};if(quiet){var node=document.getElementById('az-enhance-runtime');if(node)dom.content(node,[self.renderEnhanceRuntime()]);}else self.paint();}).catch(function(e){self.enhanceError=String(e.message||e);if(!quiet)self.paint();});},
 	enhanceDirty:function(){return this.enhanceDraft&&JSON.stringify(this.enhanceDraft.before)!==JSON.stringify(this.enhanceDraft.after);},
-	renderEnhanceRuntime:function(){var d=this.enhanceData||{},r=d.runtime||{},counts=r.counts||{};return el('div',{},[
-		pill(r.state==='active'?_('增强入口运行中'):_('增强入口未接入'),r.state==='active'?'success':'neutral'),
-		el('p',{},r.state==='active'?_('当前入口：')+(r.plugin==='passwall'?'PassWall':_('路由器 DNS')):_('仅接入确认可用的默认 IPv4 LAN DNS 路径。NaiLink、Mihomo、未知 ACL 或切换期间保留原生路径。')),
+	renderEnhanceRuntime:function(){var d=this.enhanceData||{},r=d.runtime||{},counts=r.counts||{},recovery=r.state==='recovery_required';return el('div',{},[
+		pill(r.state==='active'?_('增强入口运行中'):recovery?_('增强入口退出待确认'):_('增强入口未接入'),r.state==='active'?'success':recovery?'warning':'neutral'),
+		el('p',{},r.state==='active'?_('当前入口：')+(r.plugin==='passwall'?'PassWall':_('路由器 DNS')):recovery?_('旧 DNS 会话清理尚未确认，恢复记录已保留。请查看系统日志，不要手动删除记录。'):_('仅接入确认可用的默认 IPv4 LAN DNS 路径。NaiLink、Mihomo、未知 ACL 或切换期间保留原生路径。')),
 		el('p',{},_('本次增强入口 · CNAME 拦截 ')+number(counts.cname)+_(' 次 · 设备附加拦截 ')+number(counts.device)+_(' 次'))]);},
 	renderEnhance:function(){
 		var self=this,d=self.enhanceDraft,editable=!self.busy&&!operationActive(self.currentStatus||{})&&!(self.currentStatus||{}).stale;
@@ -669,7 +669,7 @@ return view.extend({
 				el('div',{'class':'az-source-table-heading','aria-hidden':'true'},[el('span',{},_('规则名称 / 地址')),el('span',{},_('校验数量 / 最近检查')),el('span',{},_('操作'))]),
 				items.map(function(item) { return el('div',{'class':'az-source-row'},[
 					el('div',{'class':'az-source-identity'},[el('strong',{},item.name),el('span',{'class':'az-source-url',translate:'no'},item.url),el('small',{},item._new?_('新增 · 待应用'):self.sourceChanged(item)?_('已修改 · 待应用'):item.format==='unknown'?_('后端已有格式'):item.format)]),
-					el('div',{'class':'az-source-metadata'},[el('strong',{},typeof item.domains==='number'?number(item.domains):item.validation==='backend_only'?_('格式未识别'):_('待校验')),el('span',{},item.updated?date(item.updated):item.enabled?_('更新时自动校验'):_('启用后校验')),
+					el('div',{'class':'az-source-metadata'},[el('strong',{},typeof item.domains==='number'?number(item.domains):item.validation==='backend_only'?_('格式未识别'):_('待校验')),el('span',{},(item.checked||item.updated)?date(item.checked||item.updated):item.enabled?_('更新时自动校验'):_('启用后校验')),
 						item.skipped>0?el('small',{},_('已排除不支持的记录：')+number(item.skipped)):item.validation==='backend_only'?el('small',{},_('仅由后端处理；更新订阅可重新校验。')):null]),
 					el('div',{'class':'az-source-actions'},[
 						el('button',{type:'button','class':'az-toggle'+(item.enabled?' is-on':''),role:'switch','aria-checked':item.enabled?'true':'false','aria-label':_('启用规则 ')+item.name,disabled:!editable || !item.https && !item.enabled?true:null,
@@ -744,7 +744,7 @@ return view.extend({
 				else if(method==='source_remove')d.items=d.items.filter(function(i){return i!==item;});
 				else if(method==='source_edit'){
 					var form=self.editForm;if(!form.name.trim()||!/^https:\/\//i.test(form.url))throw new Error(_('请填写名称和 HTTPS 订阅地址。'));
-					item.name=form.name.trim();item.url=form.url.trim();item.format=form.format;item.https=true;item.domains=null;item.updated=null;
+					item.name=form.name.trim();item.url=form.url.trim();item.format=form.format;item.https=true;item.domains=null;item.updated=null;item.checked=null;
 				}
 			}
 			self.removeSource=null;self.editSource=null;self.notice=null;if(!self.draftCount())self.draft=null;self.paint();
@@ -946,7 +946,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.17.1' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.17.2' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);

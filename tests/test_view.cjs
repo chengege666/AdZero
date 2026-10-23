@@ -114,7 +114,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.17.1'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.17.2'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -586,5 +586,10 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   enhanceFixture.runtime={state:'active',plugin:'passwall',counts:{cname:2,device:3}};
   await app.loadEnhance(true);
   check(text(find('az-enhance-runtime')).includes('CNAME 拦截 2')&&text(find('az-enhance-runtime')).includes('设备附加拦截 3'),'enhanced counts are distinct and refresh without replacing the editor');
+  const enhanceEditor=app.enhanceDraft;
+  enhanceFixture.runtime={state:'recovery_required',reason:'cleanup_pending'};
+  await app.loadEnhance(true);
+  check(text(find('az-enhance-runtime')).includes('退出待确认')&&text(find('az-enhance-runtime')).includes('不要手动删除记录'),'incomplete DNS retirement is visible instead of a harmless inactive badge');
+  check(app.enhanceDraft===enhanceEditor,'background cleanup warning preserves unsaved device policy');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

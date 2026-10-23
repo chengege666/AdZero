@@ -51,10 +51,36 @@ class SourceCacheTest(unittest.TestCase):
 
     def test_invalid_fresh_download_cannot_fall_back_to_old_snapshot_as_success(self):
         before=(self.root/'etc/config/adblock-fast').read_bytes()
+        proof=next((self.root/'tmp/adzero-source-cache').glob('*.proof')).read_bytes()
+        old=self.s.body.read_bytes()
         self.s.body.write_text('<html>download error</html>')
         self.s.run_source('begin','refresh',ok=False)
         self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
-        self.helper(ok=False)
+        # The refresh itself failed. A later independent reload may still use
+        # the last verified bytes; invalid network content never replaces them.
+        self.helper()
+        self.assertEqual(self.output.read_bytes(),old)
+        self.assertEqual(next((self.root/'tmp/adzero-source-cache').glob('*.proof')).read_bytes(),proof)
+
+    def test_failed_network_refresh_retains_verified_cache_and_live_adapter(self):
+        self.f.ctl('enable')
+        adapter=self.root/'etc/adzero/adapter.json';prior=adapter.read_bytes()
+        old=self.s.body.read_bytes()
+        Path(self.env['ADZERO_SOURCE_FETCH_FIXTURE']).write_text('#!/bin/sh\nexit 22\n')
+        self.f.ctl('source-refresh',ok=False)
+        self.assertEqual(adapter.read_bytes(),prior)
+        self.assertFalse((self.root/'etc/adzero/sources-pending.json').exists())
+        self.helper();self.assertEqual(self.output.read_bytes(),old)
+
+    def test_legacy_auto_source_rejects_http_success_html_without_replacing_cache(self):
+        item=self.s.data()['items'][0]
+        subprocess.run([self.env['ADZERO_UCI'],'delete',f"adblock-fast.{item['id']}.adzero_format"],check=True)
+        subprocess.run([self.env['ADZERO_UCI'],'commit','adblock-fast'],check=True)
+        before=(self.root/'etc/config/adblock-fast').read_bytes();old=self.s.body.read_bytes()
+        self.s.body.write_text('<!DOCTYPE html><html><body>temporary CDN error</body></html>')
+        self.s.run_source('begin','refresh',ok=False)
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+        self.helper();self.assertEqual(self.output.read_bytes(),old)
 
     def test_native_update_invalidates_old_source_snapshots_before_reload(self):
         self.f.ctl('enable')
@@ -114,6 +140,23 @@ class SourceCacheTest(unittest.TestCase):
         self.s.run_source('begin','refresh');self.s.run_source('finish')
         self.assertEqual({p.name:(p.stat().st_ino,p.stat().st_mtime_ns,p.read_bytes()) for p in (body,parsed)},prior)
         self.helper();self.assertEqual(len((self.root/'fetches').read_text().splitlines()),2)
+
+    def test_accepted_changed_refresh_never_replays_old_bytes_when_cache_full(self):
+        directory=self.root/'tmp/adzero-source-cache'
+        with (directory/'budget-fixture').open('wb') as f:f.truncate(96000000)
+        self.s.body.write_text('accepted-new.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('finish')
+        self.helper(ok=False)
+        self.assertEqual(self.s.data()['items'][0]['domains'],1)
+
+    def test_identical_refresh_records_check_time_without_changing_content_time(self):
+        item=self.s.data()['items'][0]
+        subprocess.run([self.env['ADZERO_UCI'],'set',f"adblock-fast.{item['id']}.adzero_checked=100"],check=True)
+        subprocess.run([self.env['ADZERO_UCI'],'commit','adblock-fast'],check=True)
+        self.s.run_source('begin','refresh');self.s.run_source('finish')
+        current=self.s.data()['items'][0]
+        self.assertEqual(current['updated'],item['updated'])
+        self.assertGreater(current['checked'],100)
 
     def test_unchanged_refresh_cannot_renew_a_corrupt_parsed_array(self):
         parsed=next((self.root/'tmp/adzero-source-cache').glob('*.parsed'))

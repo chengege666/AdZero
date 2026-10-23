@@ -5,15 +5,39 @@ inventory/LAN ubus responses and upstream DNS are fixtures; DNS sockets,
 connection tracking, native handoff inspection, NAT and cleanup are real.
 """
 from pathlib import Path
-import hashlib,json,os,shutil,signal,socket,socketserver,struct,subprocess,sys,threading,time,tempfile
+import hashlib,json,os,re,shutil,signal,socket,socketserver,struct,subprocess,sys,threading,time,tempfile,urllib.request
 from build_sdk import source_hash
 BASE=Path(os.environ['ADZERO_PASSWALL_FIXTURE']).resolve();ROOT=BASE/'root'
 SOURCE=Path(__file__).resolve().parents[1]/'luci-app-adzero/root/usr/libexec/adzero'
 SDK=Path('/home/slobys/.cache/adzero/sdks/openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64')
+DEPS={
+ 'conntrack-1.4.8-r1.apk':'6ab33e1fec1016f5b9b06c7ff70c7a78bea629cc1935c004947a1a5e56fa24a2',
+ 'libnetfilter-cthelper0-1.0.0-r2.apk':'f1120ae56d1a753dc4918170b1e1c47d236982a7da08cb634c8ff6a1e01a5561',
+ 'libnetfilter-cttimeout1-1.0.0-r2.apk':'efd7fbfd3a58e1d765fbff8a0e54950aced1ad937fb373bc2a41bc6749d82680',
+}
 def main():
- if '--inside' not in sys.argv:return subprocess.call(['unshare','--net','--mount','--propagation','private',sys.executable,__file__,'--inside'])
+ if '--inside' not in sys.argv:
+  for name,digest in DEPS.items():
+   p=BASE/'packages'/name
+   if not p.exists():
+    cached=BASE.parent/'dns-handoff-0.15.4/packages'/name
+    raw=cached.read_bytes() if cached.exists() else urllib.request.urlopen('https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/base/'+name,timeout=30).read()
+    assert hashlib.sha256(raw).hexdigest()==digest,name;p.write_bytes(raw)
+   assert hashlib.sha256(p.read_bytes()).hexdigest()==digest,name
+  return subprocess.call(['unshare','--net','--mount','--propagation','private',sys.executable,__file__,'--inside'])
  assert os.geteuid()==0 and ROOT!=Path('/') and ROOT.is_dir()
  source_before=source_hash(SOURCE.parents[3])
+ for name,digest in DEPS.items():
+  package=BASE/'packages'/name;assert hashlib.sha256(package.read_bytes()).hexdigest()==digest
+  with tempfile.TemporaryDirectory(prefix='enhance-conntrack-',dir=BASE) as tmp:
+   subprocess.run([str(SDK/'staging_dir/host/bin/apk'),'extract','--allow-untrusted','--no-chown','--destination',tmp,str(package)],check=True,capture_output=True)
+   for source in (Path(tmp)/'usr').rglob('*'):
+    if not source.is_file() and not source.is_symlink():continue
+    dest=ROOT/source.relative_to(tmp);dest.parent.mkdir(parents=True,exist_ok=True)
+    staged=dest.with_name(dest.name+'.validation-new')
+    if source.is_symlink():staged.symlink_to(os.readlink(source))
+    else:shutil.copy2(source,staged)
+    os.replace(staged,dest)
  assert hashlib.sha256((ROOT/'usr/sbin/dnsmasq').read_bytes()).hexdigest()=='80f3c8ba28681a32929e03e75c477b42493471e943290bc3b5a0e4ffe9c3df7a'
  pkg=next((SDK/'bin/packages/x86_64/base').glob('ucode-mod-socket-*.apk'))
  with tempfile.TemporaryDirectory(prefix='enhance-socket-',dir=BASE) as tmp:
@@ -64,6 +88,7 @@ def main():
  for s in (udp,tcp):threading.Thread(target=s.serve_forever,daemon=True).start()
  procs=[]
  original_ubus=ROOT/'usr/sbin/ubus';saved_ubus=(original_ubus.read_bytes(),original_ubus.stat().st_mode&0o777) if original_ubus.exists() else None
+ original_nft=ROOT/'usr/sbin/nft';saved_nft=(original_nft.read_bytes(),original_nft.stat().st_mode&0o777)
  try:
   shutil.copytree(SOURCE,ROOT/'usr/libexec/adzero',dirs_exist_ok=True)
   for p in (ROOT/'usr/libexec/adzero').iterdir():
@@ -100,18 +125,36 @@ def main():
   probe=write('tmp/client.py','')
   # Host Python executes in the separate client network namespace, outside chroot.
   code="""import socket,struct,json,sys
-n,source,tcp=sys.argv[1:];q=struct.pack('!6H',12,256,1,0,0,0)+b''.join(bytes([len(x)])+x.encode() for x in n.split('.'))+b'\\0'+struct.pack('!HH',1,1)
+n,source,tcp,source_port=sys.argv[1:];q=struct.pack('!6H',12,256,1,0,0,0)+b''.join(bytes([len(x)])+x.encode() for x in n.split('.'))+b'\\0'+struct.pack('!HH',1,1)
 with socket.socket(socket.AF_INET,socket.SOCK_STREAM if tcp=='1' else socket.SOCK_DGRAM) as s:
- s.settimeout(2);s.bind((source,0));s.connect(('192.168.50.1',53));s.sendall(struct.pack('!H',len(q))+q if tcp=='1' else q)
+ s.settimeout(2);s.bind((source,int(source_port)));s.connect(('192.168.50.1',53));s.sendall(struct.pack('!H',len(q))+q if tcp=='1' else q)
  r=s.recv(4096)
  if tcp=='1':r=r[2:]
  print(json.dumps(dict(answers=struct.unpack('!H',r[6:8])[0],rcode=r[3]&15)))
 """
-  def query(n,source='192.168.50.2',tcp=False):return json.loads(clientrun(sys.executable,'-c',code,n,source,str(int(tcp))).stdout)
+  def query(n,source='192.168.50.2',tcp=False,source_port=0):return json.loads(clientrun(sys.executable,'-c',code,n,source,str(int(tcp)),str(source_port)).stdout)
   for tcp_mode in (False,True):assert query('shop.example',tcp=tcp_mode)['answers']==0
   assert query('device.example')['answers']==0
   assert query('device.example','192.168.50.3')['answers']==1
   assert query('normal.example')['answers']==1
+  # A read-only domain lookup must not withdraw filtering/NAT while it holds
+  # ctl's operation lock. Mutation and unknown locks remain conservative.
+  lock=ROOT/'tmp/adzero.lock';lock.mkdir(mode=0o700)
+  write('tmp/adzero.lock/owner',str(os.getpid())+' lookup\n',0o600)
+  try:
+   time.sleep(2.4)
+   assert query('shop.example')['answers']==0,'a read-only lookup withdrew CNAME filtering'
+   write('tmp/adzero.lock/owner',str(os.getpid())+' settings-apply\n',0o600)
+   for _ in range(25):
+    if json.loads(run('/usr/libexec/adzero/dns-enhance','status').stdout)['runtime']['state']=='waiting':break
+    time.sleep(.2)
+   assert query('shop.example')['answers']==2,'mutating operations must still withdraw the extra entry'
+  finally:
+   (lock/'owner').unlink();lock.rmdir()
+  for _ in range(25):
+   if json.loads(run('/usr/libexec/adzero/dns-enhance','status').stdout)['runtime']['state']=='active':break
+   time.sleep(.2)
+  assert query('shop.example')['answers']==0
   # Save through the production UCI validator, without touching native DNS PID.
   after={**config,'cname':False}
   write('tmp/enhance-request.json',json.dumps(dict(before=config,after=after)),0o600)
@@ -119,17 +162,55 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM if tcp=='1' else socket.SOC
   assert query('shop.example')['answers']==2
   assert p.poll() is None,'device/CNAME edits must not restart native DNS'
   assert run('/usr/libexec/adzero/dns-enhance','save','/tmp/enhance-request.json',ok=False).returncode!=0,'stale editor must be rejected'
-  service.terminate();service.wait(timeout=6);log.close()
+  # Reuse the exact client tuple across an external firewall reload/crash.
+  # A fresh source port would hide a stale NAT binding.
+  assert query('device.example',source_port=53012)['answers']==0
+  direct=code.replace("('192.168.50.1',53)","('192.168.50.1',11400)")
+  assert json.loads(clientrun(sys.executable,'-c',direct,'normal.example','192.168.50.2','0','53013').stdout)['answers']==1
+  native_filter=['/usr/sbin/conntrack','-L','-f','ipv4','-p','udp','--orig-src','192.168.50.2','--sport','53013','--dport','11400','-o','extended,id']
+  native_id=re.search(r'\bid=(\d+)\b',run(*native_filter).stdout)[1]
+  os.killpg(service.pid,signal.SIGSTOP)
+  intent=(ROOT/'tmp/adzero-enhance/owned.json').read_bytes()
+  shutil.copy2(original_nft,ROOT/'tmp/nft-fixture-native')
+  wrapper=write('tmp/nft-fixture-wrapper','#!/bin/sh\nif [ "$1 $2 $3 $4" = "delete table inet adzero_dns_enhance" ]; then echo "injected delete failure" >&2; exit 1; fi\nexec /tmp/nft-fixture-native "$@"\n',0o755)
+  os.replace(wrapper,original_nft)
+  try:
+   assert run('/usr/libexec/adzero/dns-enhance','cleanup',ok=False).returncode!=0
+   assert (ROOT/'tmp/adzero-enhance/owned.json').read_bytes()==intent,'failed cleanup must preserve its ownership proof'
+   assert json.loads(run('/usr/libexec/adzero/dns-enhance','status').stdout)['runtime']['state']=='recovery_required'
+  finally:
+   replacement=ROOT/'tmp/nft-fixture-restored';replacement.write_bytes(saved_nft[0]);replacement.chmod(saved_nft[1]);os.replace(replacement,original_nft)
+  run('/usr/sbin/nft','delete','table','inet','adzero_dns_enhance')
+  os.killpg(service.pid,signal.SIGKILL);service.wait(timeout=6);log.close()
+  run('/usr/libexec/adzero/dns-enhance','cleanup')
+  assert query('device.example',source_port=53012)['answers']==1,'old DNS tuple still targets the stopped entry'
+  assert re.search(r'\bid=(\d+)\b',run(*native_filter).stdout)[1]==native_id,'native DNS connection must survive the cleanup'
+  run('/usr/libexec/adzero/dns-enhance','cleanup') # idempotent
+
   assert run('/usr/sbin/nft','list','table','inet','adzero_dns_enhance',ok=False).returncode!=0
   assert query('shop.example')['answers']==2,'native path must work after cleanup'
+  # Normal shutdown must retire its bindings too, not only crash recovery.
+  log2=(BASE/'enhance-native.log').open('a')
+  service2=subprocess.Popen(['chroot',str(ROOT),'/usr/libexec/adzero/dns-enhance','run'],stdout=log2,stderr=log2,start_new_session=True);procs.append(service2)
+  for _ in range(30):
+   if json.loads(run('/usr/libexec/adzero/dns-enhance','status').stdout)['runtime']['state']=='active':break
+   time.sleep(.2)
+  assert query('device.example',source_port=53014)['answers']==0
+  service2.terminate();service2.wait(timeout=6);log2.close()
+  assert query('device.example',source_port=53014)['answers']==1
   assert source_hash(SOURCE.parents[3])==source_before
-  report=dict(schema=1,source_sha256=source_before,native_context=True,udp_cname=True,tcp_cname=True,device_block=True,other_device_unaffected=True,normal_domain=True,hot_policy_change=True,stale_policy_rejected=True,native_dns_not_restarted=True,owned_table_removed=True,native_path_restored=True,device_acceptance='not_run')
+  report=dict(schema=1,source_sha256=source_before,native_context=True,udp_cname=True,tcp_cname=True,device_block=True,other_device_unaffected=True,normal_domain=True,read_only_lock_preserves_entry=True,mutating_lock_withdraws_entry=True,hot_policy_change=True,stale_policy_rejected=True,native_dns_not_restarted=True,owned_table_removed=True,native_path_restored=True,missing_table_stale_tuple_repaired=True,failed_cleanup_retains_intent=True,native_connection_preserved=True,graceful_exit_retires_tuple=True,cleanup_idempotent=True,device_acceptance='not_run')
   (BASE/'enhance-proof.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
  finally:
   for p in reversed(procs):
-   if p.poll() is None:p.terminate()
+   if p.poll() is None:
+    if os.getpgid(p.pid)==p.pid:os.killpg(p.pid,signal.SIGCONT)
+    p.terminate()
    try:p.wait(timeout=5)
-   except subprocess.TimeoutExpired:p.kill();p.wait()
+   except subprocess.TimeoutExpired:
+    if os.getpgid(p.pid)==p.pid:os.killpg(p.pid,signal.SIGKILL)
+    else:p.kill()
+    p.wait()
   udp.shutdown();tcp.shutdown();udp.server_close();tcp.server_close()
   client.terminate();client.wait(timeout=3)
   if saved_ubus:original_ubus.write_bytes(saved_ubus[0]);original_ubus.chmod(saved_ubus[1])

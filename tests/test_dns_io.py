@@ -5,6 +5,10 @@ from test_dns_enhance import query,answer
 ROOT=Path(__file__).resolve().parents[1];UCODE=shlex.split(os.environ.get('ADZERO_UCODE',''))
 @unittest.skipUnless(UCODE,'requires actual ucode/socket')
 class IOTest(unittest.TestCase):
+ def test_worker_wait_uses_old_socket_api_and_monotonic_deadline(self):
+  r=subprocess.run(UCODE+[str(ROOT/'scripts/dns_io_fixture.uc')],input='{"wait":30}',text=True,capture_output=True,timeout=2)
+  self.assertEqual(r.returncode,0,r.stderr)
+  elapsed=json.loads(r.stdout)['elapsed'];self.assertGreaterEqual(elapsed,.02);self.assertLess(elapsed,1)
  def test_numeric_socks_connect_and_short_tcp_reads(self):
   listener=socket.socket();listener.bind(('127.0.0.1',0));listener.listen();listener.settimeout(4);self.addCleanup(listener.close)
   received=[]

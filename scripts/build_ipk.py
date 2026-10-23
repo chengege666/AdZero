@@ -77,6 +77,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/libexec/adzero/dns-enhance-lib.uc",
         "usr/libexec/adzero/dns-io.uc",
         "usr/libexec/adzero/dns-relay.uc",
+        "usr/libexec/adzero/dns-cleanup.uc",
         "usr/libexec/adzero/provenance.uc",
         "usr/libexec/adzero/dns-handoff.uc",
         "usr/libexec/adzero/dns-handoff-lib.uc",

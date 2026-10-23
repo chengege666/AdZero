@@ -1,0 +1,117 @@
+{
+  "old_call_false_success": true,
+  "native_rc_common": true,
+  "udp_tcp_A_AAAA": 24,
+  "ssrplus_native_dns": true,
+  "cases": [
+    {
+      "case": "plain",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "same-direct",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/",
+        "server=/.doubleclick.net/127.0.0.1#49825"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "same-proxy",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/",
+        "server=/.doubleclick.net/127.0.0.1#49825"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "child-direct",
+      "directives": [
+        "address=/.ads.example/",
+        "address=/.doubleclick.net/",
+        "server=/.sub.doubleclick.net/127.0.0.1#49825"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 0,
+          "answers": 1
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "same-cn",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    }
+  ],
+  "device_acceptance": "not_run"
+}

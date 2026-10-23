@@ -1,0 +1,26 @@
+{
+  "version": "0.17.2",
+  "source_sha256": "95776b71184830f4260f961e91744fbbd6318b37816f130854d9b85ac04b90f3",
+  "python_tests": 488,
+  "ui_assertions": 274,
+  "rpc_checks": 66,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 49,
+  "installer_delivery_cases": 6,
+  "dns_enhance": "native OpenWrt 25.12.5 ucode/socket/dnsmasq/nft/conntrack with separate veth client namespace; lookup lock, mutation lock, missing-table cleanup, failure retention, graceful/crash exit and unrelated connection preservation passed",
+  "dns_tcp_reuse": "12 serial queries: 12 native connections before, 1 after; per-client streams, rule-generation retirement, 32-query/30-second bounds, stale and closed upstream fixtures passed; not a public-network speed ratio",
+  "native_timer": "actual OpenWrt 24.10 socket module; no pair() required; quiet poll flags excluded",
+  "fixture_correction": "observer validation waits for the second captured response rather than asserting during an intermediate query-only snapshot; collector production code unchanged",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "new_runtime_dependencies": false,
+  "limits": [
+    "enhanced entry supports default IPv4 system/PassWall paths only; other native adapters unchanged",
+    "device exceptions affect supplementary rules; global/native blocks still apply",
+    "controlled refresh failure preserves verified snapshots for later independent reloads and still reports failure",
+    "conntrack cleanup only targets this entry DNS NAT bindings; client and application caches cannot be cleared remotely",
+    "native proxy checks use pinned generation stages with explicit API/upstream fixtures; not full transparent proxy or browser business verification",
+    "no measured public DNS latency or whole-router filtering-rate improvement claim"
+  ]
+}

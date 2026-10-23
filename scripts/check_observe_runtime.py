@@ -122,7 +122,9 @@ def main():
             value=wait_for(lambda s:s.get('available') and s.get('active'))
             time.sleep(.3)
             query('doubleclick.net');query('www.baidu.com',43)
-            value=wait_for(lambda s:s.get('blocked')==1 and s.get('queries')==2)
+            # The timer may publish the second query before its response is
+            # consumed. Wait for that response instead of sampling mid-flight.
+            value=wait_for(lambda s:s.get('blocked')==1 and s.get('queries')==2 and s.get('answered')==2)
             assert value['answered']==2,value
             query('doubleclick.net',51,tcp=True);query('www.baidu.com',52,tcp=True)
             value=wait_for(lambda s:s.get('blocked')==2 and s.get('queries')==4)
@@ -193,7 +195,7 @@ def main():
             assert value['latency']['normal']['samples']==0 and value['latency']['blocked']['samples']==0,value
             assert json.loads((base/'tmp/adzero-observe/status.json').read_text())['pid']==collector_before,'reset restarted collector'
             query('doubleclick.net',300);query('www.baidu.com',301);query('doubleclick.net',302,tcp=True)
-            value=wait_for(lambda s:s.get('queries')==3 and s.get('blocked')==2)
+            value=wait_for(lambda s:s.get('queries')==3 and s.get('blocked')==2 and s.get('answered')==3)
             assert value['latency']['normal']['samples']==1 and value['latency']['blocked']['samples']==2,value
             assert value['latency']['normal']['average_ms']>=0 and value['latency']['blocked']['average_ms']>=0,value
             time.sleep(1.2);assert status()['queries']==3,'same reset request was applied twice'
