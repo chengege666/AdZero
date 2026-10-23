@@ -23,6 +23,12 @@ if theme.exists():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/mobile':
+            page = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AdZero · 360px 手机预览</title>
+<style>body{margin:0;background:#e5ebe8;font:14px system-ui;color:#243d33}header{padding:14px 20px;text-align:center}iframe{display:block;width:360px;height:1080px;border:1px solid #b8c9bf;margin:0 auto;background:#fff;border-radius:12px}</style>
+<header>360px 手机视口 · 实际生产界面 · 模拟数据</header><iframe title="AdZero 手机视口" src="/"></iframe></html>'''
+            self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.end_headers()
+            self.wfile.write(page.encode('utf-8')); return
         file = routes.get(self.path.split('?')[0])
         if self.path == '/native-dom.js' and not file.exists():
             self.send_response(200)

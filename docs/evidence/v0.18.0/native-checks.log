@@ -1,0 +1,531 @@
+Running check_rpc.py
+{
+  "runtime": "pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot",
+  "source_sha256": "dfae7abb056b8749871ca34baa3ad0c0a729b7cfaeeb31844e2c7fd7341b21c1",
+  "checks": 66,
+  "controls_private_batch_and_write_acl": "passed",
+  "stats_reset_unavailable_rejected": "passed",
+  "observation_snapshot_seconds": [
+    0.0026,
+    0.0022,
+    0.0022
+  ],
+  "observation_no_network_lifecycle": "passed",
+  "unavailable_verification_rejected": "passed",
+  "recent_typed_write_and_stop": "passed",
+  "rpcd_exec_timeout_seconds": 1,
+  "old_direct_exec_orphan_lock": "reproduced",
+  "private_batch_payload_and_detached_apply": "passed",
+  "finished_elapsed_is_fixed": "passed",
+  "nested_rpcd_call": "passed",
+  "typed_input_and_no_log_leak": "passed",
+  "detached_source_job": "passed",
+  "enable_disable_refresh_survive_timeout": "passed",
+  "routing_on_off_survive_timeout": "passed",
+  "public_stage_and_reason": "passed",
+  "interrupted_worker_record": "passed",
+  "large_status": {
+    "rules": 206375,
+    "rule_bytes": 5365750,
+    "journal_bytes": 7154533,
+    "rpcd_seconds": [
+      0.1639,
+      0.1587,
+      0.159
+    ],
+    "unchanged_files": true,
+    "missing_output_and_stopped_resolver": "rejected",
+    "scope": "actual ctl/UCI/ucode/file.exec; procd service data fixture; no network services"
+  },
+  "router": "not_touched"
+}
+Running check_observe_runtime.py
+{
+  "source_sha256": "dfae7abb056b8749871ca34baa3ad0c0a729b7cfaeeb31844e2c7fd7341b21c1",
+  "reset_without_restart": true,
+  "reset_request_applied_once": true,
+  "same_boot_restart_preserves_reset": true,
+  "queries_after_reset": 3,
+  "blocked_after_reset": 2,
+  "native": "OpenWrt 24.10.8 tcpdump-mini/ucode/uloop/dnsmasq",
+  "queries": 11,
+  "blocked": 6,
+  "udp_tcp": "passed",
+  "terminal_challenge": "passed",
+  "large_journal_bytes": 2097445,
+  "stage_offset": 2097299,
+  "recovery_then_resume_counts": "passed",
+  "test_queries_excluded": true,
+  "config_invalidates_receipt": true,
+  "same_boot_restart_preserves_counts": true,
+  "unconfirmed_configuration_not_counted": true,
+  "live_passwall_metadata": "passed",
+  "recent_opt_in_stop_expiry": "passed",
+  "positive_rule_hit_not_counted_as_block": "passed",
+  "scope": "isolated namespace; netifd interface discovery fixture; not a router/LAN certificate"
+}
+Running check_passwall_runtime.py
+{
+  "old_call_false_success": true,
+  "native_rc_common": true,
+  "udp_tcp_A_AAAA": 24,
+  "ssrplus_native_dns": true,
+  "cases": [
+    {
+      "case": "plain",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "same-direct",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/",
+        "server=/.doubleclick.net/127.0.0.1#46343"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "same-proxy",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/",
+        "server=/.doubleclick.net/127.0.0.1#46343"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "child-direct",
+      "directives": [
+        "address=/.ads.example/",
+        "address=/.doubleclick.net/",
+        "server=/.sub.doubleclick.net/127.0.0.1#46343"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 0,
+          "answers": 1
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    },
+    {
+      "case": "same-cn",
+      "directives": [
+        "address=/.doubleclick.net/",
+        "address=/.ads.example/"
+      ],
+      "queries": {
+        "doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "sub.doubleclick.net": {
+          "rcode": 3,
+          "answers": 0
+        },
+        "www.baidu.com": {
+          "rcode": 0,
+          "answers": 1
+        }
+      }
+    }
+  ],
+  "device_acceptance": "not_run"
+}
+Running check_openclash_runtime.py
+{
+  "source_sha256": "dfae7abb056b8749871ca34baa3ad0c0a729b7cfaeeb31844e2c7fd7341b21c1",
+  "native_init_commit": "e553e82e01c697aefbe1555261a503f425e00ccd",
+  "native_init_blob": "7bc7e7568c74c197668ddf6372c7013de2baf152",
+  "core": "v1.19.32",
+  "checks": 24,
+  "native_safe_paths": "SAFE_PATHS=/usr/share/openclash:/etc/ssl",
+  "missing_safe_paths_reproduced": true,
+  "inherited_safe_paths_overridden": true,
+  "outside_path_rejected_and_restored": true,
+  "unicode_strategy_labels": true,
+  "ruby_json_installed": false,
+  "cases": [
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "redir-host",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.113
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "redir-host",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.108
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.064
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.064
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.064
+    },
+    {
+      "mode": "redir-host",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.064
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "enabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "changed",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": true,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.109
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.024
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "udp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.024
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 1,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.024
+    },
+    {
+      "mode": "fake-ip",
+      "phase": "disabled",
+      "protocol": "tcp",
+      "qtype": 28,
+      "blocked": false,
+      "added_and_removed_rule_queries": true,
+      "seconds": 0.024
+    }
+  ],
+  "scope": "Native rc.common + extracted OpenClash quick-start/hook stages + real Mihomo DNS; no firewall or router test"
+}
+Running check_proxy_runtime.py
+{
+  "runtime": "real OpenWrt ucode/ubus/rpcd; controlled CGI responses",
+  "checks": 7,
+  "cases": [
+    {
+      "scenario": "true",
+      "running": true,
+      "seconds": 0.011,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "false",
+      "running": false,
+      "seconds": 0.01,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "denied",
+      "running": null,
+      "seconds": 0.009,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "errors",
+      "running": null,
+      "seconds": 0.01,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "invalid",
+      "running": null,
+      "seconds": 0.009,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "broken",
+      "running": null,
+      "seconds": 0.009,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "slow",
+      "running": null,
+      "seconds": 1.505,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    }
+  ],
+  "device_acceptance": "not_run"
+}
+Running check_source_cache.py
+{
+  "source_sha256": "dfae7abb056b8749871ca34baa3ad0c0a729b7cfaeeb31844e2c7fd7341b21c1",
+  "upstream_sha256": "19727b189472f380b9791b1fc37c4acdec60eea06650f7d845fea8fafbd49315",
+  "upstream_url": "https://raw.githubusercontent.com/openwrt/packages/65493e273e4b9cd7014236b69fd6fdc617b88436/net/adblock-fast/files/lib/adblock-fast/adblock-fast.uc",
+  "checks": [
+    "pinned native source-size enumeration uses measured precheck bytes without another HEAD request",
+    "precheck download reused through real shell PATH wrapper and pinned upstream download function",
+    "repeated backend list download uses the same checked bytes without transport",
+    "explicit refresh fetches once; unchanged bytes are replayed without a second fetch",
+    "changed refresh content reaches backend; stale snapshot is not replayed",
+    "corrupt snapshot falls back to real downloader and successful backend fetch reseeds cache",
+    "previously existing uncached source downloads once, then reuses snapshot",
+    "custom curl configuration retains real downloader behavior on every call",
+    "real curl exit 28 propagates to pinned upstream timeout handling"
+  ],
+  "runtime": "actual OpenWrt 24.10.8 shell/ucode/UCI and shipped curl wrapper in disposable rootfs",
+  "transport": "local curl fixture, no network",
+  "backend_lifecycle_and_proxy_reload": "not_run",
+  "router": "not_touched"
+}
+Running check_nailink_gateway.py
+{
+  "source_sha256": "dfae7abb056b8749871ca34baa3ad0c0a729b7cfaeeb31844e2c7fd7341b21c1",
+  "nailink_package_sha256": "666dc4d2313a9954ae8be5ae023f5cbe99a12240de80d2d4ce0afc8f977d9d5b",
+  "nailink_gateway_sha256": "fd28e38c56d44f53b1d6c4a075ba7c715d5a3f028568104a457037bfc32f461f",
+  "checks": [
+    "real CGI + daemon JWT + rpcd authorization",
+    "concurrent root diagnostics use distinct session-scoped request/response files and preserve all responses",
+    "real NaiLink API increments DNS profile version for identical text; no database writes by AdZero",
+    "stale local identity reproduces access denied without key exposure",
+    "authorization preflight rejects before adapter ownership or config writes",
+    "production ctl refuses before backend startup, configuration or ownership changes",
+    "official stopped-service prepare restores access and preserves all database rows",
+    "same procd process identity blocks a second mutation after ambiguous reload",
+    "new process start plus real authorized API allows explicit recovery; reload ack fixture",
+    "HTTP 401 classified without private response",
+    "HTTP 403 classified without private response",
+    "HTTP 502 classified without private response",
+    "HTTP 503 classified without private response",
+    "HTTP 413 classified without private response",
+    "unknown GraphQL error remains private",
+    "unresponsive read-only CGI is bounded to five seconds rather than the 30-second gateway deadline",
+    "actual 30-second CGI timeout followed by native-shaped version and dataplane confirmation succeeds with one reload and no rollback",
+    "DAT-only update advances DNS profile version before a single reload; stale ready state is not accepted"
+  ],
+  "runtime": "actual NaiLink 0.6.30 CGI + API-only daemon and actual OpenWrt rpcd/ubusd/ucode",
+  "proxy_kernel_and_router": "not_run",
+  "existing_database_rows_preserved": true,
+  "timeout_fixture": "real CGI 30-second deadline, delayed upstream/version/readiness and procd inventory fixtures; no claim of actual proxy kernel reload completion"
+}
+Running check_routing_core.py
+{
+  "status": "passed",
+  "checks": 108,
+  "scope": "production compiler and real core; isolated namespace, local DNS/SOCKS/HTTP fixtures; no router, LAN, TUN or eBPF validation"
+}

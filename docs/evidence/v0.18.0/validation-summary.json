@@ -1,0 +1,59 @@
+{
+  "version": "0.18.0",
+  "source_sha256": "dfae7abb056b8749871ca34baa3ad0c0a729b7cfaeeb31844e2c7fd7341b21c1",
+  "python_tests": 497,
+  "ui_assertions": 293,
+  "rpc_checks": 66,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 49,
+  "installer_delivery_cases": 6,
+  "service_signal_comparison": {
+    "baseline_adapter": "v0.17.2",
+    "baseline_masks": [
+      65536,
+      65536
+    ],
+    "fixed_masks": [
+      0,
+      0
+    ],
+    "runtime": "actual OpenWrt 25.12.5 ucode/ash/coreutils-timeout; production adapter, signal-reading DNS init fixture"
+  },
+  "operation_status": "temporary, expiry, enhancement-save and DNS failover locks report live only with matching process identity; no PID/argv disclosed",
+  "gateway_fixture_correction": "gate the real ctl child and mirror its stat into the fixture synthetic proc; do not mount or modify host proc; authorization and recovery checks remain enabled",
+  "compatibility": "configuration ownership for shell-managed clients; legacy PassWall client binaries; no claims of new DNS adapters for PassWall2/HomeProxy",
+  "browser_qa": {
+    "view": "actual production view and native DOM; controlled RPC and DNS data",
+    "cases": [
+      "desktop light: overview/rules/access/enhancements",
+      "desktop dark: access controls",
+      "360px iframe viewport: navigation and metrics",
+      "menu URL survives refresh",
+      "input focus and selection",
+      "initial enhancement failure, retry, stale state and editor recovery"
+    ],
+    "new_framework_dependencies": false
+  },
+  "native_checks": [
+    "RPC",
+    "observer",
+    "PassWall and SSR Plus+ DNS",
+    "OpenClash native hook and Mihomo DNS",
+    "NaiLink runtime authorization",
+    "source-cache handoff",
+    "actual NaiLink gateway",
+    "Mihomo routing compiler and DNS",
+    "IPv4 enhanced DNS NAT/conntrack",
+    "OpenWrt 25.12.5 service signal inheritance"
+  ],
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "new_runtime_dependencies": false,
+  "limits": [
+    "enhanced entry remains default IPv4 system/PassWall only",
+    "native core and helper checks use local upstream/node/API fixtures; not a transparent-proxy router or complete browser acceptance",
+    "PassWall2 and HomeProxy remain detection-only; unknown owners retain a review state",
+    "no public DNS speed multiple or overall ad blocking percentage claimed"
+  ]
+}

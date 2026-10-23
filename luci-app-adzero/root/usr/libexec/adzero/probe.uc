@@ -50,6 +50,7 @@ try {
 } catch (e) { services = null; }
 const services_checked=type(services)=='object';
 if (type(services) != 'object') services = {};
+const owned_cores=proxy.core_states(root);
 function service_state(name, only) {
 	let instances = services[name]?.instances, stopped = false;
 	if (type(instances) != 'object') return only&&services_checked&&!services[name]?'stopped':'unknown';
@@ -108,6 +109,15 @@ for (let row in rows) {
 		if(id=='homeproxy'&&value(service,'config','routing_mode')=='custom')enabled=null;
 	}
 	if (installed && id != 'nailink') runtime = service_state(service,id=='homeproxy'?'sing-box-c':null);
+	let evidence=runtime!='unknown'?'service':'enabled_setting';
+	if(installed&&owned_cores[id]?.available){
+		let core=owned_cores[id].running;
+		if(core===true){runtime='running';core_checked=true;evidence='process_config';}
+		else if(runtime=='unknown'){
+			core_checked=type(core)=='bool';runtime=core_checked?'stopped':'unknown';
+			evidence=core_checked?'process_inventory':'unconfirmed';
+		}
+	}
 	if(installed&&id=='ssrplus'){
 		let running=ssrplus_client();core_checked=type(running)=='bool';
 		runtime=core_checked?(running?'running':'stopped'):'unknown';
@@ -120,10 +130,11 @@ for (let row in rows) {
 	}
 	if (installed) proxy_count++;
 	let plugin = {id, installed, enabled, runtime, dns_hint:hint, integration:'unverified'};
+	plugin.runtime_evidence=id=='nailink'?'core_api':evidence;
 	plugin.adapter_supported=index(['nailink','passwall','openclash','nikki','ssrplus'],id)>=0;
 	plugin.routing_supported=index(['nailink','passwall','openclash','nikki'],id)>=0;
-	if (id == 'nailink') { plugin.manager_runtime = manager_runtime; plugin.core_checked = core_checked; }
-	if(id=='ssrplus')plugin.core_checked=core_checked;
+	if (id == 'nailink') plugin.manager_runtime = manager_runtime;
+	if(core_checked!=null)plugin.core_checked=core_checked;
 	plugin.active = proxy.active(plugin);
 	if(id=='homeproxy'&&runtime=='unknown'){
 		plugin.active=false;

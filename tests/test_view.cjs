@@ -18,17 +18,19 @@ function E(tag, attrs = {}, children = []) {
   const original = children;
   children = Array.isArray(children) ? children.map(x => typeof x === 'object' && x !== null ? x : String(x)) : children == null ? [] : [children];
   const el = { tag, attrs: {}, events: {}, children, scalarHtml: typeof original === 'string', focus() { active = this; }, contains(x) { return nodes(this, n => n === x).length > 0; } };
+  if(tag==='input'||tag==='textarea')el.setSelectionRange=function(start,end,direction){this.selectionStart=start;this.selectionEnd=end;this.selectionDirection=direction;};
   for (const [k, v] of Object.entries(attrs)) {
     if (v == null) continue;
     if (typeof v === 'function') el.events[k] = v;
     else el.attrs[k] = String(v); // LuCI setAttribute: even false is PRESENT.
   }
+  el.id=el.attrs.id;el.tagName=tag.toUpperCase();
   el.disabled = Object.hasOwn(el.attrs, 'disabled'); el.open = Object.hasOwn(el.attrs, 'open'); return el;
 }
 const body = E('body'); active = body;
 const doc = { body, contains: n => !!nodes(root, x => x === n).length, get activeElement() { return active; }, getElementById(id) { return nodes(root, n => n.attrs.id === id)[0] || null; } };
 const commands = [];
-let observationFixture={available:false,verification:{state:'idle'}},observationFailure=false,observationReads=0;
+let observationFixture={available:false,verification:{state:'idle'}},observationFailure=false,observationReads=0,deferObservation=false,releaseObservation;
 const pollCallbacks=new Set(),listeners=new Map();
 const nativePoll=global.adzeroNativePollFactory?.(doc);
 const poll={add(fn,interval){assert.equal(interval,1);pollCallbacks.add(fn);if(nativePoll)nativePoll.add(fn,interval);else fn();},remove(fn){pollCallbacks.delete(fn);if(nativePoll)nativePoll.remove(fn);},async tick(){if(nativePoll)await nativePoll.tick();else for(const fn of [...pollCallbacks])await fn();}};
@@ -40,15 +42,15 @@ const api = { exec: async (program, args) => {
   if (args[0] === 'status') { if (statusPending) await new Promise(r => { resolveStatus = r; }); if (failStatus) throw new Error('status unreachable'); let next=statusSteps.shift();if(typeof next==='function')next=next();return { code: 0, stdout: JSON.stringify(next||state) }; }
 } };
 let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked = false, sessionID = 'b'.repeat(32), jobSteps=[], ruleData, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
-let enhanceFixture;
+let enhanceFixture,enhanceFailure=false;
 const storage = new Map();
 const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
-	if(spec.method==='enhance_status')return {ok:true,data:structuredClone(enhanceFixture)};
+	if(spec.method==='enhance_status'){if(enhanceFailure)throw Error('enhance read unavailable');return {ok:true,data:structuredClone(enhanceFixture)};}
 	if(spec.method==='enhance_save'){enhanceFixture.config=JSON.parse(args[0]).after;return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
 	if(spec.method==='dns_test')return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
 	if(spec.method==='temporary'){state.policy.allowed.push(args[1]);state.policy.temporary=[{scope:args[1],duration:args[2],remaining:args[2]}];return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
-  if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');return {ok:true,data:structuredClone(observationFixture)};}
+  if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');const reply={ok:true,data:structuredClone(observationFixture)};if(deferObservation){deferObservation=false;return new Promise(resolve=>{releaseObservation=()=>resolve(reply);});}return reply;}
   if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
   if(spec.method==='stats_reset'){observationFixture={...observationFixture,queries:0,blocked:0,reset_token:'f'.repeat(32)};return {ok:true,token:'f'.repeat(32)};}
   if(spec.method==='controls_apply'){commands.push(spec.method);if(rpcFailure)return {ok:false,message:'typed failure'};const p=JSON.parse(args[0]);if(!rpcStale)Object.assign(state.policy,structuredClone(p.after));return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
@@ -114,7 +116,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.17.2'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.18.0'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -122,7 +124,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(root).includes('效果检测') && !text(root).includes('今日拦截'), 'terminal evidence is actionable and no daily count is invented');
   check(active === find('az-toggle'), 'focus restored to initiating control');
   check(!find('az-plugins') && !find('az-diagnostics'), 'technical inventory panels are not rendered');
-  check(!text(root).includes('aarch64_generic') && !text(root).includes('PassWall 2'), 'unused platform and plugin inventory is absent');
+  check(!text(root).includes('aarch64_generic') && !!find('az-connection')&&!find('az-connection').open, 'compatibility is available on demand without exposing architecture clutter');
   await app.refreshStatus(); check(text(root).includes('NaiLink / daed'), 'current integration remains visible after refresh');
   await app.runAction('refresh'); check(app.notice.kind === 'success', 'update success inline');
   await app.runAction('disable'); check(state.state === 'disabled', 'disable works');
@@ -591,5 +593,46 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   await app.loadEnhance(true);
   check(text(find('az-enhance-runtime')).includes('退出待确认')&&text(find('az-enhance-runtime')).includes('不要手动删除记录'),'incomplete DNS retirement is visible instead of a harmless inactive badge');
   check(app.enhanceDraft===enhanceEditor,'background cleanup warning preserves unsaved device policy');
+  enhanceFailure=true;await app.loadEnhance(true);
+  check(text(find('az-enhance-runtime')).includes('增强状态未更新')&&app.enhanceDraft===enhanceEditor,'failed background enhance read marks stale state and preserves the editor');
+  app.enhanceDraft=null;await app.loadEnhance(true);
+  check(text(root).includes('增强设置读取失败'),'initial read failure has an actionable error state');
+  enhanceFailure=false;await app.loadEnhance(true);
+  check(!!find('az-device-add')&&!!app.enhanceDraft&&!app.enhanceError,'background recovery from the initial failure exposes the editor');
+  const enhanceReadOne=app.loadEnhance(true),enhanceReadTwo=app.loadEnhance(true);
+  check(enhanceReadOne===enhanceReadTwo,'overlapping enhancement reads share one pending request');await enhanceReadOne;
+  for(const [action,label] of [['enhance-save','正在保存增强设置'],['dns-switch','正在切换备用 DNS'],['temporary','正在应用临时放行'],['temporary-expire','正在恢复到期规则']]){
+    reset({state:'configured_unverified',operation:{active:true,locked:true,action}});
+    check(find('az-toggle').disabled&&text(root).includes(label),'extended mutation locks prevent competing changes: '+action);
+  }
+  reset({compatibility:{plugins:[{id:'passwall2',installed:true,active:true,adapter_supported:false,runtime:'running'}],dns:{active_proxy_count:1,active_proxies:['passwall2']}}});
+  check(find('az-toggle').disabled&&text(root).includes('尚未支持安全接入'),'detected but unsupported proxy explains the prerequisite before any mutation');
+  check(text(find('az-connection')).includes('当前仅检测'),'compatibility disclosure separates detection from integration');
+  reset({state:'configured_unverified',adapter:{plugin:'passwall'},compatibility:{plugins:[{id:'passwall',installed:true,enabled:true,active:false,runtime:'stopped'}],dns:{active_proxy_count:0}}});
+  check(text(find('az-connection')).includes('接入待确认')&&text(find('az-connection')).includes('内核已停止')&&!text(find('az-connection')).includes('当前接入'),'persisted journal cannot label a confirmed stopped core as a live connection');
+  reset({state:'configured_unverified'});await app.initialObservationRequest;
+  observationFixture={available:true,active:true,queries:99,blocked:4,verification:{state:'idle'}};
+  deferObservation=true;const oldObservation=app.refreshObservation();
+  observationFixture.queries=12;root=app.render(state);await app.initialObservationRequest;
+  releaseObservation();await oldObservation;
+  check(app.observation.queries===12,'late observer reply from previous mount cannot overwrite the new view');
+  app.controlsOpen=true;app.paint();const editing=find('az-domain');editing.focus();editing.setSelectionRange(2,5,'backward');
+  app.paint();
+  check(active===find('az-domain')&&active.selectionStart===2&&active.selectionEnd===5,'background repaint preserves input focus and selection');
+  const windowListeners=new Map(),navigation=[];
+  global.window={location:{hash:''},history:{pushState:(_a,_b,value)=>{window.location.hash=value;navigation.push(value);}},addEventListener:(name,fn)=>windowListeners.set(name,fn),removeEventListener:(name,fn)=>{if(windowListeners.get(name)===fn)windowListeners.delete(name);}};
+  reset();await app.initialObservationRequest;
+  check(find('az-tab-rules').tag==='a'&&find('az-tab-rules').attrs.href==='#adzero/rules','navigation supports ordinary links and direct page URLs');
+  await find('az-tab-rules').events.click();
+  check(app.rulesOpen&&window.location.hash==='#adzero/rules'&&navigation.length===1,'menu updates the deep link without an entire page reload');
+  window.location.hash='#adzero/controls';await windowListeners.get('popstate')();
+  check(app.controlsOpen&&!app.rulesOpen,'browser history restores the selected section');
+  window.location.hash='#az-page-title';await windowListeners.get('hashchange')();
+  check(app.controlsOpen,'skip link and unrelated LuCI anchors never reset the selected section');
+  app.dnsForm={domestic:'223.5.5.5',foreign:'1.1.1.1'};app.dnsFormSaved=JSON.stringify(app.dnsForm);app.dnsForm.domestic='119.29.29.29';
+  let prevented=false;windowListeners.get('beforeunload')({preventDefault(){prevented=true;}});
+  check(prevented,'unstaged DNS edits are included in the leave guard');
+  app.stopPagePolling();check(!windowListeners.size,'unload and history listeners are released on leave');
+  delete global.window;
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

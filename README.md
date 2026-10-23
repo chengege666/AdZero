@@ -35,21 +35,21 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.17.2 测试版**，修复规则刷新失败后的缓存保留、增强 DNS 退出会话清理和 OpenWrt 24.10 计时兼容；增强 TCP 按客户端复用连接。增强 DNS 入口与自动备用默认关闭，保留现有代理工作路径。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.18.0 测试版**，统一四页界面与手机布局，改善表单和检测反馈；增强代理进程归属识别，并统一 DNS／代理的安全重载路径。增强 DNS 入口与自动备用默认关闭，保留现有代理工作路径。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.17.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.18.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.17.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.18.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.17.2) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.18.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
@@ -73,7 +73,7 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 SDK 构建与隔离测试已通过，实际设备的网络与过滤效果仍需验证。ImmortalWrt、iStoreOS、其他版本与架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进，安装器会拒绝尚未匹配的组合。
 
-NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。
+NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。概览中的「代理接入」可展开查看：区分实际内核、已保存开关和当前接入，不把识别到插件当作已经适配。
 
 PassWall 保留原有 dnsmasq 或 ChinaDNS-NG 分流引擎，沿原生屏蔽列表接入；SSR Plus+ 也使用原生接口。会核对运行进程、配置加载路径与屏蔽规则样本，发现 DNS 子进程回收信号阻塞时单独提示。未加载时有限重试，内容未变且运行配置正常时不重复重启代理；这些检查不能代替终端效果检测。
 

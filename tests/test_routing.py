@@ -111,6 +111,16 @@ class RoutingAdapterTest(unittest.TestCase):
         profile={'domestic':{'servers':['119.29.29.29'],'active':'119.29.29.29'},'foreign':{'servers':['8.8.8.8'],'active':'8.8.8.8'}}
         p=self.root/'etc/config/adzero';p.write_text(p.read_text()+" option dns_profile '"+json.dumps(profile)+"'\n")
 
+    def test_direct_dns_restart_does_not_inherit_blocked_sigchld(self):
+        self.select()
+        mask=self.root/'restart-mask'
+        self.write('etc/init.d/dnsmasq','#!/bin/sh\ngrep "^SigBlk:" /proc/self/status >> '+shlex.quote(str(mask))+'\n')
+        self.run_adapter('apply')
+        self.run_adapter('remove')
+        values=[int(line.split()[1],16) for line in mask.read_text().splitlines()]
+        self.assertEqual(len(values),2)
+        self.assertTrue(all(value & 0x10000 == 0 for value in values),values)
+
     def test_no_proxy_uses_only_domestic_defaults_and_restores_original_dns(self):
         self.select()
         before=(self.root/'etc/config/dhcp').read_text()

@@ -107,6 +107,16 @@ class AdapterTransactionTest(unittest.TestCase):
         self.run_adapter("apply", success=False)
         self.assertFalse((self.root / "etc/adzero/adapter.json").exists())
 
+    def test_service_deadline_prerequisite_fails_before_proxy_changes(self):
+        self.env['ADZERO_SERVICE_TIMEOUT']=str(self.root/'missing-timeout')
+        for plugin in ('openclash','nikki','ssrplus'):
+            with self.subTest(plugin=plugin):
+                self.select(plugin)
+                result=self.run_adapter('apply',success=False)
+                self.assertIn('coreutils-timeout',result.stderr)
+                self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+                self.assertFalse((self.root/'etc/nikki/run/providers/rule/adzero.txt').exists())
+
     def test_stopped_nailink_manager_does_not_conflict_with_passwall(self):
         self.select('passwall')
         inventory=json.loads(self.inventory.read_text())

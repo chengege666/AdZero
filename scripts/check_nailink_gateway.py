@@ -83,6 +83,24 @@ def main(package=None):
             return target
 
         def run(*args, timeout=15, input=None):
+            if args[:2]==('/bin/sh','/usr/libexec/adzero/ctl'):
+                # This fixture intentionally has a synthetic /proc for later
+                # reload-identity tests. Mirror only this real ctl process,
+                # before releasing its gate, so lock identity can be checked.
+                gate='/tmp/ctl-ready-'+os.urandom(8).hex()
+                command=['/bin/sh','-c','while [ ! -f "$1" ]; do sleep 0.01; done; shift; exec "$@"','adzero-ctl-gate',gate,*args]
+                child=subprocess.Popen(['chroot',temporary,*command],env=env,text=True,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                identity=base/'proc'/str(child.pid)/'stat'
+                try:
+                    put('proc/'+str(child.pid)+'/stat',Path(f'/proc/{child.pid}/stat').read_bytes())
+                    put(gate.lstrip('/'),'ready\n',0o600)
+                    stdout,stderr=child.communicate(input=input,timeout=timeout)
+                    return subprocess.CompletedProcess(args,child.returncode,stdout,stderr)
+                finally:
+                    if child.poll() is None:child.kill();child.communicate(timeout=5)
+                    (base/gate.lstrip('/')).unlink(missing_ok=True)
+                    identity.unlink(missing_ok=True)
+                    if identity.parent.exists():identity.parent.rmdir()
             return subprocess.run(['chroot', temporary, *args], env=env, text=True,
                                   capture_output=True, timeout=timeout, input=input)
 

@@ -41,11 +41,10 @@ function service_command(plugin,operation){
 function timeout_helper(){
 	let test=root?getenv('ADZERO_SERVICE_TIMEOUT'):null;
 	for(let path in test?[test]:[root+'/usr/libexec/timeout-coreutils',root+'/usr/bin/timeout'])if(fs.access(path,'x'))return path;
-	die('缺少 coreutils-timeout，尚未重启 PassWall；请补齐安装依赖。');
+	die('缺少 coreutils-timeout，尚未重启 DNS 或代理；请补齐安装依赖。');
 }
 function restart_service(plugin){
 	let argv=service_command(plugin,'restart');
-	if(plugin!='passwall')return system(argv,120000);
 	// Timed ucode system() in the supported firmware leaks a blocked SIGCHLD
 	// into directly spawned daemons. An external deadline leaves that mask
 	// untouched, while still bounding the native restart and its process group.
@@ -275,10 +274,10 @@ function active_plugin() {
 	if (length(data.dns?.uncertain_proxies ?? [])) die(index(data.dns.uncertain_proxies,'nailink')>=0?'无法确认 NaiLink 内核状态，请检查 NaiLink 后重新检测；尚未修改配置。':'无法确认当前代理内核状态，请检查对应插件后重新检测；尚未修改配置。');
 	let active = filter(data.plugins, proxy.active);
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
-	if (!length(active)) return 'none';
+	if (!length(active)) { if(split_enabled)timeout_helper();return 'none'; }
 	if (index(['nailink','passwall','openclash','nikki','ssrplus'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
+	if(active[0].id!='nailink')timeout_helper();
 	if(active[0].id=='passwall'){
-		timeout_helper();
 		if(split_enabled){
 			let engine=passwall_engine();
 			if(index(['dnsmasq','chinadns-ng'],engine)<0)die('当前 PassWall DNS 引擎不支持 AdZero 自动分流；请保留原生分流或关闭 AdZero 自动分流。');
@@ -426,7 +425,7 @@ function restart(plugin) {
 		}
 	}
 	if (plugin == 'none') {
-		if (journal?.split && system(service_command('dnsmasq','restart'),30000)!=0)die('国内 DNS 配置未能重新加载。');
+		if (journal?.split && restart_service('dnsmasq')!=0)die('国内 DNS 配置未能重新加载。');
 		return;
 	}
 	if (plugin == 'nailink') {

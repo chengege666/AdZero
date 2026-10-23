@@ -1,0 +1,56 @@
+{
+  "runtime": "real OpenWrt ucode/ubus/rpcd; controlled CGI responses",
+  "checks": 7,
+  "cases": [
+    {
+      "scenario": "true",
+      "running": true,
+      "seconds": 0.011,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "false",
+      "running": false,
+      "seconds": 0.01,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "denied",
+      "running": null,
+      "seconds": 0.009,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "errors",
+      "running": null,
+      "seconds": 0.01,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "invalid",
+      "running": null,
+      "seconds": 0.009,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "broken",
+      "running": null,
+      "seconds": 0.009,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    },
+    {
+      "scenario": "slow",
+      "running": null,
+      "seconds": 1.505,
+      "session_destroyed": true,
+      "temporary_files_removed": true
+    }
+  ],
+  "device_acceptance": "not_run"
+}

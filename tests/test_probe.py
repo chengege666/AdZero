@@ -243,6 +243,56 @@ class ProbeTest(unittest.TestCase):
         self.data["uci"] = {"passwall.@global[0].enabled": "1", "passwall.node.password": "SECRET-NODE-TOKEN"}
         self.assertNotIn("SECRET-NODE-TOKEN", json.dumps(self.probe()))
 
+    def test_shell_managed_cores_are_attributed_to_their_own_plugin(self):
+        self.data['uci']={'passwall.@global[0].enabled':'1','passwall2.@global[0].enabled':'1',
+                          'openclash.config.enable':'1','nikki.config.enabled':'1'}
+        self.write('proc/800/cmdline','/usr/bin/xray\0run\0-c\0/tmp/etc/passwall2/acl/default/config.json\0')
+        self.write('proc/801/cmdline','/usr/bin/mihomo\0-d\0/etc/nikki/run\0-f\0/etc/nikki/run/config.yaml\0')
+        result=self.probe()
+        self.assertEqual(result['dns']['active_proxies'],['passwall2','nikki'])
+        rows={p['id']:p for p in result['plugins']}
+        self.assertEqual(rows['passwall']['runtime'],'stopped')
+        self.assertEqual(rows['openclash']['runtime'],'stopped')
+        self.assertEqual(rows['passwall2']['runtime_evidence'],'process_config')
+        self.assertNotIn('/tmp/etc',json.dumps(result))
+
+    def test_validation_process_cannot_make_a_stopped_proxy_active(self):
+        for plugin,config,command in [('openclash','openclash.config.enable','/etc/openclash/core/clash_meta\0-t\0-d\0/etc/openclash\0-f\0/etc/openclash/config.yaml\0'),
+                                     ('passwall','passwall.@global[0].enabled','/usr/bin/xray\0run\0-test\0-c\0/tmp/etc/passwall/config.json\0')]:
+            self.data['uci']={config:'1'}
+            self.write('proc/800/cmdline',command)
+            self.assertFalse(next(p for p in self.probe()['plugins'] if p['id']==plugin)['active'])
+
+    def test_passwall_legacy_client_binaries_are_detected_by_configuration(self):
+        self.data['uci']={'passwall.@global[0].enabled':'1'}
+        for binary in ('v2ray','ss-redir','sslocal','trojan','hysteria2','tuic-client'):
+            with self.subTest(binary=binary):
+                self.write('proc/800/cmdline','/usr/bin/'+binary+'\0-c\0/tmp/etc/passwall/acl/default/client.json\0')
+                plugin=next(p for p in self.probe()['plugins'] if p['id']=='passwall')
+                self.assertTrue(plugin['active'])
+                self.assertEqual(plugin['runtime_evidence'],'process_config')
+
+    def test_unknown_core_owner_is_uncertain_instead_of_router_dns_fallback(self):
+        self.data['uci']={'passwall.@global[0].enabled':'1'}
+        self.write('proc/800/cmdline','/usr/bin/xray\0run\0-c\0/custom/new-version.json\0')
+        result=self.probe()
+        self.assertEqual(result['dns']['active_proxies'],[])
+        self.assertEqual(result['dns']['uncertain_proxies'],['passwall'])
+
+    def test_openclash_directory_does_not_match_a_similarly_named_plugin(self):
+        self.data['uci']={'openclash.config.enable':'1'}
+        self.write('proc/800/cmdline','/usr/bin/mihomo\0-d\0/etc/openclash-other\0-f\0/etc/openclash-other/config.yaml\0')
+        result=self.probe()
+        self.assertEqual(result['dns']['active_proxies'],[])
+        self.assertEqual(result['dns']['uncertain_proxies'],['openclash'])
+
+    def test_saved_flag_does_not_override_complete_stopped_process_inventory(self):
+        self.data['uci']={'passwall.@global[0].enabled':'1','nikki.config.enabled':'1'}
+        self.write('proc/800/cmdline','/sbin/ubusd\0')
+        result=self.probe()
+        self.assertEqual(result['dns']['active_proxies'],[])
+        self.assertEqual(result['dns']['uncertain_proxies'],[])
+
     def test_release_metadata_is_not_executed_and_json_is_escaped(self):
         payload = 'iStoreOS "测试" \\ $(touch SHOULD_NOT_EXIST)\t'
         self.write("etc/openwrt_release", "DISTRIB_ID='" + payload + "'\nDISTRIB_RELEASE='25.12.5'\n")

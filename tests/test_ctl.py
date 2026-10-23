@@ -762,6 +762,22 @@ if sys.argv[1] == 'status': print('{"plugin":"nailink","stage":"restoring","doma
                 first.kill()
                 first.communicate(timeout=5)
 
+    def test_extended_mutation_locks_are_reported_as_active_operations(self):
+        child=subprocess.Popen(['sleep','30'])
+        try:
+            self.lock.mkdir()
+            start=Path(f'/proc/{child.pid}/stat').read_text().rsplit(') ',1)[1].split()[19]
+            before=self.config()
+            for action in ('temporary','temporary-expire','enhance-save','dns-switch'):
+                with self.subTest(action=action):
+                    record=f'{child.pid} {action}'
+                    (self.lock/'owner').write_text(record+'\n')
+                    (self.lock/'identity').write_text(record+' '+start+'\n')
+                    self.assertEqual(self.status()['operation'],{'active':True,'locked':True,'action':action})
+            self.assertEqual(self.config(),before)
+        finally:
+            child.terminate();child.wait(timeout=5)
+
     def test_dead_unknown_or_linked_owner_is_not_reported_as_live(self):
         self.lock.mkdir()
         owner, identity = self.lock / "owner", self.lock / "identity"

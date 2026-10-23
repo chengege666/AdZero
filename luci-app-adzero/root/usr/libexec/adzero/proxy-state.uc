@@ -7,8 +7,38 @@ export function active(p) {
 	if (!p?.installed) return false;
 	if (type(p.active) == 'bool') return p.active;
 	if (p.runtime == 'stopped') return false;
-	if (index(['nailink','ssrplus'],p.id)>=0 && p.core_checked === false) return false;
+	if (p.core_checked === false) return false;
 	return p.runtime == 'running' || p.enabled === true;
+};
+
+// Shell-managed services often have no useful procd instance. Attribute a
+// shared binary to its configuration directory, never to its name alone.
+// Only public states leave this function; full argv may contain credentials.
+export function core_states(root) {
+	root ??= '';
+	let kinds={passwall:['xray','v2ray','sing-box','singbox','ss-redir','ssr-redir','sslocal','ss-local','trojan','naive','hysteria','hysteria2','tuic-client','shadow-tls','ipt2socks'],passwall2:['xray','sing-box','singbox'],
+		openclash:['mihomo','clash','clash_meta','clash_tun','clash_game','clash_dev'],nikki:['mihomo','clash','clash_meta'],homeproxy:['sing-box','singbox']};
+	let found={},unknown={},readable=false;
+	for(let path in fs.glob(root+'/proc/[0-9]*/cmdline')??[]){
+		let raw=fs.readfile(path,8193);if(raw==null||!length(raw))continue;
+		let args=split(raw,'\x00'),binary=fs.basename(args[0]??'');
+		readable=true;
+		if(!length(filter(keys(kinds),id=>index(kinds[id],binary)>=0)))continue;
+		// Config checks and version probes are short-lived, not proxy workers.
+		if(length(filter(args,a=>index(['-t','-test','--test','-v','--version','--help','-h','version','check','test','format'],a)>=0)))continue;
+		let paths=map(args,a=>replace(a,/^(--?config|--?file|-[cdf])=/,'')),owner=null;
+		if(length(raw)<=8192)for(let id in ['passwall','passwall2','openclash','nikki']){
+			if(index(kinds[id],binary)<0)continue;
+			let prefixes=id=='passwall'||id=='passwall2'?['/tmp/etc/'+id,'/var/etc/'+id]:['/etc/'+id,'/tmp/etc/'+id,'/var/etc/'+id];
+			if(length(filter(paths,p=>length(filter(prefixes,d=>p==d||index(p,d+'/')==0))))){owner=id;break;}
+		}
+		if(!owner&&index(kinds.homeproxy,binary)>=0&&length(filter(paths,p=>match(p,/^\/(var\/run|tmp\/run)\/homeproxy\/sing-box-c[.]json$/))))owner='homeproxy';
+		if(owner)found[owner]=true;
+		else for(let id in keys(kinds))if(index(kinds[id],binary)>=0)unknown[id]=true;
+	}
+	let states={};
+	for(let id in keys(kinds))states[id]=found[id]?{available:true,running:true}:!readable||unknown[id]?{available:readable,running:null}:{available:true,running:false};
+	return states;
 };
 
 // Structural evidence from PassWall's running default DNS, never an init exit

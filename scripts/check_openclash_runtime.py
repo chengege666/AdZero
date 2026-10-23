@@ -60,7 +60,7 @@ def main():
             for item in row.get('Depends','').split(','):
                 dep=item.strip().split(' ')[0]
                 if dep:dependency(dep)
-        for name in ('ruby','ruby-yaml'):dependency(name)
+        for name in ('ruby','ruby-yaml','coreutils-timeout'):dependency(name)
         assert 'ruby-json' not in needed
         for row in needed.values():fetch(cache/row['Filename'],row['prefix']+row['Filename'],row['SHA256sum'])
         (cache/'packages.json').write_text(json.dumps(list(needed.values())))

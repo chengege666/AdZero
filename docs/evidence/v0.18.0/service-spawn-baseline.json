@@ -1,0 +1,12 @@
+{
+  "native": "OpenWrt 25.12.5 ucode/ash/coreutils-timeout",
+  "apply_remove_sigchld_unblocked": false,
+  "baseline_blocked_reproduced": true,
+  "masks": [
+    65536,
+    65536
+  ],
+  "scope": "production adapter; DNS init body is a signal-reading fixture, not router network acceptance",
+  "adapter_baseline": "v0.17.2",
+  "harness_source_sha256": "dfae7abb056b8749871ca34baa3ad0c0a729b7cfaeeb31844e2c7fd7341b21c1"
+}
