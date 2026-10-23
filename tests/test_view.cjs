@@ -46,9 +46,9 @@ let enhanceFixture,enhanceFailure=false;
 const storage = new Map();
 const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
-	if(spec.method==='enhance_status'){if(enhanceFailure)throw Error('enhance read unavailable');return {ok:true,data:structuredClone(enhanceFixture)};}
+	if(spec.method==='enhance_status'){if(enhanceFailure)throw Error('enhance read unavailable');return {ok:true,data:structuredClone({...enhanceFixture,profile:Object.hasOwn(enhanceFixture,'profile')?enhanceFixture.profile:ruleData.dns})};}
 	if(spec.method==='enhance_save'){enhanceFixture.config=JSON.parse(args[0]).after;return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
-	if(spec.method==='dns_test')return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+	if(spec.method==='dns_test'){commands.push('dns_test');return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
 	if(spec.method==='temporary'){state.policy.allowed.push(args[1]);state.policy.temporary=[{scope:args[1],duration:args[2],remaining:args[2]}];return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');const reply={ok:true,data:structuredClone(observationFixture)};if(deferObservation){deferObservation=false;return new Promise(resolve=>{releaseObservation=()=>resolve(reply);});}return reply;}
   if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
@@ -117,7 +117,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.18.1'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.18.2'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -668,5 +668,43 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(origin).includes('https://library.example/list'),'compact sources retain the complete address');
   origin.events.toggle({target:{open:true}});app.paint();
   check(find(origin.id).open,'expanded rule address survives repaint');
+  reset({state:'configured_unverified'});await find('az-tab-enhance').events.click();
+  const dnsGroups=()=>nodes(root,n=>n.attrs['class']==='az-dns-test-group');
+  check(dnsGroups().length===2&&text(dnsGroups()[0]).includes('223.5.5.5')&&text(dnsGroups()[1]).includes('8.8.8.8'),'DNS groups show the actual saved candidates before any test');
+  check(text(dnsGroups()[1]).includes('填入本机 SOCKS5 端口'),'foreign DNS explains its missing test prerequisite beside the addresses');
+  await find('az-dns-open').events.click();
+  check(app.enhanceOpen&&find('az-dns-domestic')&&find('az-dns-foreign')&&!find('az-dns-stage').disabled,'DNS addresses can be edited on the enhancement page through the existing typed settings flow');
+  find('az-dns-foreign').events.input({target:{value:'9.9.9.9\n1.1.1.1'}});
+  const dnsTestsBefore=commands.filter(x=>x==='dns_test').length;
+  check(find('az-dns-test').disabled&&text(find('az-enhance-test-hint')).includes('尚未暂存'),'uncommitted DNS editor values immediately block tests of the old addresses');
+  await app.runEnhance('test');
+  check(commands.filter(x=>x==='dns_test').length===dnsTestsBefore,'the test method also rejects hidden or stale clicks while DNS edits are pending');
+  await find('az-dns-open').events.click();await find('az-dns-open').events.click();
+  check(find('az-dns-foreign').attrs.value==='9.9.9.9\n1.1.1.1','collapsing the DNS editor never discards unsaved addresses');
+  await app.stageDNS();
+  check(app.draftCount()===1&&!app.enhanceDirty()&&find('az-draft-apply')&&!app.dnsOpen,'DNS addresses stage separately from enhancement switches with one visible apply action');
+  check(text(dnsGroups()[1]).includes('9.9.9.9')&&text(dnsGroups()[1]).includes('待应用')&&find('az-dns-test').disabled,'pending candidates are shown without presenting old timings as current');
+  await app.applyDraft();
+  check(!app.draft&&app.enhanceData.profile.foreign.active==='9.9.9.9'&&!find('az-dns-test').disabled,'confirmed DNS apply updates the saved group and restores testing');
+  enhanceFixture.tests={profile:structuredClone(ruleData.dns),proxy_port:0,groups:{domestic:[{address:'223.5.5.5',ok:true,ms:23.6}],foreign:[{address:'9.9.9.9',skipped:true}]}};
+  const stablePort=find('az-dns-proxy-port');stablePort.focus();
+  await app.loadEnhance(true);
+  check(text(dnsGroups()[0]).includes('23.6 ms')&&text(dnsGroups()[1]).includes('已跳过'),'background reads refresh current test results in their own region');
+  check(find('az-dns-proxy-port')===stablePort&&active===stablePort,'background DNS results never replace or defocus the settings editor');
+  const stableGroups=dnsGroups()[0];await app.loadEnhance(true);
+  check(dnsGroups()[0]===stableGroups,'identical background results do not replace the result region');
+  enhanceFixture.profile=structuredClone(ruleData.dns);enhanceFixture.profile.domestic.active='119.29.29.29';
+  await app.loadEnhance(true);
+  check(text(dnsGroups()[0]).includes('需重测')&&!text(dnsGroups()[0]).includes('23.6 ms'),'a changed saved profile invalidates timings even when an address still occurs in both profiles');
+  delete enhanceFixture.profile;enhanceFixture.config.proxy_port=1070;
+  await app.loadEnhance(true);
+  check(app.enhanceDraft.after.proxy_port===1070&&find('az-dns-proxy-port').attrs.value==='1070','external saved enhancement changes refresh a pristine editor');
+  check(text(dnsGroups()[1]).includes('需重测')&&!text(dnsGroups()[1]).includes('已跳过'),'foreign results from a different saved SOCKS port cannot remain current');
+  find('az-dns-proxy-port').events.input({target:{value:'1080'}});
+  const localEnhanceDraft=app.enhanceDraft;enhanceFixture.config.proxy_port=1081;
+  await app.loadEnhance(true);
+  check(app.enhanceDraft===localEnhanceDraft&&app.enhanceDraft.after.proxy_port===1080,'external polling preserves a dirty enhancement editor for conflict-safe save');
+  reset({state:'configured_unverified'});enhanceFixture.profile=null;await find('az-tab-enhance').events.click();
+  check(text(dnsGroups()[0]).includes('尚未读取')&&!text(dnsGroups()[0]).includes('223.5.5.5'),'missing profile data is not replaced with invented saved DNS addresses');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

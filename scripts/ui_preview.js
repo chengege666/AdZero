@@ -25,15 +25,16 @@ const api = { exec: async (_program, args) => {
   if (args[0] === 'status') { await new Promise(resolve => setTimeout(resolve, statusDelay)); if (state.state === 'error') throw new Error('模拟：连接暂时中断'); return { code: 0, stdout: JSON.stringify(state) }; }
   throw Error('Only status uses file.exec');
 } };
-let sourceData={revision:'a'.repeat(64),items:[],catalog:[]},jobTick=0;
+const previewDNS={domestic:{servers:['223.5.5.5','119.29.29.29'],active:'223.5.5.5'},foreign:{servers:['1.1.1.1','8.8.8.8'],active:'1.1.1.1'}};
+let sourceData={dns:structuredClone(previewDNS),revision:'a'.repeat(64),items:[],catalog:[]},jobTick=0;
 let observerFixture={available:true,active:true,queries:8420,blocked:1154,answered:8403,verification:{state:'idle'},latency:{scope:'lan_observed',normal:{samples:600,average_ms:3.42,maximum_ms:615,slow:2},blocked:{samples:100,average_ms:0.21,maximum_ms:4,slow:0},unanswered:{udp:1,tcp:0}}};
-let enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[{ip:'192.168.2.10',name:'电视',enabled:true,allowed:[],blocked:['ads.example']}]},runtime:{state:'waiting',reason:'disabled',counts:{cname:0,device:0}},tests:{groups:{domestic:[{address:'223.5.5.5',ok:true,ms:5}],foreign:[{address:'1.1.1.1',skipped:true}]}}};
+let enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[]},runtime:{state:'waiting',reason:'disabled',counts:{cname:0,device:0}},tests:null};
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
-  if(spec.method==='enhance_status')return {ok:true,data:structuredClone(enhanceFixture)};
+  if(spec.method==='enhance_status')return {ok:true,data:structuredClone({...enhanceFixture,profile:sourceData.dns})};
   if(spec.method==='enhance_save'){enhanceFixture.config=JSON.parse(args[0]).after;return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
-  if(spec.method==='dns_test')return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
+  if(spec.method==='dns_test'){enhanceFixture.tests={profile:structuredClone(sourceData.dns),proxy_port:enhanceFixture.config.proxy_port,groups:{domestic:sourceData.dns.domestic.servers.map((address,i)=>({address,ok:true,ms:4+i*3})),foreign:sourceData.dns.foreign.servers.map((address,i)=>({address,ok:!!enhanceFixture.config.proxy_port,skipped:!enhanceFixture.config.proxy_port,ms:85+i*10}))}};return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='temporary'){state.policy.allowed.push(args[1]);state.policy.temporary=[{scope:args[1],duration:args[2],remaining:args[2]}];return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='observation')return {ok:true,data:document.getElementById('scenario').value==='observer-pending'?{available:true,active:false,queries:0,blocked:0,reason:'adapter_pending',verification:{state:'idle'}}:{...structuredClone(observerFixture),active:state.state==='configured_unverified'}};
   if(spec.method==='verification_start'){
@@ -55,7 +56,7 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   if(spec.method==='settings_apply'){
     const p=JSON.parse(args[0]);
     sourceData.items=p.items.map((i,n)=>({...i,id:i.id||'batch_'+n,https:true,domains:i.enabled?66425:null,updated:Math.floor(Date.now()/1000)}));
-    sourceData.revision='d'.repeat(64);state.policy.routing_enabled=p.routing_enabled;state.adapter.routing={mode:p.routing_enabled?'proxy':'inactive'};
+    if(p.dns)sourceData.dns=structuredClone(p.dns);sourceData.revision='d'.repeat(64);state.policy.routing_enabled=p.routing_enabled;state.adapter.routing={mode:p.routing_enabled?'proxy':'inactive'};
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }
   if (['enable','disable','refresh','reload'].includes(spec.method)) {

@@ -1,0 +1,32 @@
+{
+  "version": "0.18.2",
+  "source_sha256": "fe2be8c2923cdeb0b0cee0728620d28c4bf634f5efcd3f296819ec8b53530c4f",
+  "python_tests": 497,
+  "ui_assertions": 327,
+  "new_ui_assertions": 17,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 49,
+  "installer_delivery_cases": 6,
+  "browser_qa": {
+    "production_view": true,
+    "data": "simulated RPC, rules, devices and DNS responses",
+    "cases": [
+      "all four desktop pages in compact layout",
+      "two-column library cards with one-column 360px fallback",
+      "enhancement page light and dark, including heading contrast",
+      "saved addresses visible before testing",
+      "edit DNS, stage, apply, save SOCKS5 port, test",
+      "unsaved and pending settings disable tests",
+      "no SOCKS5 port explicitly skips foreign tests",
+      "device editor spans full desktop row",
+      "360px DNS groups stack without squeezed headings"
+    ],
+    "desktop_source_row_height_px": 64,
+    "desktop_library_card_height_px": 120
+  },
+  "scope": "UI, DNS editor integration, result freshness and release version; backend source unchanged from v0.18.1",
+  "new_runtime_dependencies": false,
+  "router_modified": false,
+  "device_acceptance": "not_run"
+}
