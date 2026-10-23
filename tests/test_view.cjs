@@ -533,5 +533,13 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(app.renderObservationHealth()).includes('缺少 conntrack'),'missing handoff dependency is actionable');
   app.currentStatus.dns_handoff={state:'skipped',reason:'unsupported_context'};
   check(text(app.renderObservationHealth()).includes('已跳过处理'),'unknown DNS topology is explicitly skipped');
+  app.observation.connection={plugin:'passwall'};
+  for(const [reason,label] of [['passwall_disabled','尚未启用'],['dns_redirect_disabled','未启用默认 DNS 重定向'],['passwall_unconfigured','未读到 PassWall 默认配置'],['config_unavailable','无法读取'],['acl_unsupported','自定义访问控制'],['protection_disabled','保护开关已关闭'],['backend_disabled','后端已关闭'],['not_managed','未由 AdZero 管理'],['paused','临时暂停']]){
+    app.currentStatus.dns_handoff={state:'skipped',reason};
+    check(text(app.renderObservationHealth()).includes(label),'handoff skip reason explained: '+reason);
+  }
+  app.observation.connection={plugin:'nailink'};
+  app.currentStatus.dns_handoff={state:'skipped',reason:'passwall_disabled'};
+  check(!text(app.renderObservationHealth()).includes('PassWall'),'inactive PassWall is not an error for another active proxy');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

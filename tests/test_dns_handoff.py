@@ -130,6 +130,43 @@ class HandoffTest(unittest.TestCase):
         deleted=(self.root/'deleted').read_text(); self.assertIn('--sport 51758',deleted); self.assertNotIn('51759',deleted)
         self.assertNotIn('192.0.2.',(self.root/'tmp/adzero-dns-handoff/status.json').read_text())
 
+    def test_first_global_matches_native_passwall_with_extra_sections(self):
+        self.monitor()
+        self.write('etc/config/passwall', "config global\n option enabled '1'\n option dns_redirect '1'\nconfig global\n")
+        self.assertEqual(self.step()['reason'],'stabilizing')
+        self.assertEqual(self.step()['repaired'],1)
+        (self.root/'deleted').unlink()
+        # Never choose a later enabled section over the native first section.
+        self.write('etc/config/passwall', "config global\n option enabled '0'\n option dns_redirect '1'\nconfig global\n option enabled '1'\n option dns_redirect '1'\n")
+        self.assertEqual(self.step()['reason'],'passwall_disabled')
+        self.assertFalse((self.root/'deleted').exists())
+
+    def test_skip_reasons_identify_the_actual_gate(self):
+        self.monitor()
+        cases=[('etc/config/adzero',"config adzero 'main'\n option enabled '0'\n",'protection_disabled'),
+               ('etc/config/adblock-fast',"config adblock-fast 'config'\n option enabled '0'\n",'backend_disabled'),
+               ('etc/config/passwall',"config global\n option enabled '0'\n option dns_redirect '1'\n",'passwall_disabled'),
+               ('etc/config/passwall',"config global\n option enabled '1'\n option dns_redirect '0'\n",'dns_redirect_disabled'),
+               ('etc/config/passwall',"config other\n",'passwall_unconfigured'),
+               ('etc/config/passwall',"config global\n option enabled '1'\n option dns_redirect '1'\nconfig acl_rules\n option enabled '1'\n",'acl_unsupported')]
+        for path,text,reason in cases:
+            with self.subTest(reason=reason):
+                original=(self.root/path).read_text()
+                self.write(path,text)
+                self.assertEqual(self.step()['reason'],reason)
+                self.assertFalse((self.root/'deleted').exists())
+                self.write(path,original)
+        self.write('etc/adzero/pause.json','{}')
+        self.assertEqual(self.step()['reason'],'paused')
+        (self.root/'etc/adzero/pause.json').unlink()
+        (self.root/'etc/adzero/managed').unlink()
+        self.assertEqual(self.step()['reason'],'not_managed')
+        self.assertFalse((self.root/'deleted').exists())
+        self.write('etc/adzero/managed','1')
+        (self.root/'etc/config/passwall').unlink()
+        self.assertEqual(self.step()['reason'],'config_unavailable')
+        self.assertFalse((self.root/'deleted').exists())
+
     def test_monitor_rule_replacement_restarts_stabilization(self):
         self.monitor(); self.step()
         changed=rules(); changed['nftables'][0]['chain']['handle']=77

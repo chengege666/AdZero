@@ -65,7 +65,9 @@ def main():
             target=ROOT/'usr/libexec/adzero'/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(SOURCE/name,target);target.chmod(0o755 if name=='dns-handoff' else 0o644)
         write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n")
         write('etc/config/adblock-fast',"config adblock-fast 'config'\n option enabled '1'\n")
-        write('etc/config/passwall',"config global\n option enabled '1'\n option dns_redirect '1'\n")
+        inactive_config="config global\n option enabled '0'\n option dns_redirect '1'\nconfig global\n option enabled '1'\n option dns_redirect '1'\n"
+        active_config="config global\n option enabled '1'\n option dns_redirect '1'\nconfig global\n"
+        write('etc/config/passwall',inactive_config)
         write('etc/adzero/managed','1')
         write('usr/sbin/ubus',"#!/bin/sh\nprintf '%s\\n' '"+json.dumps({'l3_device':'az-server','ipv4-address':[{'address':SERVER,'mask':24}]})+"'\n",0o755)
         write('usr/libexec/adzero/probe',"#!/bin/sh\nprintf '%s\\n' '{\"dns\":{\"active_proxies\":[\"passwall\"],\"uncertain_proxies\":[]}}'\n",0o755)
@@ -116,6 +118,20 @@ def main():
         (ROOT/'tmp/adzero-dns-handoff/status.json').unlink(missing_ok=True)
         monitor=subprocess.Popen(['chroot',str(ROOT),'/usr/libexec/adzero/dns-handoff','run'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         end=time.monotonic()+22;state=None
+        # Native PassWall uses the first global. Never choose a later enabled
+        # section, even when the native DNS process and redirect still exist.
+        while time.monotonic()<end:
+            assert monitor.poll() is None, monitor.communicate()
+            try:state=json.loads((ROOT/'tmp/adzero-dns-handoff/status.json').read_text())
+            except (FileNotFoundError,json.JSONDecodeError):pass
+            if state and state.get('reason')=='passwall_disabled':break
+            time.sleep(.25)
+        assert state and state.get('reason')=='passwall_disabled' and state['repaired']==0,state
+        assert native('/sbin/uci','-q','get','passwall.@global[0].enabled').stdout.strip()=='0'
+        assert query(51758)=='203.0.113.66','disabled first global must not permit handoff'
+        write('etc/config/passwall',active_config)
+        assert native('/sbin/uci','-q','get','passwall.@global[0].enabled').stdout.strip()=='1'
+        end=time.monotonic()+22
         while time.monotonic()<end:
             assert monitor.poll() is None, monitor.communicate()
             try:state=json.loads((ROOT/'tmp/adzero-dns-handoff/status.json').read_text())
@@ -145,6 +161,10 @@ def main():
         result['same_tuple_correct_replacement_preserved']=True
         result['bind_dynamic']=True
         result['concurrent_tcp_worker']=True
+        result['first_disabled_later_enabled_skipped']=True
+        result['first_enabled_extra_empty_accepted']=True
+        result['passwall_configuration_unchanged']=(ROOT/'etc/config/passwall').read_text()==active_config
+        assert result['passwall_configuration_unchanged']
         result['fixture_packages']=[r for r in json.loads((BASE/'packages.json').read_text()) if not r['name'].startswith(('kernel-','kmod-'))]
         (BASE/'handoff-proof.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))
     finally:

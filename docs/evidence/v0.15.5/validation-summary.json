@@ -1,0 +1,15 @@
+{
+  "version": "0.15.5",
+  "source_sha256": "ac7586eb18bb30194978a5503525b0a36b7fe9c2bf5bc9ae090486c70ba98dfe",
+  "view_sha256": "763014dce4f98ef3d0c5aed608f294f4280b95093904a3649324cb452093400b",
+  "native_tests": 434,
+  "ui_assertions": 253,
+  "rpc_checks": 61,
+  "native_luci_poll_versions": 2,
+  "sdk_builds": 3,
+  "payload_files": 42,
+  "delivery_cases": 6,
+  "router": "not_connected",
+  "runtime_dependencies_added": [],
+  "scope": "native first-global semantics and detailed skip reasons; real kernel handoff with extra sections, nonroot dnsmasq and TCP worker; inventory and LAN ubus fixtures; latest simultaneous user CLI/ucode reads agree first enabled=0, so current handoff must remain skipped"
+}

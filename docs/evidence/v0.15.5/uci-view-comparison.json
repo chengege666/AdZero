@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "case": "base",
+      "cli": "1",
+      "ucode": {
+        "first": "1",
+        "rows": [
+          {
+            "enabled": "1",
+            "dns_redirect": "1"
+          },
+          {
+            "enabled": null,
+            "dns_redirect": null
+          }
+        ]
+      }
+    },
+    {
+      "case": "override",
+      "cli": "0",
+      "ucode": {
+        "first": "0",
+        "rows": [
+          {
+            "enabled": "0",
+            "dns_redirect": "1"
+          },
+          {
+            "enabled": null,
+            "dns_redirect": null
+          }
+        ]
+      }
+    },
+    {
+      "case": "delta",
+      "cli": "0",
+      "ucode": {
+        "first": "0",
+        "rows": [
+          {
+            "enabled": "0",
+            "dns_redirect": "1"
+          },
+          {
+            "enabled": null,
+            "dns_redirect": null
+          }
+        ]
+      }
+    }
+  ],
+  "scope": "official OpenWrt 25.12.5 CLI and ucode with explicit private config/delta/override directories; no router access"
+}

@@ -435,6 +435,20 @@ return view.extend({
 		if(c.matched_positive>0)return el('p',{'class':'az-inline-warning'},_('当前接入期间，有 ')+number(c.matched_positive)+_(' 条命中规则的查询仍返回了 IP 地址。请用“效果检测”核对实际过滤；DNS 查询量增加不等于拦截量增加。'));
 		var handoff=(this.currentStatus||{}).dns_handoff||{};
 		if(handoff.reason==='conntrack_missing')return el('p',{'class':'az-inline-warning'},_('缺少 conntrack，旧 DNS 会话暂不能自动切换；请补齐安装依赖。过滤与统计可继续工作。'));
+		if(o.connection&&o.connection.plugin==='passwall'){
+			var skipped={
+				passwall_disabled:_('旧 DNS 会话检查读到 PassWall 尚未启用，暂未处理旧连接；请重新检测当前接入。'),
+				dns_redirect_disabled:_('PassWall 未启用默认 DNS 重定向，已跳过旧 DNS 会话自动切换。'),
+				passwall_unconfigured:_('未读到 PassWall 默认配置，暂未处理旧 DNS 会话。'),
+				config_unavailable:_('无法读取旧 DNS 会话检查所需配置，暂未处理旧连接。'),
+				acl_unsupported:_('PassWall 已启用自定义访问控制，已跳过默认 DNS 会话自动切换。'),
+				protection_disabled:_('保护开关已关闭，旧 DNS 会话检查已暂停。'),
+				backend_disabled:_('广告规则后端已关闭，旧 DNS 会话检查已暂停。'),
+				not_managed:_('当前后端未由 AdZero 管理，已跳过旧 DNS 会话处理。'),
+				paused:_('保护处于临时暂停状态，旧 DNS 会话检查已暂停。')
+			};
+			if(skipped[handoff.reason])return el('p',{'class':'az-live-caption'},skipped[handoff.reason]);
+		}
 		if(handoff.reason==='unsupported_context')return el('p',{'class':'az-live-caption'},_('当前 DNS 方式或访问控制不支持旧会话自动切换，已跳过处理。'));
 		if(handoff.state==='ready'&&handoff.repaired>0)return el('p',{'class':'az-live-caption'},_('已切换旧 UDP DNS 会话：')+number(handoff.repaired)+_(' 条。电脑已缓存的旧解析需等待过期；这不代表网站连接已验证。'));
 		return el('p',{'class':'az-live-caption'},_('收到新的拦截应答才会增加计数；没有广告查询或设备直接使用缓存时，数字保持不变。'));

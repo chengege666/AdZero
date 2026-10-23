@@ -1,5 +1,11 @@
 # 切换代理
 
+v0.15.5 修复交接检查对 PassWall 全局段的误判：与原生插件的 `@global[0]` 保持一致，只读取第一段；后面有空的全局段时不再整轮跳过，也不会选用后面另一个启用段来绕过第一段的关闭设置。不会删除、保存或提交用户的 PassWall 配置。
+
+`dns-handoff status` 的跳过原因现在分别显示：`protection_disabled`（保护关闭）、`backend_disabled`（后端关闭）、`not_managed`（非 AdZero 管理）、`paused`（临时暂停）、`passwall_unconfigured`（没有默认全局段）、`passwall_disabled`（第一段未启用）、`dns_redirect_disabled`（默认 DNS 接管未启用）、`acl_unsupported`（启用了自定义 ACL）和 `config_unavailable`（配置读取失败）。`unsupported_context` 仍表示原生进程、监听或规则不满足处理条件。首页已接入 PassWall 时会说明对应原因；其他代理正常运行时，不把 PassWall 关闭当作故障。
+
+如果命令行与交接检查读到不同的开关值，请保持当前代理不切换，对照同一时刻的输出。隔离环境的基础配置、增量修改与运行覆盖配置对照一致，不能据此替真实设备确定差异原因。不要为排查而删除配置段、清理增量或强制提交设置。
+
 v0.15.4 增加独立的 DNS 会话交接检查。用户提供的现场证据显示：旧 UDP 源端口仍沿用切换前的 NAT 绑定，走原始系统 DNS；新源端口已走 PassWall。仅刷新页面不能修复这个路径问题。
 
 保护开启时，每五秒检查 PassWall 默认 DNS 进程、UDP/TCP 监听和原生 DNS 重定向规则。入口连续两次稳定，且确认唯一活动代理为 PassWall 后，只移除 LAN 客户端发往路由器 53 端口、回复端口仍与当前入口不同的旧 IPv4 UDP DNS 绑定。下一次查询会重新进入当前规则，无需关闭原客户端 UDP 套接字。正常 DNS、外网 DNS、非默认连接区域和其他业务连接均不清理，不改防火墙规则。

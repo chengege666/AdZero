@@ -59,17 +59,26 @@ function publish(state,reason){
 }
 function gate(){
 	let uci=cursor(root+'/etc/config');
-	if(uci.get('adzero','main','enabled')!='1'||uci.get('adblock-fast','config','enabled')!='1'||
-		fs.lstat(root+'/etc/adzero/managed')?.type!='file'||fs.stat(root+'/etc/adzero/pause.json'))return false;
-	let count=0,enabled=false,acl=false;
-	uci.foreach('passwall','global',s=>{count++;enabled=s.enabled=='1'&&s.dns_redirect=='1';});
+	if(!uci.load('adzero')||!uci.load('adblock-fast'))return 'config_unavailable';
+	if(uci.get('adzero','main','enabled')!='1')return 'protection_disabled';
+	if(uci.get('adblock-fast','config','enabled')!='1')return 'backend_disabled';
+	if(fs.lstat(root+'/etc/adzero/managed')?.type!='file')return 'not_managed';
+	if(fs.stat(root+'/etc/adzero/pause.json'))return 'paused';
+	if(!uci.load('passwall'))return 'config_unavailable';
+	let first=null,acl=false;
+	// Native PassWall reads @global[0]. Additional sections must neither
+	// overwrite that selection nor make an otherwise valid default inactive.
+	uci.foreach('passwall','global',s=>{first??=s;});
+	if(!first)return 'passwall_unconfigured';
+	if(first.enabled!='1')return 'passwall_disabled';
+	if(first.dns_redirect!='1')return 'dns_redirect_disabled';
 	uci.foreach('passwall','acl_rule',s=>{if(s.enabled=='1')acl=true;});
 	// Unknown section variants are not accepted as an empty ACL inventory.
 	uci.foreach('passwall','acl_rules',s=>{if(s.enabled=='1')acl=true;});
-	return count==1&&enabled&&!acl;
+	return acl?'acl_unsupported':null;
 }
 function context(){
-	if(!gate())return null;
+	if(gate()!=null)return null;
 	let raw=read(root+'/tmp/etc/passwall/acl/default/dnsmasq.conf',1048576),ports=[];
 	for(let line in split(raw??'','\n')){let m=match(line,/^port=([0-9]+)$/);if(m)push(ports,int(m[1]));}
 	if(length(ports)!=1||ports[0]<1024||ports[0]>65535)return null;
@@ -122,7 +131,7 @@ function sole_passwall(){
 function key(c){return sprintf('%J',c);}
 function tick(){
 	let current=context();
-	if(!current){previous=null;publish('skipped',gate()?'unsupported_context':'inactive');return;}
+	if(!current){previous=null;publish('skipped',gate()??'unsupported_context');return;}
 	let conntrack=binary('conntrack');if(!conntrack){publish('unavailable','conntrack_missing');return;}
 	if(previous!=key(current)){previous=key(current);publish('waiting','stabilizing');return;}
 	let argv=[conntrack,'-L','-f','ipv4','-p','udp','--orig-dst',current.lan.address,'--dport','53','-o','extended,id'];
@@ -134,7 +143,7 @@ function tick(){
 	for(let c in slice(candidates,0,16)){
 		// Native restarts, rule replacement, disable/pause and LAN changes must
 		// stop the batch. Exact reply filters protect a newly correct tuple.
-		if(key(context())!=key(current)||!gate()){previous=null;publish('waiting','context_changed');return;}
+		if(key(context())!=key(current)||gate()!=null){previous=null;publish('waiting','context_changed');return;}
 		if(command([conntrack,...lib.deletion(c)],4096)==null){publish('waiting','retry');return;}
 		repaired++;last_repair=time();
 	}

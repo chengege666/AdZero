@@ -1,0 +1,14 @@
+{
+  "firmware_declared": "openwrt",
+  "release_declared": "24.10.8",
+  "target_declared": "x86/64",
+  "target_observed": "x86/64",
+  "package_arch_observed": "x86_64",
+  "package_format": "ipk",
+  "sdk_archive_sha256_supplied": "ac4a0405d2eea821b06f93c14ba13ffa90ad0457648903df7dde02570027ab21",
+  "source_sha256": "ac7586eb18bb30194978a5503525b0a36b7fe9c2bf5bc9ae090486c70ba98dfe",
+  "package": "luci-app-adzero_0.15.5-r1_all.ipk",
+  "sha256": "afa3f2ac41202f4121563a977b4815cc5b6522948263c2fac7bca10aef515e52",
+  "sdk_build": "passed",
+  "device_acceptance": "not_run"
+}
