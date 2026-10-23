@@ -75,6 +75,19 @@ class DNSSettingsTest(unittest.TestCase):
         self.assertFalse((self.root/'backend-called').exists())
         self.assertFalse((self.root/'etc/adzero/sources-pending.json').exists())
 
+    def test_passwall_dns_edit_uses_one_reload_and_preserves_engine(self):
+        count=routing.RoutingControllerTest.passwall(self);f=self.fixture
+        f.ctl('enable');f.ctl('routing-on')
+        before=len(count.read_text().splitlines())
+        starts=(self.root/'start-events').read_bytes()
+        f.ctl('settings-apply',str(self.plan()))
+        self.assertEqual(len(count.read_text().splitlines()),before+1)
+        self.assertEqual((self.root/'start-events').read_bytes(),starts)
+        config=(self.root/'etc/config/passwall').read_text()
+        self.assertIn("dns_shunt 'chinadns-ng'",config)
+        self.assertIn("direct_dns '119.29.29.29:53'",config)
+        self.assertIn("remote_dns '8.8.8.8:53'",config)
+
     def test_dns_edit_with_split_off_saves_without_reloading_proxy(self):
         f=self.fixture;p=self.nailink();f.ctl('enable');before=p.read_bytes()
         f.ctl('settings-apply',str(self.plan()))

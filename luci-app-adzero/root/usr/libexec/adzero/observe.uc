@@ -68,7 +68,7 @@ function refresh(){
 	let context=adapter_context();
 	result.connection={plugin:context.present?context.plugin??null:'none',stage:context.present?context.stage??'unknown':'inactive',domains:context.domains??null,routing_mode:context.routing_mode??'inactive',confirmed:context.present&&!context.reason};
 	if(native_runtime[context.plugin]){
-		result.connection.runtime=context.runtime_supported?native_runtime[context.plugin](context.runtime_samples):{state:'unknown',reason:'runtime_unavailable'};
+		result.connection.runtime=context.runtime_supported?native_runtime[context.plugin](context.runtime_samples,context.dns_engine):{state:'unknown',reason:'runtime_unavailable'};
 		result.connection.runtime_retry_exhausted=context.runtime_retry_exhausted;
 		result.connection.confirmed&&=result.connection.runtime.state=='ready';
 		signature+='|'+result.connection.runtime.state+'|'+result.connection.runtime.reason;

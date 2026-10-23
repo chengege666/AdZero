@@ -541,5 +541,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   app.observation.connection={plugin:'nailink'};
   app.currentStatus.dns_handoff={state:'skipped',reason:'passwall_disabled'};
   check(!text(app.renderObservationHealth()).includes('PassWall'),'inactive PassWall is not an error for another active proxy');
+  app.observation.connection={plugin:'passwall',runtime:{state:'degraded',reason:'dns_sigchld_blocked'}};
+  check(text(app.renderObservationHealth()).includes('子进程回收信号被阻塞'),'blocked child reaping is separate from loaded rule files');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

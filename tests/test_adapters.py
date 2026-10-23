@@ -70,7 +70,7 @@ class AdapterTransactionTest(unittest.TestCase):
         self.write("etc/config/adblock-fast", "config adblock-fast 'config'\n option dns 'dnsmasq.servers'\n")
         self.write("var/run/adblock-fast/dnsmasq.servers", "server=/ads.example/\nserver=/track.example/\n")
         self.inventory = self.root / "inventory.json"
-        self.env = {**os.environ, "ADZERO_ADAPTER_ROOT": str(self.root), "ADZERO_ADAPTER_INVENTORY": str(self.inventory)}
+        self.env = {**os.environ, "ADZERO_ADAPTER_ROOT": str(self.root), "ADZERO_ADAPTER_INVENTORY": str(self.inventory), "ADZERO_SERVICE_TIMEOUT": shutil.which('timeout') or '/usr/bin/timeout'}
         self.select("passwall")
 
     def write(self, path, content):

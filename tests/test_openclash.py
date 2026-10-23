@@ -25,6 +25,7 @@ class OpenClashTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.env = {**os.environ, 'ADZERO_ADAPTER_ROOT': str(self.root),
+                    'ADZERO_SERVICE_TIMEOUT': shutil.which('timeout') or '',
                     'ADZERO_ADAPTER_INVENTORY': str(self.root/'inventory.json')}
         self.write('inventory.json', json.dumps({'plugins': [{'id':'openclash','installed':True,'enabled':True,'runtime':'running','active':True}]}))
         self.write('etc/config/adblock-fast', "config adblock-fast 'config'\n option dns 'dnsmasq.servers'\n")

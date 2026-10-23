@@ -160,7 +160,7 @@ def build_bytes() -> tuple[bytes, str]:
         "Architecture: all\n"
         "Section: luci\n"
         "Priority: optional\n"
-        "Depends: luci-base, adblock-fast, curl, rpcd-mod-file, rpcd-mod-ucode, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus, ucode-mod-uloop, tcpdump-mini, conntrack\n"
+        "Depends: luci-base, adblock-fast, curl, rpcd-mod-file, rpcd-mod-ucode, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus, ucode-mod-uloop, tcpdump-mini, conntrack, coreutils-timeout\n"
         "Maintainer: AdZero project\n"
         "Description: One-click safe DNS ad blocking on OpenWrt LuCI\n"
     ).encode("utf-8")

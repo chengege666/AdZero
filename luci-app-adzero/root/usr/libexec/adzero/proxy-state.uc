@@ -19,21 +19,50 @@ export function dns_runtime(root,plugin,reader) {
 	reader??=fs.readfile;
 	let cached_key=null,cached=null;
 	function identity(path){let s=fs.stat(path);return join('|',[path,s?.inode??0,s?.mtime??0,s?.ctime??0,s?.size??0]);}
-	return function(samples){
+	return function(samples,engine){
+		engine??='dnsmasq';
 		if(!length(samples??[])||fs.stat(root+'/proc')?.type!='directory')return {state:'unknown',reason:'runtime_unavailable'};
-		let conf=plugin=='passwall'?'/tmp/etc/passwall/acl/default/dnsmasq.conf':null,pid=null;
+		let conf=plugin=='passwall'?'/tmp/etc/passwall/acl/default/dnsmasq.conf':null,pid=null,processes={};
 		for(let entry in fs.glob(root+'/proc/[0-9]*/comm')??[]){
 			if(index(trim(fs.readfile(entry)??''),'dnsmasq')!=0)continue;
 			let args=split(fs.readfile(fs.dirname(entry)+'/cmdline',8192)??'','\x00'),at=index(args,'-C');
 			if(at<0)continue;
 			if(plugin=='passwall'?args[0]=='/tmp/etc/passwall/bin/dnsmasq_default'&&args[at+1]==conf:
 				match(args[0]??'',/\/dnsmasq$/)&&match(args[at+1]??'',/^\/(var|tmp)\/etc\/dnsmasq.conf[.][a-zA-Z0-9_]+$/)){
-				conf=args[at+1];pid=fs.basename(fs.dirname(entry));break;
+				conf=args[at+1];let id=fs.basename(fs.dirname(entry));
+				let stat=fs.readfile(root+'/proc/'+id+'/stat',8192)??'',fields=split(substr(stat,index(stat,')')+2),' ');
+				processes[id]={parent:fields[1]};
 			}
 		}
+		let parents=filter(keys(processes),id=>!processes[processes[id].parent]);
+		if(length(parents)==1)pid=parents[0];
 		if(!pid)return {state:'missing',reason:'dns_process_missing'};
+		let status=fs.readfile(root+'/proc/'+pid+'/status',16384)??'',mask=match(status,/(^|\n)SigBlk:[\t ]*([a-fA-F0-9]+)(\n|$)/);
+		if(mask&&(int(substr(mask[2],-8),16)&0x10000))return {state:'degraded',reason:'dns_sigchld_blocked'};
 		let path=root+conf,raw=fs.readfile(path,1048577);
 		if(raw==null||length(raw)>1048576)return {state:'missing',reason:'dns_config_missing'};
+		if(plugin=='passwall'&&engine=='chinadns-ng'){
+			let native='/tmp/etc/passwall/acl/default/chinadns_ng.conf',child=null;
+			for(let entry in fs.glob(root+'/proc/[0-9]*/cmdline')??[]){
+				let args=split(fs.readfile(entry,8192)??'','\x00'),at=index(args,'-C');
+				if(args[0]=='/tmp/etc/passwall/bin/chinadns-ng'&&at>=0&&args[at+1]==native){child=fs.basename(fs.dirname(entry));break;}
+			}
+			if(!child)return {state:'missing',reason:'chinadns_process_missing'};
+			let data=fs.readfile(root+native,1048577)??'',port=match(data,/(^|\n)bind-port[\t ]+([0-9]+)(\n|$)/);
+			if(length(data)>1048576||!port||index('\n'+raw+'\n','\nserver=127.0.0.1#'+port[2]+'\n')<0)return {state:'missing',reason:'chinadns_not_included'};
+			let file='/tmp/etc/passwall_tmp/user_rules/block_host',included=false,in_null=false;
+			for(let line in split(data,'\n')){
+				line=trim(line);if(substr(line,0,6)=='group ')in_null=line=='group null';
+				if(in_null&&line=='group-dnl '+file)included=true;
+			}
+			if(!included)return {state:'missing',reason:'rules_not_included'};
+			let key=join('|',[engine,pid,child,identity(root+'/proc/'+pid+'/stat'),identity(root+'/proc/'+child+'/stat'),identity(path),identity(root+native),identity(root+file),join(',',samples)]);
+			if(key==cached_key)return cached;
+			let list=reader(root+file,33554433),found={};
+			if(list!=null&&length(list)<=33554432)for(let line in split(list,'\n'))if(index(samples,trim(line))>=0)found[trim(line)]=true;
+			cached_key=key;cached=length(keys(found))==length(samples)?{state:'ready',reason:null}:{state:'missing',reason:'rules_stale'};
+			return cached;
+		}
 		let folder='/tmp/etc/passwall/acl/default/dnsmasq.d',carrier=null;
 		if(plugin=='ssrplus'){
 			folder=null;

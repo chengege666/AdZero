@@ -1,0 +1,233 @@
+{
+  "old_timed_launch": {
+    "signals": {
+      "blocked_sigchld": true,
+      "zombies": 2
+    },
+    "tcp_results": [
+      {
+        "rcode": 0,
+        "answers": 1
+      },
+      {
+        "rcode": 0,
+        "answers": 1
+      },
+      "TimeoutError: timed out",
+      "TimeoutError: timed out",
+      "TimeoutError: timed out",
+      "TimeoutError: timed out"
+    ]
+  },
+  "production_cycles": [
+    {
+      "cycle": 1,
+      "health": {
+        "blocked_sigchld": false,
+        "zombies": 0
+      },
+      "repeat_apply_restarted": false,
+      "routing_toggles": [
+        {
+          "enabled": false,
+          "restarts": 1
+        },
+        {
+          "enabled": true,
+          "restarts": 1
+        }
+      ]
+    },
+    {
+      "cycle": 2,
+      "health": {
+        "blocked_sigchld": false,
+        "zombies": 0
+      },
+      "repeat_apply_restarted": false,
+      "routing_toggles": [
+        {
+          "enabled": false,
+          "restarts": 1
+        },
+        {
+          "enabled": true,
+          "restarts": 1
+        }
+      ]
+    },
+    {
+      "cycle": 3,
+      "health": {
+        "blocked_sigchld": false,
+        "zombies": 0
+      },
+      "repeat_apply_restarted": false,
+      "routing_toggles": [
+        {
+          "enabled": false,
+          "restarts": 1
+        },
+        {
+          "enabled": true,
+          "restarts": 1
+        }
+      ]
+    },
+    {
+      "cycle": 4,
+      "health": {
+        "blocked_sigchld": false,
+        "zombies": 0
+      },
+      "repeat_apply_restarted": false,
+      "routing_toggles": [
+        {
+          "enabled": false,
+          "restarts": 1
+        },
+        {
+          "enabled": true,
+          "restarts": 1
+        }
+      ]
+    },
+    {
+      "cycle": 5,
+      "health": {
+        "blocked_sigchld": false,
+        "zombies": 0
+      },
+      "repeat_apply_restarted": false,
+      "routing_toggles": [
+        {
+          "enabled": false,
+          "restarts": 1
+        },
+        {
+          "enabled": true,
+          "restarts": 1
+        }
+      ]
+    }
+  ],
+  "timeout_exit": 124,
+  "nft_check_exit": {
+    "psw_chn": 0,
+    "psw_gfw": 0,
+    "psw_shunt": 0
+  },
+  "nft_scope": "fresh namespace sets and development kernel; does not explain or repair router ENOENT",
+  "production_sha256": {
+    "adapter.uc": "e51348d80398fbcdf2ccdb1608a330475c103993214eba57a590bb09e64dd967",
+    "proxy-state.uc": "9e2cccec40df155d01671033fda6dd577cc60c195b771df40d569b9beb6e696d"
+  },
+  "native_sha256": {
+    "usr/sbin/dnsmasq": "80f3c8ba28681a32929e03e75c477b42493471e943290bc3b5a0e4ffe9c3df7a",
+    "usr/libexec/timeout-coreutils": "a36149db96651e3e547d94676c10ad5fee2cab692701d657a757bb380c87ef63",
+    "usr/bin/ucode": "3342c26d12d19f80de99c475a6a4f9eb268ff185f6b6de9a285b731ebb506fbd"
+  },
+  "chinadns": {
+    "url": "https://github.com/zfl9/chinadns-ng/releases/download/2025.08.09/chinadns-ng%40x86_64-linux-musl%40x86_64%40fast%2Blto",
+    "sha256": "d2410b8ef697aa6fc5c4860977f7693f3b9496f47e30d1e151511cda3a9a7729",
+    "bytes": 196728
+  },
+  "packages": [
+    {
+      "name": "coreutils-9.9-r2.apk",
+      "sha256": "fe275266eb3d917162986bad82d2d74bc3763db9f497a584b77215e40e53f158",
+      "bytes": 751
+    },
+    {
+      "name": "jansson4-2.14.1-r1.apk",
+      "sha256": "a660c034b76a67534b45957375d4dc3f499353075a2e75f4f928fd53549a51e7",
+      "bytes": 47351
+    },
+    {
+      "name": "libubox20260213-2026.06.19~7dd12784-r1.apk",
+      "sha256": "43f1fa4ac8c674a5f7cb4df793f9b92d1ed3d207fe012872cd2d0966aa55beb8",
+      "bytes": 29627
+    },
+    {
+      "name": "librt-1.2.5-r5.apk",
+      "sha256": "1e17d37bc3d5c4ffb60f6f8ef172d2d5a29612746356b11c87099d1a0b606a05",
+      "bytes": 646
+    },
+    {
+      "name": "dnsmasq-full-2.93-r1.apk",
+      "sha256": "1d1a95d56ddf521d7f83df7ce487201f9e22f932dd9fba75eb173c539054d92a",
+      "bytes": 214876
+    },
+    {
+      "name": "libnfnetlink0-1.0.2-r1.apk",
+      "sha256": "4520b43d6336a91cafe38e0753da44d204aa616cc7372c84439feb6478be6f3d",
+      "bytes": 11121
+    },
+    {
+      "name": "nftables-json-1.1.6-r2.apk",
+      "sha256": "dc4dcf3b1577e7929ae2a0e9c62a9ddda90e7a69d8bf23eb14fe7417d613bb3f",
+      "bytes": 328086
+    },
+    {
+      "name": "libubus20251202-2026.06.28~24864e78-r2.apk",
+      "sha256": "c4030c9462c6755b47f831581d1bab8a13fa2480afa4ed67badba2223b725fac",
+      "bytes": 12207
+    },
+    {
+      "name": "coreutils-timeout-9.9-r2.apk",
+      "sha256": "5a9d7cbff353150164ba6e61457b65c699c5f94a62c3eb48606a6b4c6abf7257",
+      "bytes": 18916
+    },
+    {
+      "name": "libnftnl11-1.3.1-r1.apk",
+      "sha256": "698ce141395be09db008ddcd2a520a2d07c5062b5c13371430a64fc87c0e7454",
+      "bytes": 63774
+    },
+    {
+      "name": "libgmp10-6.3.0-r2.apk",
+      "sha256": "424af0523d50608b8ba0ac9fb8411451f1ba73e4e3b8a76bcffdafb78feb6eae",
+      "bytes": 217807
+    },
+    {
+      "name": "libgcc1-14.3.0-r5.apk",
+      "sha256": "e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01",
+      "bytes": 53293
+    },
+    {
+      "name": "liblua5.1.5-5.1.5-r11.apk",
+      "sha256": "bb80d426ba5bf0907d16c486a459c867ffa100afb520f4076734d3bce2ea0764",
+      "bytes": 71867
+    },
+    {
+      "name": "libc-1.2.5-r5.apk",
+      "sha256": "5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197",
+      "bytes": 287101
+    },
+    {
+      "name": "libmnl0-1.0.5-r1.apk",
+      "sha256": "971eb9cffd0f85f0b2efb285cc1e2aeaef53c57d4f91fc0c8465e347592d5411",
+      "bytes": 7995
+    },
+    {
+      "name": "lua-5.1.5-r11.apk",
+      "sha256": "ac9dd8ba08a0eb70c36a871b896e17f89c3ac96433f7d744350deb751e01e848",
+      "bytes": 5151
+    },
+    {
+      "name": "libpthread-1.2.5-r5.apk",
+      "sha256": "244a991e57e85b64847b74d5595cf5b94cf7962e250e6905373963ef838745b2",
+      "bytes": 641
+    },
+    {
+      "name": "libnettle8-3.10.2-r1.apk",
+      "sha256": "cc08604a5839f5ec59094e0ad1492195d9a5a8b555bc941e55908b8014d40a39",
+      "bytes": 340675
+    },
+    {
+      "name": "libnetfilter-conntrack3-1.1.0-r1.apk",
+      "sha256": "d2e6866ff4230202319c4e99610b1e8790c55516e5ccf35a8faa59feb7106a2d",
+      "bytes": 39520
+    }
+  ],
+  "scope": "official OpenWrt 25.12.5 x86 userspace, native rc.common/dnsmasq-full 2.93, pinned upstream ChinaDNS-NG and PassWall generator; private net/mount namespaces; init body/node API/upstreams fixtures; no Windows/router/transparent proxy acceptance"
+}

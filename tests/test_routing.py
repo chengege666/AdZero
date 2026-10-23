@@ -136,6 +136,42 @@ class RoutingAdapterTest(unittest.TestCase):
         self.run_adapter('remove');restored=(self.root/'etc/config/passwall').read_text()
         self.assertIn("option chn_list '0'",restored);self.assertNotIn('use_default_dns',restored)
 
+    def test_passwall_keeps_native_chinadns_engine(self):
+        path=self.root/'etc/config/passwall'
+        path.write_text(path.read_text()+"\nconfig unused 'tail'\n")
+        text=path.read_text().replace(" option dns_mode 'xray'", " option dns_mode 'xray'\n option dns_shunt 'chinadns-ng'")
+        path.write_text(text)
+        self.write('usr/share/passwall/helper_chinadns_add.lua','-- group null block_host\n')
+        self.run_adapter('apply')
+        after=path.read_text()
+        self.assertIn("option dns_shunt 'chinadns-ng'",after)
+        self.assertNotIn('use_default_dns',after)
+        self.run_adapter('remove')
+        self.assertIn("option dns_shunt 'chinadns-ng'",path.read_text())
+
+    def test_passwall_restores_legacy_owned_engine(self):
+        self.run_adapter('apply')
+        path=self.root/'etc/config/passwall';state=self.root/'etc/adzero/adapter.json'
+        data=json.loads(state.read_text())
+        data['flags']=[f for f in data['flags'] if f['option']!='dns_shunt']
+        data['flags'].append(dict(config='passwall',section='main',option='dns_shunt',before='chinadns-ng',after='dnsmasq'))
+        # Model the actual pre-fix recovery journal and its effective setting.
+        text='\n'.join(line for line in path.read_text().splitlines() if 'dns_shunt' not in line)+'\n'
+        path.write_text(text.replace("option enabled '1'","option enabled '1'\n option dns_shunt 'dnsmasq'"))
+        state.write_text(json.dumps(data));self.write('usr/share/passwall/helper_chinadns_add.lua','-- group null block_host\n')
+        self.run_adapter('apply')
+        self.assertIn("option dns_shunt 'chinadns-ng'",path.read_text())
+        self.assertNotIn('use_default_dns',path.read_text())
+        self.run_adapter('remove')
+        self.assertIn("option dns_shunt 'chinadns-ng'",path.read_text())
+
+    def test_passwall_missing_deadline_helper_fails_before_writes(self):
+        self.env['ADZERO_SERVICE_TIMEOUT']=str(self.root/'missing-timeout')
+        before=(self.root/'etc/config/passwall').read_bytes()
+        self.run_adapter('apply',success=False)
+        self.assertEqual((self.root/'etc/config/passwall').read_bytes(),before)
+        self.assertFalse((self.root/'etc/passwall/rules/block_host').exists())
+
     def test_passwall_missing_country_data_is_not_success(self):
         (self.root/'usr/share/passwall/rules/chnroute').unlink()
         self.run_adapter('apply',success=False)
@@ -406,6 +442,38 @@ class RoutingControllerTest(unittest.TestCase):
         data=f.write('routing-fixture.json',json.dumps({'domain_raw':'server=/cn.example/114.114.114.114\n','cidr_raw':'223.5.5.0/24\n'}))
         f.env.update(ADZERO_ROUTING_DATA_FIXTURE=str(data),ADZERO_ROUTING_DATA_PROGRAM=str(ROOT/'luci-app-adzero/root/usr/libexec/adzero/routing-data'),ADZERO_UCODE=shlex.join(UCODE))
         return p
+
+    def passwall(self):
+        f=self.fixture;f.select('passwall')
+        f.write('etc/config/passwall',"config global 'main'\n option enabled '1'\n option dns_mode 'xray'\n option dns_shunt 'chinadns-ng'\n option node 'chosen'\nconfig nodes 'chosen'\n option type 'Xray'\n")
+        f.write('usr/share/passwall/app.sh','# direct_dns_mode USE_DEFAULT_DNS\n')
+        f.write('usr/share/passwall/helper_chinadns_add.lua','-- group null block_host\n')
+        for name in ['chnlist','chnroute']:f.write('usr/share/passwall/rules/'+name,'cn.example\n')
+        count=self.root/'passwall-restarts'
+        f.write('proc/901/comm','chinadns-ng\n')
+        f.write('proc/901/stat','901 (chinadns-ng) S 1 '+'0 '*19+'\n')
+        f.write('proc/901/cmdline','/tmp/etc/passwall/bin/chinadns-ng\0-C\0/tmp/etc/passwall/acl/default/chinadns_ng.conf\0')
+        generator=self.root/'dns-fixture.py'
+        generator.write_text(generator.read_text()+"\n(d/'dnsmasq.conf').write_text('port=11400\\nserver=127.0.0.1#15354\\n')\n(d/'chinadns_ng.conf').write_text('bind-port 15354\\ngroup null\\ngroup-dnl /tmp/etc/passwall_tmp/user_rules/block_host\\n')\np=r/'tmp/etc/passwall_tmp/user_rules';p.mkdir(parents=True,exist_ok=True);(p/'block_host').write_text('\\n'.join(names)+'\\n')\n")
+        f.write('etc/init.d/passwall','#!/bin/sh\necho restart >> '+shlex.quote(str(count))+'\nexec python3 '+shlex.quote(str(generator))+'\n',True)
+        return count
+
+    def test_passwall_routing_toggle_keeps_filter_and_restarts_once(self):
+        count=self.passwall();f=self.fixture;f.ctl('enable')
+        before=len(count.read_text().splitlines())
+        f.ctl('routing-on');self.assertEqual(len(count.read_text().splitlines()),before+1)
+        self.assertIn('ads.example',(self.root/'etc/passwall/rules/block_host').read_text())
+        f.ctl('routing-off');self.assertEqual(len(count.read_text().splitlines()),before+2)
+        self.assertIn("dns_shunt 'chinadns-ng'",(self.root/'etc/config/passwall').read_text())
+        self.assertEqual(f.status()['state'],'configured_unverified')
+
+    def test_passwall_failed_fast_change_restores_preference_and_rules(self):
+        count=self.passwall();f=self.fixture;f.ctl('enable')
+        f.write('etc/init.d/passwall','#!/bin/sh\nif [ ! -f '+shlex.quote(str(self.root/'failed-once'))+' ]; then touch '+shlex.quote(str(self.root/'failed-once'))+'; exit 1; fi\nexec python3 '+shlex.quote(str(self.root/'dns-fixture.py'))+'\n',True)
+        f.ctl('routing-on',ok=False)
+        self.assertFalse(f.status()['policy']['routing_enabled'])
+        self.assertIn('ads.example',(self.root/'etc/passwall/rules/block_host').read_text())
+        self.assertIn("dns_shunt 'chinadns-ng'",(self.root/'etc/config/passwall').read_text())
 
     def test_nailink_controller_switches_once_and_keeps_the_backend_running(self):
         p=self.nailink();f=self.fixture;f.ctl('enable');before=json.loads(p.read_text())

@@ -1,0 +1,16 @@
+{
+  "view_sha256": "fea633dba00f6b983bb89be8cda3f49883fb45379eecfe13df86a2e571be772f",
+  "cases": [
+    {
+      "sdk": "24.10.8",
+      "scheduler_sha256": "85faaa7550f2ebecf7c6a7cf36da004f859c360bfefd3aafb6bf70316d7e9342",
+      "ui_assertions": 254
+    },
+    {
+      "sdk": "25.12.5",
+      "scheduler_sha256": "aa6bc33e985d0ece6d65305c821c15f010105569864a6a30a0678660e14f919c",
+      "ui_assertions": 254
+    }
+  ],
+  "scope": "exact SDK LuCI Poll with production view and DOM/RPC fixtures; not router acceptance"
+}

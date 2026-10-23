@@ -1,3 +1,14 @@
+# v0.15.6 PassWall DNS 引擎、TCP 应答与重复重载
+
+- 核对用户交接包与 v0.15.5 源码，确认自动分流强制将 ChinaDNS-NG 改为 dnsmasq；改为保留原生引擎。旧值仍属于 AdZero 时按恢复记录恢复，后来的手动改动不覆盖；未知引擎不强制转换。
+- 在官方 OpenWrt 25.12.5 的 dnsmasq-full 2.93、ucode 和 rc.common 下复现：旧版带内部超时的 system 调用把 SIGCHLD 阻塞继承给 DNS，前两次 TCP 成功后留下两个僵尸，后四次超时。生产启动改用 coreutils-timeout 外部期限并设置服务 umask 022；五轮启用、规则更新、分流关开、关闭均无信号阻塞或僵尸，UDP/TCP、A/AAAA、冷 TCP 和连续超过工作进程上限的请求通过。
+- 使用固定版本 ChinaDNS-NG 与原生 PassWall 列表生成器；只失效 block_host 及其 _ok/_geo 缓存，不清其他列表。内容不变且运行正常不重启。已接入 PassWall 的 DNS/分流编辑保留广告接入，成功时一次重载，失败恢复原偏好与名单。服务主体、节点 API 和上游为明确测试替身，不是完整透明代理验收。
+- 运行核对区分 dnsmasq 直接屏蔽、ChinaDNS-NG null 组及信号异常；SIGCHLD 在规则缓存命中前检查，异常会退避重试并提示，不能只凭规则文件声称 DNS 正常。
+- 443 项官方 OpenWrt 原生 Python 回归、254 项 UI 断言、两版原生 LuCI Poll、61 项隔离 RPC、三个官方 SDK 构建、每包四十二文件和六项 LF/CRLF 安装交接通过。新增小型 coreutils-timeout 依赖；安装依赖失败发生在关闭旧保护之前。
+- 新命名空间中与报告同形的 nftset 检查通过，未复现现场 ENOENT，不据此重建用户防火墙。没有新增切换窗口 DNS 服务；原生重启仍有窗口，Windows 无需清缓存、原电脑 ChatGPT/Codex 和现场 nftset/权限仍待设备验收。本轮没有连接或修改用户路由器。
+
+源码 SHA-256：`25dd722e10cf82efef129e2e999bb638cb9bece3d79ba3961bc7647cbcafe79b`。证据见 [evidence/v0.15.6](evidence/v0.15.6/)，修复及验收见 [PassWall DNS](PASSWALL_DNS_FIX.md)。
+
 # v0.15.5 PassWall 默认配置判断与跳过原因
 
 - 现场输出有两个 PassWall 全局段。旧版要求恰好一段，并在遍历时反复覆盖开关，额外空段也会使交接检查返回 inactive；新增测试先在旧代码复现失败，再验证修复。

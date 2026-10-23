@@ -1,0 +1,17 @@
+{
+  "version": "0.15.6",
+  "source_sha256": "25dd722e10cf82efef129e2e999bb638cb9bece3d79ba3961bc7647cbcafe79b",
+  "view_sha256": "fea633dba00f6b983bb89be8cda3f49883fb45379eecfe13df86a2e571be772f",
+  "native_tests": 443,
+  "ui_assertions": 254,
+  "rpc_checks": 61,
+  "native_luci_poll_versions": 2,
+  "sdk_builds": 3,
+  "payload_files": 42,
+  "delivery_cases": 6,
+  "router": "not_connected",
+  "runtime_dependencies_added": [
+    "coreutils-timeout"
+  ],
+  "scope": "preserve native PassWall DNS engine, retire owned legacy engine override, clean SIGCHLD/service umask, invalidate block cache only, one successful reload for routing/DNS edits; native DNS tests with explicit service/node/upstream fixtures; router nftset ENOENT, transition DNS window and Windows no-flush acceptance remain unverified"
+}

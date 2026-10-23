@@ -30,7 +30,7 @@ class ControlsTest(unittest.TestCase):
         self.write('proc/uptime', '1000.0 100\n')
         native = ROOT / '.sdk/runtime-24.10.8'
         uci = self.write('bin/uci', '#!/bin/sh\nexec ' + shlex.join([str(native/'libc.so'), '--library-path', str(native), str(native/'uci'), '-c', str(self.root/'etc/config')]) + ' "$@"\n', True)
-        self.env = {**os.environ, 'ADZERO_UCI': str(uci), 'ADZERO_POLICY_ROOT': str(self.root), 'ADZERO_SOURCES_ROOT': str(self.root),
+        self.env = {**os.environ, 'ADZERO_SERVICE_TIMEOUT': shutil.which('timeout') or '/usr/bin/timeout', 'ADZERO_UCI': str(uci), 'ADZERO_POLICY_ROOT': str(self.root), 'ADZERO_SOURCES_ROOT': str(self.root),
                     'ADZERO_ADAPTER_ROOT': str(self.root), 'ADZERO_BACKEND_ROOT': str(self.root),
                     'ADZERO_STATE_DIR': str(self.root/'etc/adzero'), 'ADZERO_LOCK_DIR': str(self.root/'lock'),
                     'ADZERO_ADAPTER_INVENTORY': str(self.root/'inventory.json'),

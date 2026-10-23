@@ -115,6 +115,46 @@ class PassWallRuntimeTest(unittest.TestCase):
         self.run_adapter('apply')
         self.assertEqual(len(count.read_text().splitlines()), 1)
 
+    def test_sigchld_health_is_rechecked_even_when_rules_are_cached(self):
+        self.native();self.run_adapter('apply')
+        self.write('proc/100/status','SigBlk:\t0000000000010000\n')
+        value=json.loads(self.run_adapter('status').stdout)['runtime']
+        self.assertEqual(value,dict(state='degraded',reason='dns_sigchld_blocked'))
+        self.write('proc/100/status','SigBlk:\t0000000000000000\n')
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['runtime']['state'],'ready')
+
+    def test_chinadns_native_chain_requires_process_forward_and_block_group(self):
+        self.native()
+        self.write('etc/config/passwall',"config global\n option enabled '1'\n option dns_shunt 'chinadns-ng'\n")
+        conf=self.root/'tmp/etc/passwall/acl/default/dnsmasq.conf'
+        self.write('proc/101/comm','chinadns-ng\n')
+        self.write('proc/101/stat','101 (chinadns-ng) S 1 '+'0 '*19+'\n')
+        self.write('proc/101/cmdline','/tmp/etc/passwall/bin/chinadns-ng\0-C\0/tmp/etc/passwall/acl/default/chinadns_ng.conf\0')
+        self.write('tmp/etc/passwall/acl/default/chinadns_ng.conf','bind-port 15354\ngroup null\ngroup-dnl /tmp/etc/passwall_tmp/user_rules/block_host\n')
+        cache=self.write('tmp/etc/passwall_tmp/user_rules/block_host','ads.example\ntrack.example\n')
+        self.write('etc/init.d/passwall','#!/bin/sh\nprintf "port=11400\\nserver=127.0.0.1#15354\\n" > '+shlex.quote(str(conf))+'\nprintf "ads.example\\ntrack.example\\n" > '+shlex.quote(str(cache))+'\n')
+        self.run_adapter('apply')
+        value=json.loads(self.run_adapter('status').stdout)
+        self.assertEqual(value['runtime']['state'],'ready')
+        self.assertIn("dns_shunt 'chinadns-ng'",(self.root/'etc/config/passwall').read_text())
+        cache.write_text('old.example\n')
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['runtime']['reason'],'rules_stale')
+        (self.root/'proc/101/cmdline').unlink()
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['runtime']['reason'],'chinadns_process_missing')
+
+    def test_only_block_cache_is_invalidated_and_noop_keeps_it(self):
+        self.run_adapter('apply')
+        source=self.root/'var/run/adblock-fast/dnsmasq.servers'
+        cache=self.write('tmp/etc/passwall_tmp/user_rules/block_host','old.example\n')
+        marker=self.write('tmp/etc/passwall_tmp/user_rules/block_host_ok','')
+        other=self.write('tmp/etc/passwall_tmp/user_rules/direct_host','keep.example\n')
+        self.run_adapter('apply')
+        self.assertTrue(cache.exists())
+        source.write_text(source.read_text()+'server=/new.example/\n')
+        self.run_adapter('apply')
+        self.assertFalse(cache.exists());self.assertFalse(marker.exists())
+        self.assertEqual(other.read_text(),'keep.example\n')
+
 
 @unittest.skipUnless(UCODE, 'requires native OpenWrt ucode')
 class SSRPlusAdapterTest(unittest.TestCase):

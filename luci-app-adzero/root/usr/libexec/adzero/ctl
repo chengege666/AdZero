@@ -620,9 +620,9 @@ apply_settings() {
 		if [ "$active" = 0 ]; then applied=1
 		elif [ "$rules_changed$routing_changed" = 00 ]; then applied=1
 		elif [ "$routing_changed" = 0 ]; then backend_rebuild_if_changed && "$ADAPTER" apply && applied=1
-		elif [ "$routing_method" = nailink ]; then
-			if [ "$rules_changed" = 0 ]; then "$ADAPTER" reconfigure-nailink && applied=1
-			else backend_rebuild_if_changed && "$ADAPTER" reconfigure-nailink-rules && applied=1; fi
+		elif [ "$routing_method" = nailink ] || [ "$routing_method" = passwall ]; then
+			if [ "$rules_changed" = 0 ]; then "$ADAPTER" "reconfigure-$routing_method" && applied=1
+			else backend_rebuild_if_changed && "$ADAPTER" "reconfigure-$routing_method-rules" && applied=1; fi
 		else "$ADAPTER" remove && { [ "$rules_changed" = 0 ] || backend_rebuild_if_changed; } && "$ADAPTER" apply && applied=1
 		fi
 		if [ "$applied" = 1 ]; then "$SOURCES" finish || error '更改已应用，但完成记录未能清理。'; return 0; fi
@@ -632,9 +632,9 @@ apply_settings() {
 		"$SOURCES" rollback || error '批量恢复遇到并发修改，恢复记录已保留。'
 		restored=0
 		if [ "$active" = 0 ]; then restored=1
-		elif [ "$routing_changed" = 1 ] && [ "$routing_method" = nailink ]; then
-			if [ "$rules_changed" = 0 ]; then "$ADAPTER" reconfigure-nailink && restored=1
-			else backend_restart dl && "$ADAPTER" reconfigure-nailink-rules && restored=1; fi
+		elif [ "$routing_changed" = 1 ] && { [ "$routing_method" = nailink ] || [ "$routing_method" = passwall ]; }; then
+			if [ "$rules_changed" = 0 ]; then "$ADAPTER" "reconfigure-$routing_method" && restored=1
+			else backend_restart dl && "$ADAPTER" "reconfigure-$routing_method-rules" && restored=1; fi
 		else
 			if [ "$routing_changed" = 1 ]; then "$ADAPTER" remove || error '代理恢复未完成，批量记录已保留。'; fi
 			{ [ "$rules_changed" = 0 ] || backend_restart dl; } && "$ADAPTER" apply && restored=1
@@ -665,8 +665,8 @@ change_routing() {
 	[ "$(get_uci adzero.main.routing_enabled)" != "$1" ] || { printf 'routing preference already applied\n'; return 0; }
 	routing_method=$("$ADAPTER" routing-check "$1") || error '当前代理配置未通过分流预检，原接入保持不变。'
 	"$POLICY" routing-begin "$1" || error '未能准备自动分流切换。'
-	if [ "$routing_method" = nailink ]; then
-		if "$POLICY" routing-save && "$ADAPTER" reconfigure-nailink; then
+	if [ "$routing_method" = nailink ] || [ "$routing_method" = passwall ]; then
+		if "$POLICY" routing-save && "$ADAPTER" "reconfigure-$routing_method"; then
 			"$POLICY" routing-finish || error '分流已应用，但完成记录未能清理。'
 			printf 'routing preference synchronized with one proxy reload\n'; return 0
 		fi

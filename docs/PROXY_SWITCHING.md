@@ -1,5 +1,11 @@
 # 切换代理
 
+v0.15.6 保留 PassWall 原生 DNS 引擎，修正直接启动 DNS 进程时的 SIGCHLD 继承，并精确失效其屏蔽名单缓存。分流开关及 DNS 变更复用现有接入，成功时只重载一次。新增小型 `coreutils-timeout` 依赖：用外部 120 秒期限代替有问题的 ucode 内部超时，超时后另有五秒终止期限；PassWall 服务子进程使用标准 022 权限掩码，AdZero 私有文件仍保留原权限。缺工具时在应用前停止，安装器准备依赖失败时保留旧保护。
+
+运行状态会分别核对 dnsmasq 直接屏蔽配置、ChinaDNS-NG 上游进程和 null 屏蔽组。发现 DNS 父进程 SIGCHLD 阻塞会报告 `degraded/dns_sigchld_blocked`，不会仅凭规则文件存在当作正常。重载仍有有限重试与退避，不反复重启整个网络。
+
+这轮没有新增跨代理的过渡 DNS 服务器，也没有重建现场 nftset。保留原引擎和减少重复重载可减少不必要的切换，但原生服务重启仍有中断窗口；Windows 无需清缓存、完整 ChatGPT/Codex 使用和现场 nftset 错误必须分别实机验收。已有坏缓存不能由路由器远程撤销。
+
 v0.15.5 修复交接检查对 PassWall 全局段的误判：与原生插件的 `@global[0]` 保持一致，只读取第一段；后面有空的全局段时不再整轮跳过，也不会选用后面另一个启用段来绕过第一段的关闭设置。不会删除、保存或提交用户的 PassWall 配置。
 
 `dns-handoff status` 的跳过原因现在分别显示：`protection_disabled`（保护关闭）、`backend_disabled`（后端关闭）、`not_managed`（非 AdZero 管理）、`paused`（临时暂停）、`passwall_unconfigured`（没有默认全局段）、`passwall_disabled`（第一段未启用）、`dns_redirect_disabled`（默认 DNS 接管未启用）、`acl_unsupported`（启用了自定义 ACL）和 `config_unavailable`（配置读取失败）。`unsupported_context` 仍表示原生进程、监听或规则不满足处理条件。首页已接入 PassWall 时会说明对应原因；其他代理正常运行时，不把 PassWall 关闭当作故障。

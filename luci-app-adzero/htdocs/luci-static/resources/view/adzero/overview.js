@@ -431,6 +431,7 @@ return view.extend({
 		var o=this.observation||{},c=o.current||{};
 		if(!o.available||!o.active)return null;
 		if(o.connection&&o.connection.runtime_retry_exhausted)return el('p',{'class':'az-inline-warning'},_('自动同步多次未完成，已暂停重试。请检查代理后点击“重新加载”；仍可关闭保护或调整规则。'));
+		if(o.connection&&o.connection.runtime&&o.connection.runtime.reason==='dns_sigchld_blocked')return el('p',{'class':'az-inline-warning'},_('代理 DNS 进程的子进程回收信号被阻塞，TCP 查询可能异常。请使用修正版重新加载；广告规则已加载不代表网络链路正常。'));
 		if(o.connection&&o.connection.runtime&&o.connection.runtime.state==='missing')return el('p',{'class':'az-inline-warning'},_('代理 DNS 尚未加载当前屏蔽规则，后台将有限重试。也可点击“重新加载”；无需重新下载订阅。'));
 		if(c.matched_positive>0)return el('p',{'class':'az-inline-warning'},_('当前接入期间，有 ')+number(c.matched_positive)+_(' 条命中规则的查询仍返回了 IP 地址。请用“效果检测”核对实际过滤；DNS 查询量增加不等于拦截量增加。'));
 		var handoff=(this.currentStatus||{}).dns_handoff||{};

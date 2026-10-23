@@ -22,7 +22,7 @@ let journal = null;
 let changed = false;
 let transaction_previous = null;
 let transaction_saved = false;
-let clear_nailink_pending, nailink_completed, rules_signature;
+let clear_nailink_pending, nailink_completed, rules_signature, passwall_engine;
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 let openclash_error = 'hook_failed';
@@ -37,6 +37,19 @@ function service_command(plugin,operation){
 	if(match(header,/^#!\/bin\/sh[[:space:]]+\/etc\/rc.common([[:space:]]|$)/))
 		return ['/bin/sh',root+'/etc/rc.common',path,operation];
 	return ['/bin/sh',path,operation];
+}
+function timeout_helper(){
+	let test=root?getenv('ADZERO_SERVICE_TIMEOUT'):null;
+	for(let path in test?[test]:[root+'/usr/libexec/timeout-coreutils',root+'/usr/bin/timeout'])if(fs.access(path,'x'))return path;
+	die('缺少 coreutils-timeout，尚未重启 PassWall；请补齐安装依赖。');
+}
+function restart_service(plugin){
+	let argv=service_command(plugin,'restart');
+	if(plugin!='passwall')return system(argv,120000);
+	// Timed ucode system() in the supported firmware leaks a blocked SIGCHLD
+	// into directly spawned daemons. An external deadline leaves that mask
+	// untouched, while still bounding the native restart and its process group.
+	return system([timeout_helper(),'-k','5','120','/bin/sh','-c','umask 022; exec "$@"','adzero-service',...argv]);
 }
 function capture(argv) {
 	let proc = fs.popen(join(' ', map(argv, quote)) + ' 2>/dev/null', 'r');
@@ -93,8 +106,9 @@ function tracked(path, content, kind, mode) {
 }
 function same(a, b) { return sprintf('%J', a) == sprintf('%J', b); }
 function native_dns_state(){
-	return journal?.runtime_supported?native_runtime[journal.plugin](journal.runtime_samples):{state:'unknown',reason:'runtime_unavailable'};
+	return journal?.runtime_supported?native_runtime[journal.plugin](journal.runtime_samples,journal.dns_engine):{state:'unknown',reason:'runtime_unavailable'};
 }
+function native_needs_reload(value){return value?.state=='missing'||value?.reason=='dns_sigchld_blocked';}
 function record_dns_runtime(value){
 	if(!same(journal.runtime,value)){journal.runtime=value;save();}
 	if(value.state=='ready'&&(journal.runtime_retry_after||journal.runtime_retries)){
@@ -103,7 +117,7 @@ function record_dns_runtime(value){
 }
 function wait_native_dns(){
 	let value=native_dns_state();
-	for(let attempt=0;value.state=='missing'&&attempt<4;attempt++){
+	for(let attempt=0;native_needs_reload(value)&&attempt<4;attempt++){
 		progress.stage('confirming_proxy');sleep(1000);value=native_dns_state();
 	}
 	return value;
@@ -138,7 +152,7 @@ function setting(config, section, option, value) {
 	if (!entry) { entry = {config, section, option, before:current, after:value}; push(journal.flags, entry); save(); }
 	if (same(current, value)) return;
 	entry.previous_after=entry.after;entry.after=value;save();
-	if (!uci.set(config, section, option, value) || !uci.commit(config)) die('Cannot save adapter UCI setting');
+	if (!(value==null?uci.delete(config,section,option):uci.set(config, section, option, value)) || !uci.commit(config)) die('Cannot save adapter UCI setting');
 	uci.unload(config);uci.load(config); // libuci retains the cursor's committed delta history
 	changed = true;
 }
@@ -263,6 +277,17 @@ function active_plugin() {
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
 	if (!length(active)) return 'none';
 	if (index(['nailink','passwall','openclash','nikki','ssrplus'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
+	if(active[0].id=='passwall'){
+		timeout_helper();
+		if(split_enabled){
+			let engine=passwall_engine();
+			if(index(['dnsmasq','chinadns-ng'],engine)<0)die('当前 PassWall DNS 引擎不支持 AdZero 自动分流；请保留原生分流或关闭 AdZero 自动分流。');
+			if(engine=='chinadns-ng'){
+				let helper=fs.readfile(root+'/usr/share/passwall/helper_chinadns_add.lua',1048577)??'';
+				if(index(helper,'group null')<0||index(helper,'block_host')<0)die('当前 PassWall 缺少受支持的 ChinaDNS-NG 原生屏蔽接口。');
+			}
+		}
+	}
 	if(active[0].id=='openclash')openclash_paths();
 	if(active[0].id=='ssrplus'){
 		if(split_enabled&&action!='routing-check')die('SSR Plus+ 当前支持广告过滤；请先关闭 AdZero 自动分流，保留 SSR Plus+ 原生分流。');
@@ -390,6 +415,16 @@ function settle_nailink() {
 }
 function restart(plugin) {
 	progress.stage('restarting');
+	if(plugin=='passwall'){
+		// The native ChinaDNS-NG helper caches user lists independently of its
+		// daemon. Drop only this list's cache, including on restore/stopped core.
+		let dir=root+'/tmp/etc/passwall_tmp/user_rules';
+		if(fs.lstat(dir)?.type=='link')die('Unsafe PassWall rule cache directory');
+		for(let suffix in ['', '_ok', '_geo']){
+			let path=dir+'/block_host'+suffix,stat=fs.lstat(path);
+			if(stat&&(stat.type!='file'||!fs.unlink(path)))die('Cannot invalidate PassWall block-list cache');
+		}
+	}
 	if (plugin == 'none') {
 		if (journal?.split && system(service_command('dnsmasq','restart'),30000)!=0)die('国内 DNS 配置未能重新加载。');
 		return;
@@ -433,18 +468,18 @@ function restart(plugin) {
 		fs.unlink(root+'/tmp/openclash.change');
 		if(journal?.stage=='restarting')fs.unlink(state_dir+'/openclash-hook.json');
 	}
-	if (system(service_command(plugin,'restart'), 120000) != 0) die('Proxy restart failed');
+	if (restart_service(plugin) != 0) die('Proxy restart failed');
 	if(native_runtime[plugin]&&journal?.stage=='restarting'){
 		let value=wait_native_dns();
 		// Native PassWall returns zero when another start/restart holds its
 		// lock. Permit one retry, then keep an operable pending state instead
 		// of rolling back valid rules or restarting again every minute.
-		if(value.state=='missing'){
-			if(system(service_command(plugin,'restart'),120000)!=0)die('Proxy restart failed');
+		if(native_needs_reload(value)){
+			if(restart_service(plugin)!=0)die('Proxy restart failed');
 			value=wait_native_dns();
 		}
 		record_dns_runtime(value);
-		if(value.state=='missing'){journal.runtime_retry_after=time()+300;journal.runtime_retries=(journal.runtime_retries??0)+1;}
+		if(native_needs_reload(value)){journal.runtime_retry_after=time()+300;journal.runtime_retries=(journal.runtime_retries??0)+1;}
 	}
 	if (plugin == 'openclash' && journal?.stage == 'restarting') {
 		let ready = false;
@@ -575,6 +610,16 @@ function country_files(plugin) {
 	journal.country_sources=route.sources;save();
 	return {domains:prefix+'adzero-cn-domains.txt',ips:prefix+'adzero-cn-ips.txt'};
 }
+passwall_engine=function(){
+	let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
+	let current=uci.get('passwall',section,'dns_shunt');
+	let owned=filter(journal?.flags??[],f=>f.config=='passwall'&&f.section==section&&f.option=='dns_shunt')[0];
+	return (owned&&same(current,owned.after)?owned.before:current)??'dnsmasq';
+};
+function restore_passwall_option(section,option){
+	let owned=filter(journal?.flags??[],f=>f.config=='passwall'&&f.section==section&&f.option==option)[0];
+	if(owned&&same(uci.get('passwall',section,option),owned.after))setting('passwall',section,option,owned.before);
+}
 function apply_split(plugin) {
 	if(!split_enabled)return;
 	journal.split ??= {mode:plugin=='none'?'direct':'proxy',target:null,traffic_verified:false};
@@ -602,13 +647,19 @@ function apply_split(plugin) {
 	}
 	if(plugin=='passwall'){
 		let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
+		let engine=passwall_engine();
 		let app=fs.readfile(root+'/usr/share/passwall/app.sh')??'',node=uci.get('passwall',section,'node');
 		if(!node || !uci.get('passwall',node) || index(app,'direct_dns_mode')<0 || index(app,'USE_DEFAULT_DNS')<0)die('当前 PassWall 版本或默认节点不支持自动适配。');
 		for(let name in ['chnlist','chnroute'])if(!length(trim(fs.readfile(root+'/usr/share/passwall/rules/'+name)??'')))die('PassWall 国内分类库未就绪。');
 		let mode=uci.get('passwall',section,'dns_mode')??'tcp';
 		if(index(['xray','sing-box','dns2socks','tcp'],mode)<0)die('当前 PassWall DNS 模式需先确认代理传输能力。');
 		if(mode=='tcp'&&!fs.access(root+'/usr/bin/chinadns-ng','x'))die('当前 PassWall 缺少其原生 TCP DNS 转发组件。');
-		for(let entry in [['dns_shunt','dnsmasq'],['chn_list','direct'],['use_default_dns','remote'],['direct_dns_mode','udp'],['direct_dns',route.endpoint(dns_profile.domestic.active)],['remote_dns',route.endpoint(dns_profile.foreign.active)],['v2ray_dns_mode','tcp']])setting('passwall',section,entry[0],entry[1]);
+		// Retire the old forced engine only while its recorded value is still
+		// ours. A later manual engine choice remains untouched.
+		restore_passwall_option(section,'dns_shunt');
+		if(engine=='dnsmasq')setting('passwall',section,'use_default_dns','remote');
+		else restore_passwall_option(section,'use_default_dns');
+		for(let entry in [['chn_list','direct'],['direct_dns_mode','udp'],['direct_dns',route.endpoint(dns_profile.domestic.active)],['remote_dns',route.endpoint(dns_profile.foreign.active)],['v2ray_dns_mode','tcp']])setting('passwall',section,entry[0],entry[1]);
 		journal.split.target='current-node';return;
 	}
 	let files=country_files(plugin);
@@ -711,6 +762,11 @@ function routing_check(wanted) {
 	if(index(['0','1'],wanted)<0)die('自动分流目标无效。');
 	let plugin=active_plugin();
 	if(plugin=='ssrplus'&&wanted=='1')die('SSR Plus+ 当前仅支持广告过滤，请使用其原生分流设置。');
+	if(plugin=='passwall'&&journal?.plugin=='passwall'&&journal.stage=='configured_unverified'){
+		if(wanted=='1'&&index(['dnsmasq','chinadns-ng'],passwall_engine())<0)die('当前 PassWall DNS 引擎不支持 AdZero 自动分流，原配置保持不变。');
+		for(let flag in journal.flags)if(!same(uci.get(flag.config,flag.section,flag.option),flag.after))die('PassWall 设置已被外部修改，请先检查恢复记录。');
+		return 'passwall';
+	}
 	if(plugin!='nailink'||journal?.plugin!='nailink'||journal.stage!='configured_unverified')return 'full';
 	let dns=selected_dns();
 	if(dns.id!=journal.dns?.id||dns.dns.string!=journal.dns.after)die('NaiLink DNS profile changed externally');
@@ -762,7 +818,7 @@ rules_signature = function(plugin) {
 		if(!stat.size){dependencies[name]='empty';continue;}
 		let hash=rulecache.fingerprint(root+name);if(!hash)return null;dependencies[name]=hash;
 	}
-	return {schema:4,mode,sha256,dependencies};
+	return {schema:5,mode,sha256,dependencies};
 };
 function reconfigure_nailink(with_rules) {
 	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');
@@ -800,6 +856,31 @@ function reconfigure_nailink(with_rules) {
 	}
 }
 
+function reconfigure_passwall(with_rules){
+	if(routing_check(split_enabled?'1':'0')!='passwall')die('当前不是可直接更新的 PassWall 接入。');
+	let previous=sprintf('%J',journal);transaction_previous=previous;
+	try{
+		progress.stage('adapting');
+		if(with_rules){let list=rules();apply_plugin('passwall',list);journal.count=length(list);journal.runtime_samples=uniq([list[0],list[int(length(list)/2)],list[length(list)-1]]);}
+		if(split_enabled)apply_split('passwall');
+		else{
+			let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
+			for(let name in ['dns_shunt','chn_list','use_default_dns','direct_dns_mode','direct_dns','remote_dns','v2ray_dns_mode'])restore_passwall_option(section,name);
+			delete journal.split;
+		}
+		let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
+		journal.dns_engine=uci.get('passwall',section,'dns_shunt')??'dnsmasq';
+		journal.runtime_supported=index(['dnsmasq','chinadns-ng'],journal.dns_engine)>=0&&(uci.get('passwall',section,'dns_redirect')??'1')=='1';
+		journal.stage='restarting';save();restart('passwall');
+		journal.stage='configured_unverified';journal.rules_source=rules_signature('passwall');save();
+		fs.unlink(state_dir+'/adapter.previous.json');
+	}catch(e){
+		progress.failure('adapter');
+		try{rollback_update(previous);}catch(recovery){journal.stage='recovery_required';save();die('PassWall 更新恢复未完成，请保留恢复记录。');}
+		die(e);
+	}
+}
+
 function unchanged(plugin,signature) {
 	if(!journal||journal.stage!='configured_unverified'||journal.plugin!=plugin||!signature||!same(journal.rules_source,signature)||!!journal.split!=split_enabled)return false;
 	if(split_enabled&&index(['nailink','nikki','openclash'],plugin)>=0&&!country_cached(plugin))return false;
@@ -828,6 +909,8 @@ try {
 	else if(action=='routing-check')print(routing_check(shift(ARGV))+'\n');
 	else if(action=='reconfigure-nailink')reconfigure_nailink();
 	else if(action=='reconfigure-nailink-rules')reconfigure_nailink(true);
+	else if(action=='reconfigure-passwall')reconfigure_passwall();
+	else if(action=='reconfigure-passwall-rules')reconfigure_passwall(true);
 	else if (action == 'check') { print(active_plugin() + '\n'); }
 	else if (action == 'hook-openclash') {
 		let path = shift(ARGV);
@@ -862,7 +945,7 @@ try {
 		let runtime=native_runtime[plugin]&&journal?.plugin==plugin?native_dns_state():null;
 		if(unchanged(plugin,signature)&&!(native_runtime[plugin]&&!journal.runtime_samples)){
 			if(runtime)record_dns_runtime(runtime);
-			if(runtime?.state!='missing'||((journal.runtime_retry_after??0)>time()||(journal.runtime_retries??0)>=3)&&getenv('ADZERO_ADAPTER_REFRESH')!='1'){
+			if(!native_needs_reload(runtime)||((journal.runtime_retry_after??0)>time()||(journal.runtime_retries??0)>=3)&&getenv('ADZERO_ADAPTER_REFRESH')!='1'){
 				fs.unlink(state_dir+'/adapter.previous.json');exit(0);
 			}
 		}
@@ -880,13 +963,14 @@ try {
 			apply_split(plugin);
 			if(native_runtime[plugin]){
 				let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
-				journal.runtime_supported=plugin=='ssrplus'||(uci.get('passwall',section,'dns_shunt')??'dnsmasq')=='dnsmasq'&&(uci.get('passwall',section,'dns_redirect')??'1')=='1';
+				journal.dns_engine=plugin=='passwall'?(uci.get('passwall',section,'dns_shunt')??'dnsmasq'):null;
+				journal.runtime_supported=plugin=='ssrplus'||index(['dnsmasq','chinadns-ng'],journal.dns_engine)>=0&&(uci.get('passwall',section,'dns_redirect')??'1')=='1';
 				journal.runtime_samples=uniq([list[0],list[int(length(list)/2)],list[length(list)-1]]);
 				runtime=native_dns_state();record_dns_runtime(runtime);
 			}
 			let signature_after=rules_signature(plugin);
 			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;
-			if (!changed && journal.stage == 'configured_unverified' && runtime?.state!='missing') { journal.count=length(list);save();fs.unlink(state_dir + '/adapter.previous.json'); exit(0); }
+			if (!changed && journal.stage == 'configured_unverified' && !native_needs_reload(runtime)) { journal.count=length(list);save();fs.unlink(state_dir + '/adapter.previous.json'); exit(0); }
 			if(changed||getenv('ADZERO_ADAPTER_REFRESH')=='1')delete journal.runtime_retries;
 			journal.count = length(list); journal.stage = 'restarting'; journal.generation = time(); save();
 			restart(plugin);
