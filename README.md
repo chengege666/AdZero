@@ -16,6 +16,7 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 - **广告过滤**：内置常用规则库，也能添加自己的 HTTPS 规则订阅。
 - **批量应用**：先添加、编辑或开关多项规则，再一次应用，减少重复加载。
 - **拦截统计**：每秒自动刷新局域网可观察范围内的 DNS 拦截请求数与比例，和规则域名数量分别展示；可一键清零请求数和拦截数，从同一时刻重新计算比例。
+- **DNS 应答耗时**：分开显示正常、拦截应答的平均耗时，以及慢应答和 15 秒内未观察到应答的数量；只统计当前接入期间采集到的样本。
 - **最近拦截**：按需开启 5 分钟的内存记录，查看域名、次数并检查误杀。
 - **效果检测**：复制页面提供的查询命令，在电脑执行后自动核对拦截与正常解析。
 - **访问控制**：集中查询域名、查看最近拦截，搜索和批量管理自定义放行／拦截名单；改完统一应用。
@@ -27,21 +28,21 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.15.6 测试版**，保留 PassWall 原生 DNS 分流引擎，修复 DNS 启动信号继承与屏蔽名单缓存更新，减少分流切换的重复重载。保留批量应用、实时统计和独立「访问控制」。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.16.0 测试版**，新增 DNS 应答耗时、慢应答与未观察到应答统计，优化大规则库查询，并提示同系列规则重复选择。保留批量应用、实时统计和独立「访问控制」。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.6/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.6/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.15.6) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.16.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 

@@ -38,9 +38,9 @@ export function rules_match(rules,domain){
 	return false;
 };
 export function decoder(callback){
-	let buffer='',endian=null,link=null,flows={},clock=0;
+	let buffer='',endian=null,link=null,flows={},clock=0,nanoseconds=false,captured_us=null;
 	function word(s,p){if(endian)return ord(s,p)+ord(s,p+1)*256+ord(s,p+2)*65536+ord(s,p+3)*16777216;return be32(s,p);}
-	function message(raw,from,to,sport,dport,protocol){let d=dns(raw);if(d)callback({...d,from,to,sport,dport,protocol});}
+	function message(raw,from,to,sport,dport,protocol){let d=dns(raw);if(d)callback({...d,from,to,sport,dport,protocol,captured_us});}
 	function packet(raw){
 		try{
 			let p=0,proto;
@@ -84,9 +84,15 @@ export function decoder(callback){
 				if(length(buffer)<24)return;let magic=be32(buffer,0);
 				if(index([0xd4c3b2a1,0x4d3cb2a1],magic)>=0)endian=true;
 				else if(index([0xa1b2c3d4,0xa1b23c4d],magic)>=0)endian=false;else die('capture_format');
+				nanoseconds=index([0x4d3cb2a1,0xa1b23c4d],magic)>=0;
 				link=word(buffer,20);if(index([1,12,101,113,276],link)<0)die('capture_link');buffer=substr(buffer,24);
 			}
-			while(length(buffer)>=16){let size=word(buffer,8);if(size>262144)die('capture_size');if(length(buffer)<16+size)return;packet(substr(buffer,16,size));buffer=substr(buffer,16+size);}
+			while(length(buffer)>=16){let size=word(buffer,8);if(size>262144)die('capture_size');if(length(buffer)<16+size)return;
+				let fraction=word(buffer,4),scale=nanoseconds?1000000000:1000000;
+				// Packet capture time survives IPC/collector delays. Convert nano
+				// fractions to microseconds before combining, within exact integers.
+				captured_us=fraction<scale?word(buffer,0)*1000000+int(fraction/(nanoseconds?1000:1)):null;
+				packet(substr(buffer,16,size));buffer=substr(buffer,16+size);}
 		},
 		tick:function(now){clock=now;for(let key in keys(flows))if(now-flows[key].at>15)delete flows[key];}
 	};
@@ -105,12 +111,25 @@ export function tracker(onblocked){
 	let pending={},pending_count=0,seen={},seen_count=0,rules={},generation='',active=false,verify=null;
 	let counts={queries:0,blocked:0,answered:0,overflow:0,matched:0,matched_answered:0,matched_positive:0};
 	let current={};for(let k in keys(counts))current[k]=0;
+	function bucket(){return {samples:0,total_us:0,maximum_us:0,slow:0};}
+	let normal=bucket(),blocked=bucket(),unanswered={udp:0,tcp:0};
+	function clear_latency(){normal=bucket();blocked=bucket();unanswered={udp:0,tcp:0};}
+	function latency_sample(req,d){
+		if(type(req.captured_us)!='int'||type(d.captured_us)!='int'||req.captured_us<0||d.captured_us<0)return;
+		let elapsed=d.captured_us-req.captured_us;
+		if(elapsed<0||elapsed>15000000)return; // clock steps/late samples aren't latency evidence
+		let value=req.blocked&&d.blocked?blocked:!req.blocked&&d.positive?normal:null;
+		if(!value)return;
+		value.samples++;value.total_us+=elapsed;value.maximum_us=max(value.maximum_us,elapsed);if(elapsed>=500000)value.slow++;
+	}
+	function latency_value(value){return {samples:value.samples,average_ms:value.samples?value.total_us/(value.samples*1000.0):null,maximum_ms:value.samples?value.maximum_us/1000.0:null,slow:value.slow};}
 	function count(k){counts[k]++;current[k]++;}
 	function key(d,response){return join('|',[d.protocol,response?d.to:d.from,response?d.from:d.to,response?d.dport:d.sport,response?d.sport:d.dport,d.id,d.name,d.qtype]);}
 	return {
 		counts,current,
-		reset:function(){let keep={};for(let id in keys(pending))if(pending[id].test)keep[id]=pending[id];pending=keep;pending_count=length(keep);seen={};seen_count=0;for(let k in keys(counts)){counts[k]=0;current[k]=0;}},
-		configure:function(list,id,on){if(id!=generation){pending={};pending_count=0;seen={};seen_count=0;verify=null;for(let k in keys(current))current[k]=0;}rules=list;generation=id;active=on;},
+		reset:function(){let keep={};for(let id in keys(pending))if(pending[id].test)keep[id]=pending[id];pending=keep;pending_count=length(keep);seen={};seen_count=0;for(let k in keys(counts)){counts[k]=0;current[k]=0;}clear_latency();},
+		configure:function(list,id,on){if(id!=generation){pending={};pending_count=0;seen={};seen_count=0;verify=null;for(let k in keys(current))current[k]=0;clear_latency();}rules=list;generation=id;active=on;},
+		latency:function(){return {scope:'lan_observed',period:'current_connection',slow_ms:500,wait_seconds:15,normal:latency_value(normal),blocked:latency_value(blocked),unanswered:{...unanswered}};},
 		verification:function(value){if(type(value)=='object')verify=value;return verify;},
 		event:function(d,now){
 			if(!active)return;let id=key(d,d.response),testname=match(d.name,/^([a-f0-9]{32})\.adzero\.invalid$/);
@@ -118,14 +137,15 @@ export function tracker(onblocked){
 			if(d.response){
 				let req=pending[id];if(!req||now-req.at>15)return;delete pending[id];pending_count--;seen[id]=now;seen_count++;
 				if(req.test){if(verify&&req.generation==generation){if(d.name==verify.sample&&d.blocked)verify.blocked=true;if(d.name==verify.control&&d.positive)verify.normal=true;}return;}
+				latency_sample(req,d);
 				count('answered');if(req.blocked){count('matched_answered');if(d.positive)count('matched_positive');if(d.blocked){count('blocked');if(onblocked)onblocked(d,now);}}return;
 			}
 			if(pending[id]||seen[id]!=null&&now-seen[id]<15)return;
 			if(pending_count>=4096||seen_count>=32768){count('overflow');return;}
 			let test=verify&&verify.marker&&verify.client==d.from&&verify.server==d.to&&now<verify.deadline&&index([verify.sample,verify.control],d.name)>=0;
 			let blocked=rules_match(rules,d.name);
-			pending[id]={at:now,blocked,test:!!test,generation};pending_count++;if(!test){count('queries');if(blocked)count('matched');}
+			pending[id]={at:now,blocked,test:!!test,generation,captured_us:d.captured_us,protocol:d.protocol};pending_count++;if(!test){count('queries');if(blocked)count('matched');}
 		},
-		tick:function(now){for(let id in keys(pending))if(now-pending[id].at>15){delete pending[id];pending_count--;}for(let id in keys(seen))if(now-seen[id]>15){delete seen[id];seen_count--;}}
+		tick:function(now){for(let id in keys(pending))if(now-pending[id].at>15){let req=pending[id];if(!req.test&&index(['udp','tcp'],req.protocol)>=0)unanswered[req.protocol]++;delete pending[id];pending_count--;}for(let id in keys(seen))if(now-seen[id]>15){delete seen[id];seen_count--;}}
 	};
 };

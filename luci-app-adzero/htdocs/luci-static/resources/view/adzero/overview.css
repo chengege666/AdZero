@@ -13,6 +13,8 @@
    Reserve that overhang only in its actual shell, without moving host UI. */
 .main-right > header.bg-primary ~ #maincontent .az-root { padding-top: 2rem; }
 .az-root .az-app { max-width: 1360px; margin: 0 auto; padding: 20px 12px; background: transparent; border-radius: 0; }
+.az-root .az-latency-summary { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 8px 0 20px; color: var(--az-muted); font-size: 13px; }
+.az-root .az-latency-summary strong { color: var(--az-text); font-variant-numeric: tabular-nums; }
 .az-root h2, .az-root h3, .az-root p, .az-root ol, .az-root dl, .az-root dt, .az-root dd { margin: 0; padding: 0; color: inherit; }
 .az-root h2, .az-root h3 { width: auto; border: 0; background: none; box-shadow: none; font-weight: 650; line-height: 1.35; text-transform: none; }
 .az-root h2 { font-size: 25px; letter-spacing: -.7px; }

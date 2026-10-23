@@ -107,7 +107,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v='), 'local versioned CSS');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.16.0'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -543,5 +543,19 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!text(app.renderObservationHealth()).includes('PassWall'),'inactive PassWall is not an error for another active proxy');
   app.observation.connection={plugin:'passwall',runtime:{state:'degraded',reason:'dns_sigchld_blocked'}};
   check(text(app.renderObservationHealth()).includes('子进程回收信号被阻塞'),'blocked child reaping is separate from loaded rule files');
+  app.observation={available:true,active:true,latency:{scope:'lan_observed',normal:{samples:1,average_ms:3.42,slow:2},blocked:{samples:1,average_ms:0.21},unanswered:{udp:1,tcp:2}}};
+  check(text(app.renderLatency()).includes('3.4 ms')&&text(app.renderLatency()).includes('0.2 ms'),'ordinary and blocked response latency remain separate');
+  check(text(app.renderLatency()).includes('15 秒未观察到应答 3')&&text(app.renderLatency()).includes('慢应答（≥500 ms） 2'),'missing observations and slow replies use precise labels');
+  app.observation.latency.normal={samples:0,average_ms:0};
+  check(!text(app.renderLatency()).includes('正常应答 0.0 ms'),'missing samples never pretend to be zero latency');
+  app.observation.active=false;
+  check(app.renderLatency()===null,'inactive connection does not show current latency');
+  const adviceCatalog=[{url:'https://lists.example/light',family:'hagezi-multi'},{url:'https://lists.example/pro',family:'hagezi-multi'},{url:'https://lists.example/other'}];
+  const adviceItems=[{name:'Light',url:adviceCatalog[0].url,enabled:true},{name:'Pro',url:adviceCatalog[1].url,enabled:true}];
+  check(text(app.renderRuleAdvice(adviceItems,adviceCatalog)).includes('Light、Pro'),'overlapping family selections are explained');
+  adviceItems[0].enabled=false;
+  check(app.renderRuleAdvice(adviceItems,adviceCatalog)===null,'disabled lists cause no overlap warning');
+  adviceItems.push({name:'Other',url:adviceCatalog[2].url,enabled:true});
+  check(app.renderRuleAdvice(adviceItems,adviceCatalog)===null,'different rule purposes do not get a false overlap warning');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

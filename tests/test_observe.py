@@ -79,6 +79,63 @@ class ObserveTest(unittest.TestCase):
         for rcode in (0,3,5):
             self.assertTrue(self.decode(dns(response=True,rcode=rcode))['blocked'])
 
+    def test_capture_micro_and_nano_timestamps_both_endians(self):
+        frame=packet(dns())
+        for little in (False,True):
+            for nano in (False,True):
+                order='<' if little else '>'
+                magic=0xa1b23c4d if nano else 0xa1b2c3d4
+                raw=struct.pack(order+'IHHIIII',magic,2,4,0,0,262144,1)
+                fraction=123456789 if nano else 123456
+                raw+=struct.pack(order+'IIII',1792684800,fraction,len(frame),len(frame))+frame
+                self.assertEqual(self.packets(raw,chunk=7)[0]['captured_us'],1792684800123456)
+                invalid=struct.pack(order+'IHHIIII',magic,2,4,0,0,262144,1)
+                invalid+=struct.pack(order+'IIII',1,1000000000 if nano else 1000000,len(frame),len(frame))+frame
+                self.assertIsNone(self.packets(invalid)[0]['captured_us'])
+
+    def test_latency_uses_capture_time_not_collector_delay_and_separates_blocks(self):
+        result=self.run_code('tracker',rules=['ads.example'],events=[
+            {'at':1,'dns':self.event(domain='normal.example',captured_us=1000000)},
+            {'at':7,'dns':self.event(True,domain='normal.example',positive=True,blocked=False,captured_us=1003500)},
+            {'at':8,'dns':self.event(ident=43,captured_us=2000000)},
+            {'at':9,'dns':self.event(True,ident=43,captured_us=2000200)}])
+        self.assertEqual(result['latency']['normal'],{'samples':1,'average_ms':3.5,'maximum_ms':3.5,'slow':0})
+        self.assertEqual(result['latency']['blocked']['average_ms'],0.2)
+
+    def test_latency_ignores_missing_or_invalid_clock_samples(self):
+        for request,response in [(None,None),(1000000,999999),(-1,10),(0,15000001),('100','200')]:
+            result=self.track([self.event(captured_us=request),self.event(True,captured_us=response)])
+            self.assertEqual(result['counts']['blocked'],1)
+            self.assertEqual(result['latency']['blocked']['samples'],0)
+            self.assertIsNone(result['latency']['blocked']['average_ms'])
+
+    def test_unanswered_is_observation_not_fabricated_blocks_and_counts_once(self):
+        result=self.run_code('tracker',rules=['ads.example'],events=[
+            {'at':1,'dns':self.event()}, {'at':1.1,'dns':self.event()},
+            {'at':2,'dns':self.event(ident=43,protocol='tcp')}, {'at':18}, {'at':40}])
+        self.assertEqual(result['latency']['unanswered'],{'udp':1,'tcp':1})
+        self.assertEqual(result['counts']['blocked'],0)
+
+    def test_latency_resets_with_connection_and_counter_reset(self):
+        events=[{'at':1,'dns':self.event(captured_us=0)},{'at':2,'dns':self.event(True,captured_us=1000)}]
+        for change in [{'reset':True},{'configure':True,'generation':'new','active':True}]:
+            result=self.run_code('tracker',rules=['ads.example'],events=events+[change])
+            self.assertEqual(result['latency']['blocked']['samples'],0)
+            self.assertEqual(result['latency']['unanswered'],{'udp':0,'tcp':0})
+
+    def test_latency_slow_threshold_mean_duplicates_and_failed_response(self):
+        events=[]
+        for ident,elapsed in [(1,499999),(2,500000),(3,1000000)]:
+            events.extend([{'at':ident,'dns':self.event(domain='normal.example',ident=ident,captured_us=0)},
+                           {'at':ident+0.1,'dns':self.event(True,domain='normal.example',ident=ident,positive=True,blocked=False,captured_us=elapsed)}])
+        events.append(events[-1])
+        result=self.run_code('tracker',rules=['ads.example'],events=events)
+        self.assertEqual(result['latency']['normal']['samples'],3)
+        self.assertEqual(result['latency']['normal']['slow'],2)
+        self.assertAlmostEqual(result['latency']['normal']['average_ms'],666.6663333,places=4)
+        failed=self.track([self.event(captured_us=0),self.event(True,captured_us=1000,blocked=False,positive=False)])
+        self.assertEqual(failed['latency']['normal']['samples']+failed['latency']['blocked']['samples'],0)
+
     def test_timeout_servfail_truncated_and_positive_are_not_blocks(self):
         for data in (dns(),dns(response=True,rcode=2),dns(response=True,tc=True),dns(response=True,address='1.2.3.4')):
             self.assertFalse(self.decode(data)['blocked'])

@@ -26,7 +26,7 @@ const api = { exec: async (_program, args) => {
   throw Error('Only status uses file.exec');
 } };
 let sourceData={revision:'a'.repeat(64),items:[],catalog:[]},jobTick=0;
-let observerFixture={available:true,active:true,queries:8420,blocked:1154,answered:8403,verification:{state:'idle'}};
+let observerFixture={available:true,active:true,queries:8420,blocked:1154,answered:8403,verification:{state:'idle'},latency:{scope:'lan_observed',normal:{samples:600,average_ms:3.42,maximum_ms:615,slow:2},blocked:{samples:100,average_ms:0.21,maximum_ms:4,slow:0},unanswered:{udp:1,tcp:0}}};
 const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) => {
   await new Promise(r => setTimeout(r,700));
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};

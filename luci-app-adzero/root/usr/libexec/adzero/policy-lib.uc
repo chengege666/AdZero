@@ -38,11 +38,19 @@ export function controls(raw) {
 	for(let a in p.after.allowed)for(let b in p.after.blocked)if(covers(a,b)||covers(b,a))die('放行与拦截的域名范围重叠，请先移除冲突规则。');
 	return {before:p.before,after:p.after};
 };
-export function lookup(domain, rules, allowed, suffix) {
+export function lookup(domain, rules, allowed, suffix, ordered) {
 	domain = hostname(domain);
 	for (let item in allowed) if (covers(item, domain)) return {domain, match:'allowed', rule:item, scope:item};
 	let found = null;
-	for (let item in rules) if (item == domain || (suffix && covers(item, domain))) {
+	if(ordered){
+		// Processed-rule imports are sorted by adapter-lib.domains(). Search
+		// only the exact name and its actual ancestors, without another map.
+		for(let candidate=domain;index(candidate,'.')>=0;candidate=substr(candidate,index(candidate,'.')+1)){
+			let low=0,high=length(rules)-1;
+			while(low<=high){let mid=int((low+high)/2),value=rules[mid];if(value==candidate){found=candidate;break;}if(value<candidate)low=mid+1;else high=mid-1;}
+			if(!suffix)break;
+		}
+	}else for (let item in rules) if (item == domain || (suffix && covers(item, domain))) {
 		// Choose the outermost *actual* blocker. Never guess a registrable domain.
 		if (!found || length(item) < length(found)) found = item;
 	}

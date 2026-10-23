@@ -103,7 +103,7 @@ function tick(){
 		else verification={state:'waiting',remaining:int(test.deadline-now),marker:!!test.marker,blocked:!!test.blocked,normal:!!test.normal};
 	}
 	tracker.tick(now);
-	result={...result,...tracker.counts,active,updated:now,generation,sample,current:tracker.current,recent_token:state.recent_request(recording,generation,now)?recording.nonce:null,recent:recent.snapshot(now),verification:active?(verification??{state:'idle'}):{state:'idle'}};
+	result={...result,...tracker.counts,active,updated:now,generation,sample,current:tracker.current,latency:tracker.latency(),recent_token:state.recent_request(recording,generation,now)?recording.nonce:null,recent:recent.snapshot(now),verification:active?(verification??{state:'idle'}):{state:'idle'}};
 	state.atomic(dir+'/status.json',result);
 }
 try{

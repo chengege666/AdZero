@@ -365,6 +365,18 @@ return view.extend({
 				el('strong',{'class':'az-stat-value az-current-adapter',translate:'no'},operationActive(s)?_('同步中'):flags(s).enabled?active:_('未开启')),el('p',{},operationActive(s)?_('完成后自动更新接入'):flags(s).enabled?connectionHint:_('开启后自动识别'))])
 		]);
 	},
+	renderLatency:function(){
+		var o=this.observation||{},l=o.latency;
+		if(!o.available||!o.active||!l||l.scope!=='lan_observed')return null;
+		var normal=l.normal||{},blocked=l.blocked||{},unanswered=l.unanswered||{};
+		function duration(v){return typeof v==='number'&&isFinite(v)&&v>=0?v.toFixed(1)+' ms':'—';}
+		return el('div',{'class':'az-latency-summary',title:_('当前接入期间采集到的 DNS 请求至应答耗时，包含路由器缓存；不是上游纯耗时或缓存命中率。采集遗漏也可能导致未观察到应答。')},[
+			el('span',{},[_('正常应答 '),el('strong',{},duration(normal.samples>0?normal.average_ms:null))]),
+			el('span',{},[_('拦截应答 '),el('strong',{},duration(blocked.samples>0?blocked.average_ms:null))]),
+			el('span',{},_('慢应答（≥500 ms） ')+number(normal.slow||0)),
+			el('span',{},_('15 秒未观察到应答 ')+number((unanswered.udp||0)+(unanswered.tcp||0)))
+		]);
+	},
 	renderRecent:function(){
 		var self=this,o=self.observation||{},r=o.recent||{},enabled=r.enabled===true,items=r.items||[];
 		self.recentPaintKey=recentKey(self);
@@ -420,6 +432,7 @@ return view.extend({
 			var metrics=document.getElementById('az-live-metrics'),verification=document.getElementById('az-live-verification'),recent=document.getElementById('az-live-recent'),health=document.getElementById('az-live-health');
 			if(metrics)dom.content(metrics,[self.renderMetrics(self.currentStatus||{})]);
 			if(health){var healthContent=self.renderObservationHealth();dom.content(health,healthContent==null?[]:[healthContent]);}
+			var latency=document.getElementById('az-live-latency');if(latency){var latencyContent=self.renderLatency();dom.content(latency,latencyContent==null?[]:[latencyContent]);}
 			if(recent&&self.recentPaintKey!==recentKey(self)&&(!document.activeElement||!recent.contains(document.activeElement)||!((self.observation||{}).recent||{}).enabled))dom.content(recent,[self.renderRecent()]);
 			var expiry=document.getElementById('az-recent-expiry');if(expiry)dom.content(expiry,[_('剩余 ')+number(((self.observation||{}).recent||{}).remaining)+_(' 秒 · 最多 30 个域名')]);
 			// Preserve command selection while waiting, but always show the final
@@ -533,6 +546,7 @@ return view.extend({
 		nodes.push(el('div',{id:'az-stats-actions'},[self.renderStatsActions()]));
 		nodes.push(el('p',{id:'az-stats-notice','class':'az-live-caption',role:'status'},self.statsNotice||''));
 		nodes.push(el('div',{id:'az-live-health'},[self.renderObservationHealth()]));
+		nodes.push(el('div',{id:'az-live-latency'},[self.renderLatency()]));
 		nodes.push(el('div',{id:'az-live-verification'},[self.renderVerification()]));
 		var network=[],routingUnavailable=adapter.plugin==='ssrplus'||((((s.compatibility||{}).dns||{}).active_proxies||[]).join(',')==='ssrplus');
 		network.push(el('section', {'class':'az-card az-domain-card'},[
@@ -575,6 +589,11 @@ return view.extend({
 		}catch(e){self.notice={kind:'error',text:String(e.message||e)};self.paint();}
 		return Promise.resolve();
 	},
+	renderRuleAdvice:function(items,catalog){
+		var selected=items.filter(function(item){return item.enabled&&catalog.some(function(rule){return rule.family==='hagezi-multi'&&rule.url===item.url;});});
+		if(selected.length<2)return null;
+		return el('p',{'class':'az-inline-warning'},_('已同时选择 ')+selected.map(function(item){return item.name;}).join('、')+_('，同系列覆盖高度重叠。建议保留一项，再按需要补充其他用途的规则。'));
+	},
 	renderRules: function(s) {
 		var self=this,data=self.sourcesData,items=self.draft?self.draft.items:data ? data.items || [] : [],catalog=data ? data.catalog || [] : [];
 		var enabled=flags(s).enabled, editable=!!data && !operationActive(s) && !self.controlCount() && !self.sourcesError && !self.busy && !self.sourcesLoading && !s.stale && !data.pending && (enabled || s.state==='disabled' && !s.managed);
@@ -589,6 +608,7 @@ return view.extend({
 					el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},_('更新订阅')),
 					el('button',{id:'az-source-verify',type:'button','class':'az-button az-button-quiet',disabled:!editable||!items.some(function(i){return i.enabled;})||!!self.draftCount()?true:null,click:function(){return self.runSource('source_verify',[]);}},_('手动校验'))]) ]),
 			el('p',{'class':'az-source-footnote'},_('默认沿用上次校验结果；文件未变化时不重新完整解析。手动校验只检查本地快照，不下载、不重载。新文件保留基础格式检查。')),
+			self.renderRuleAdvice(items,catalog),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
 			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : operationActive(s) ? _('后台操作正在进行，完成后可继续调整规则。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : (s.adapter||{}).reload_pending ? _('正在确认上一次代理重载，本批规则已保留。请稍候重新检测，勿重复应用。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
@@ -869,7 +889,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.15.3' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.16.0' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		this.initialObservationRequest=this.refreshObservation();
 		if (status.cached_at) this.lastChecked=new Date(status.cached_at);

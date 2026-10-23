@@ -3,9 +3,9 @@ import { hostname } from './policy-lib.uc';
 import * as dns from './routing-lib.uc';
 
 export const catalog = [
-	{id:'hagezi-light',name:'HaGeZi Light',group:'综合过滤',format:'domains',description:'轻量广告与跟踪过滤；同系列通常选择一项即可。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt'},
-	{id:'hagezi-normal',name:'HaGeZi Normal',group:'综合过滤',format:'domains',description:'比 Light 覆盖更多域名，内存占用和误拦截概率也会增加。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/multi-onlydomains.txt'},
-	{id:'hagezi-pro',name:'HaGeZi Pro',group:'综合过滤',format:'domains',description:'更广的广告与跟踪覆盖；适合愿意管理放行名单的用户。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt'},
+	{id:'hagezi-light',family:'hagezi-multi',name:'HaGeZi Light',group:'综合过滤',format:'domains',description:'轻量广告与跟踪过滤；同系列通常选择一项即可。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt'},
+	{id:'hagezi-normal',family:'hagezi-multi',name:'HaGeZi Normal',group:'综合过滤',format:'domains',description:'比 Light 覆盖更多域名，内存占用和误拦截概率也会增加。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/multi-onlydomains.txt'},
+	{id:'hagezi-pro',family:'hagezi-multi',name:'HaGeZi Pro',group:'综合过滤',format:'domains',description:'更广的广告与跟踪覆盖；适合愿意管理放行名单的用户。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt'},
 	{id:'anti-ad',name:'anti-AD',group:'中文与通用',format:'domains',description:'面向中文使用场景的广告与隐私域名列表。',home:'https://github.com/privacy-protection-tools/anti-AD',url:'https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-domains.txt'},
 	{id:'adaway',name:'AdAway',group:'轻量过滤',format:'hosts',description:'移动广告及部分统计服务的 hosts 列表。',home:'https://github.com/AdAway/adaway.github.io',url:'https://raw.githubusercontent.com/AdAway/adaway.github.io/master/hosts.txt'}
 ];

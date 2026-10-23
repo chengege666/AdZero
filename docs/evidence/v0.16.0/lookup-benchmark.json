@@ -1,0 +1,33 @@
+{
+  "native": "official OpenWrt 24.10.8 ucode",
+  "policy_lib_sha256": "1cdec4d0dfbcdee9441a2ee3d54a2975b0bfe6c820672fd0f9826a1080b21d5e",
+  "rules": 250001,
+  "queries_per_trial": 12,
+  "trials": [
+    {
+      "mode": "ordered",
+      "wall_seconds": 0.293241
+    },
+    {
+      "mode": "linear",
+      "wall_seconds": 4.565767
+    },
+    {
+      "mode": "linear",
+      "wall_seconds": 4.54349
+    },
+    {
+      "mode": "ordered",
+      "wall_seconds": 0.265342
+    },
+    {
+      "mode": "ordered",
+      "wall_seconds": 0.273248
+    },
+    {
+      "mode": "linear",
+      "wall_seconds": 4.361364
+    }
+  ],
+  "scope": "development matcher microbenchmark including interpreter startup and array construction; mixed exact/ancestor/miss queries; not router DNS resolution latency"
+}

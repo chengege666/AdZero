@@ -1,0 +1,43 @@
+{
+  "scope": "fixed public domain A probes from the development Windows computer to user router; no configuration/cache changes; not strict cold/warm tests or blocking-rate measurement",
+  "udp_ms": {
+    "www.baidu.com": [
+      3.59,
+      2.91
+    ],
+    "www.google.com": [
+      20.46,
+      3.38
+    ],
+    "chatgpt.com": [
+      3.39,
+      3.07
+    ],
+    "doubleclick.net": [
+      3.69,
+      3.32
+    ]
+  },
+  "ad_sample": {
+    "domain": "doubleclick.net",
+    "rcode": 0,
+    "answers": 0,
+    "pause_comparison": "not_run"
+  },
+  "tcp_query_attempts": 8,
+  "tcp_query_attempt_timeout_seconds": 2,
+  "tcp_query_completions": 0,
+  "separate_tcp_connect": {
+    "connected": false,
+    "deadline_seconds": 3,
+    "elapsed_ms": 3010.5
+  },
+  "user_readonly_status": {
+    "installed": "0.15.6-r1",
+    "adapter": "nailink",
+    "operation_active": false,
+    "tcp_53_listener": true
+  },
+  "tcp_failure_cause": "unresolved; cannot infer application-level TCP DNS response failure from failed connection establishment",
+  "sensitive_addresses": "not_recorded"
+}

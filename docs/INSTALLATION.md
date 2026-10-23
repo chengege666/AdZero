@@ -1,13 +1,13 @@
 # 安装与恢复
 
-本页适用于 v0.15.6 测试版。先查看 [兼容矩阵](COMPATIBILITY.md)，使用与固件完整版本、设备目标和包管理器对应的安装包。
+本页适用于 v0.16.0 测试版。先查看 [兼容矩阵](COMPATIBILITY.md)，使用与固件完整版本、设备目标和包管理器对应的安装包。
 
 ## 在线安装
 
 以 root 登录路由器 SSH，确保有 `curl`，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.6/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 安装器核对固件版本、设备目标、包架构与 SHA-256，备份配置、安装依赖，然后尝试启用保护。未匹配的固件或架构会停止安装，不要绕过检查跨版本装包。依赖从固件原有的软件源安装，不升级整套固件。
@@ -23,7 +23,7 @@ sh /tmp/adzero-install.sh --no-enable
 已有 AdZero 时使用：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.15.6/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 升级器先校验安装包，暂停后台调度并等待当前任务完成，然后准备软件包依赖，通过后才备份配置和恢复记录、调用旧版关闭与恢复，最后安装并重新开启。个人规则选择、放行名单和 DNS 选择会保留。
@@ -42,7 +42,7 @@ v0.15.6 增加小型 `coreutils-timeout`，保证 PassWall 启动既有期限又
 
 ## 下载发行包安装
 
-从 [v0.15.6 发行页](https://github.com/slobys/AdZero/releases/tag/v0.15.6) 下载发行归档，在路由器上解压并进入包含 `install.sh` 的目录：
+从 [v0.16.0 发行页](https://github.com/slobys/AdZero/releases/tag/v0.16.0) 下载发行归档，在路由器上解压并进入包含 `install.sh` 的目录：
 
 ```sh
 sh install.sh --local-dir "$(pwd)"
@@ -58,11 +58,11 @@ sh install.sh --local-dir "$(pwd)"
 
 旧安装器在关闭保护后执行全量 `apk update`，PassWall 等无关第三方源临时不可用也会使升级中断。若日志停在该提示、未出现 `apk add`，新包尚未安装；用 `apk list --installed luci-app-adzero` 和 `/usr/libexec/adzero/ctl status` 核对。
 
-请使用上面的 v0.15.6 升级命令，无需卸载、修改软件源或忽略依赖。若暂不升级，可在确认当前代理可用后执行 `/usr/libexec/adzero/ctl enable` 恢复旧版保护，这会重新加载过滤和当前代理配置。安装阶段真正失败时不要仅凭旧版本号推断所有文件均未变化。
+请使用上面的 v0.16.0 升级命令，无需卸载、修改软件源或忽略依赖。若暂不升级，可在确认当前代理可用后执行 `/usr/libexec/adzero/ctl enable` 恢复旧版保护，这会重新加载过滤和当前代理配置。安装阶段真正失败时不要仅凭旧版本号推断所有文件均未变化。
 
 ### v0.12.0 提示“没有唯一匹配此固件版本的 SDK 安装包”
 
-v0.12.0 的发布清单由 Windows 生成，CRLF 行尾使旧安装器无法匹配最后一列包格式，三个已支持组合均可能受影响。请使用上面的 **v0.15.6 升级命令**；本版清单固定为 LF，安装器也兼容 CRLF，固件、target、架构、唯一条目和 SHA-256 检查仍保留。
+v0.12.0 的发布清单由 Windows 生成，CRLF 行尾使旧安装器无法匹配最后一列包格式，三个已支持组合均可能受影响。请使用上面的 **v0.16.0 升级命令**；本版清单固定为 LF，安装器也兼容 CRLF，固件、target、架构、唯一条目和 SHA-256 检查仍保留。
 
 该错误发生在升级暂停调度、关闭旧版和安装软件包之前，这一次匹配失败没有改动已有配置，无需先卸载。
 

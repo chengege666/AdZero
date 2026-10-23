@@ -190,9 +190,12 @@ def main():
             reset=json.loads(run('/usr/libexec/adzero/observe','reset-stats').stdout);assert reset['ok'],reset
             value=wait_for(lambda s:s.get('reset_token')==reset['token'])
             assert value['queries']==0 and value['blocked']==0 and value['current']['queries']==0,value
+            assert value['latency']['normal']['samples']==0 and value['latency']['blocked']['samples']==0,value
             assert json.loads((base/'tmp/adzero-observe/status.json').read_text())['pid']==collector_before,'reset restarted collector'
             query('doubleclick.net',300);query('www.baidu.com',301);query('doubleclick.net',302,tcp=True)
             value=wait_for(lambda s:s.get('queries')==3 and s.get('blocked')==2)
+            assert value['latency']['normal']['samples']==1 and value['latency']['blocked']['samples']==2,value
+            assert value['latency']['normal']['average_ms']>=0 and value['latency']['blocked']['average_ms']>=0,value
             time.sleep(1.2);assert status()['queries']==3,'same reset request was applied twice'
             procs[-1].terminate();procs[-1].wait(timeout=4)
             procs.append(subprocess.Popen(['chroot',temp,'/usr/libexec/adzero/observe','run'],stdout=log,stderr=log))

@@ -133,8 +133,9 @@ function query(value) {
 	if (index(['dnsmasq.servers','dnsmasq.addnhosts','smartdns.domainset','unbound.adb_list'],mode) < 0) die('当前过滤模式无法查询。');
 	if (!(fs.stat(root + output)?.size>0)) return {domain:name,available:false,match:'unavailable',scope:null};
 	let rules = query_rules??=rulecache.load(root + output,mode,root), adapter = read(dir + '/adapter.json');
-	let result = lib.lookup(name,rules,own(),mode != 'dnsmasq.addnhosts' || !!adapter);
-	return {...result,available:true,scope_includes_subdomains:true,source:'processed_rules'};
+	let suffix=mode!='dnsmasq.addnhosts'||index(['nailink','passwall','openclash','nikki','ssrplus'],adapter?.plugin)>=0;
+	let result = lib.lookup(name,rules,own(),suffix,true);
+	return {...result,available:true,scope_includes_subdomains:suffix,source:'processed_rules'};
 }
 function controls_plan(path){
 	if(fs.lstat(path)?.type!='file')die('访问控制请求无效。');

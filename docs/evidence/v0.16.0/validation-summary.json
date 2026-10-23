@@ -1,0 +1,15 @@
+{
+  "version": "0.16.0",
+  "source_sha256": "9efc847d84d074903b478190dc67b65c23024ec94134c1838be6f502d11a6720",
+  "view_sha256": "5e34f8e7122b4610030b9af1f59fa4acc0e58410cf89902a2fc7739ec2d5f14e",
+  "native_tests": 451,
+  "ui_assertions": 261,
+  "rpc_checks": 61,
+  "native_luci_poll_versions": 2,
+  "sdk_builds": 3,
+  "payload_files": 42,
+  "delivery_cases": 6,
+  "runtime_dependencies_added": [],
+  "router": "read-only fixed DNS probes; no router login/configuration change; status provided by user",
+  "scope": "capture-time DNS response telemetry, sorted policy lookup, rule overlap advice and exact-host scope correction; no DNS resolver/upstream/cache policy change; current NaiLink TCP 53 connection timeout unresolved"
+}

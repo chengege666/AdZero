@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+import random
 
 ROOT = Path(__file__).resolve().parents[1]
 UCODE = shlex.split(os.environ.get('ADZERO_UCODE',''))
@@ -108,6 +109,31 @@ class PolicyTest(unittest.TestCase):
                 path='var/lib/unbound/adb_list.adblock-fast' if mode=='unbound.adb_list' else 'var/run/adblock-fast/'+mode
                 self.write(path,raw)
                 self.assertEqual(self.query('sub.ads.example')['match'],expected)
+
+    def test_hosts_without_proxy_adapter_never_claims_parent_coverage(self):
+        self.write('etc/config/adblock-fast',"config adblock-fast 'config'\n option dns 'dnsmasq.addnhosts'\n")
+        self.write('var/run/adblock-fast/dnsmasq.addnhosts','0.0.0.0 ads.example\n0.0.0.0 other.example\n')
+        self.write('etc/adzero/adapter.json',json.dumps({'plugin':'none'}))
+        self.assertEqual(self.query('sub.ads.example')['match'],'none')
+        self.assertFalse(self.query('ads.example')['scope_includes_subdomains'])
+
+    def test_ordered_lookup_matches_linear_semantics(self):
+        rng=random.Random(16)
+        rules=sorted(set(['ads.example','a.ads.example','z.example','example.org']+[f'n{n}.example' for n in range(2500)]))
+        cases=['sub.a.ads.example','a.ads.example','ads.example','notads.example','sub.n12.example','absent.example','x.example.org']
+        cases += [f'n{rng.randrange(4000)}.example' for _ in range(12)]
+        program=ROOT/'scripts/policy_transform.uc'
+        for suffix in (False,True):
+            for domain in cases:
+                arguments=[domain,rules,['allowed.example'],suffix]
+                values=[]
+                for ordered in (False,True):
+                    r=subprocess.run(UCODE+[str(program)],input=json.dumps({'arguments':arguments+[ordered]}),text=True,capture_output=True)
+                    self.assertEqual(r.returncode,0,r.stderr);values.append(json.loads(r.stdout))
+                self.assertEqual(*values)
+        arguments=['x.allowed.example',rules,['allowed.example'],True,True]
+        r=subprocess.run(UCODE+[str(program)],input=json.dumps({'arguments':arguments}),text=True,capture_output=True)
+        self.assertEqual(json.loads(r.stdout)['match'],'allowed')
 
     def test_overlapping_operations_and_allow_all_are_rejected(self):
         self.run_policy('begin-allow','ads.example','ads.example')
