@@ -90,7 +90,7 @@ export function relay(context,settings,rules,allowed,count){
 			}
 			else if(kind=='client'){
 				if(flags&net.POLLOUT){let n=s.send(v.output,net.MSG_DONTWAIT|net.MSG_NOSIGNAL);if(n>0){v.output=substr(v.output,n);v.at=now();}else if(n!=null)v.dead=true;}
-				if(flags&net.POLLIN){let part=s.recv(65537-length(v.buffer),net.MSG_DONTWAIT);if(!length(part))v.dead=true;else{v.buffer+=part;v.at=now();}}
+				if(flags&net.POLLIN){let part=s.recv(65537-length(v.buffer),net.MSG_DONTWAIT);if(part==null){if(s.error(true)!=11)v.dead=true;}else if(!length(part))v.dead=true;else{v.buffer+=part;v.at=now();}}
 				if(flags&(net.POLLERR|net.POLLHUP))v.dead=true;
 			}else{
 				if(v.stage=='connect'){if(s.getopt(net.SOL_SOCKET,net.SO_ERROR)!=0){fail(v);continue;}v.stage='send';}

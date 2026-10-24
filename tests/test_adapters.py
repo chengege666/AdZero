@@ -176,6 +176,41 @@ class AdapterTransactionTest(unittest.TestCase):
         self.assertEqual(path.read_text(), previous)
         self.assertEqual(json.loads(self.run_adapter("status").stdout)["stage"], "configured_unverified")
 
+    def large_rules(self, prefix='ads'):
+        return ''.join(f'server=/{prefix}{i}.example/\n' for i in range(5000))
+
+    def test_large_provider_journal_stays_small_and_rollback_preserves_bytes(self):
+        path=self.write('etc/passwall/rules/block_host','user.example\n')
+        self.write('var/run/adblock-fast/dnsmasq.servers',self.large_rules())
+        self.run_adapter('apply');previous=path.read_text()
+        journal=self.root/'etc/adzero/adapter.json'
+        self.assertLess(journal.stat().st_size,16384)
+        self.assertIsInstance(json.loads(journal.read_text())['files'][0]['after'],dict)
+        self.write('var/run/adblock-fast/dnsmasq.servers',self.large_rules('new'))
+        once=self.write('fail-once','1')
+        self.write('etc/init.d/passwall',f'#!/bin/sh\nif [ -f {shlex.quote(str(once))} ]; then rm {shlex.quote(str(once))}; exit 1; fi\nexit 0\n')
+        self.run_adapter('apply',success=False)
+        self.assertEqual(path.read_text(),previous)
+        self.run_adapter('remove');self.assertEqual(path.read_text(),'user.example\n')
+        self.assertFalse((self.root/'etc/adzero/providers').exists())
+
+    def test_large_provider_does_not_erase_later_manual_block_entries(self):
+        path=self.write('etc/passwall/rules/block_host','user.example\n')
+        self.write('var/run/adblock-fast/dnsmasq.servers',self.large_rules())
+        self.run_adapter('apply');path.write_text(path.read_text()+'manual.example\n')
+        self.run_adapter('remove')
+        self.assertEqual(path.read_text(),'user.example\nmanual.example\n')
+
+    def test_modified_original_snapshot_refuses_unsafe_restoration(self):
+        original=''.join(f'user{i}.example\n' for i in range(5000))
+        path=self.write('etc/passwall/rules/block_host',original)
+        self.run_adapter('apply');adapted=path.read_text()
+        journal=self.root/'etc/adzero/adapter.json'
+        before=json.loads(journal.read_text())['files'][0]['before']
+        (self.root/'etc/adzero/providers'/before['sha256']).write_text('changed')
+        self.run_adapter('remove',success=False)
+        self.assertEqual(path.read_text(),adapted);self.assertTrue(journal.exists())
+
     @unittest.skipUnless(shutil.which("yq"), "real yq required")
     def test_nikki_native_mixin_merge_and_flag_restore(self):
         self.select("nikki")
@@ -192,6 +227,12 @@ class AdapterTransactionTest(unittest.TestCase):
         self.assertIn("rule-set:adzero-dns", adapted["dns"]["fake-ip-filter"])
         provider = self.root / "etc/nikki/run/providers/rule/adzero.txt"
         self.assertIn("+.ads.example", provider.read_text())
+        journal=self.root/'etc/adzero/adapter.json';value=json.loads(journal.read_text())
+        entry=next(f for f in value['files'] if f['kind']=='owned')
+        self.assertIsInstance(entry['after'],dict)
+        # Existing installations retain the old base64 form until rewritten.
+        entry['after']=base64.b64encode(provider.read_bytes()).decode()
+        journal.write_text(json.dumps(value));journal.chmod(0o600)
         self.run_adapter("apply")
         self.run_adapter("remove")
         self.assertEqual(path.read_text(), "# user comment\n")

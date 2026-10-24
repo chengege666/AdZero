@@ -7,7 +7,9 @@ import * as progress from './progress-lib.uc';
 import * as snapshots from './source-cache.uc';
 import * as dns from './routing-lib.uc';
 import { hostname } from './policy-lib.uc';
+import * as capacity from './capacity-lib.uc';
 const root = getenv('ADZERO_SOURCES_ROOT') ?? '';
+const ceiling=capacity.limits(root);
 const dir = getenv('ADZERO_STATE_DIR') ?? root + '/etc/adzero';
 const uci = cursor(root + '/etc/config');
 const config = root + '/etc/config/adblock-fast', journal = dir + '/sources-pending.json';
@@ -76,8 +78,8 @@ function require_rules(items){
 function capacity_key(){
 	return snapshots.fingerprint(sprintf('%J',{sources:map(selected(),s=>({id:s['.name'],url:s.url,enabled:s.enabled!='0',format:s.adzero_format??filter(lib.catalog,c=>c.url==s.url)[0]?.format??'auto'})),blocked:uci.get('adblock-fast','config','blocked_domain')??[]}),root);
 }
-function capacity_receipt(count,unknown,total,over){
-	let value={schema:1,at:time(),selection:capacity_key(),state:over?'over_limit':length(unknown)?'unknown':'complete',known_domains:count,unknown_sources:unknown,total,limit:500000,source_bytes_limit:25000000,scope:'unique_candidates_before_allow_and_optimization'};
+function capacity_receipt(count,unknown,total,over,details){
+	let value={schema:1,at:time(),selection:capacity_key(),state:over?'over_limit':length(unknown)?'unknown':'complete',known_domains:count,unknown_sources:unknown,total,limit:ceiling.total_domains,source_bytes_limit:ceiling.source_bytes,scope:'native_effective_estimate',...(details??{})};
 	atomic(dir+'/sources-capacity.json',sprintf('%J',value));return value;
 }
 function clean_uci(context) {
@@ -95,7 +97,7 @@ function guard_revision(expected){
 	if(length(current.changes('adzero')?.adzero??[])||revision(current)!=expected){progress.failure('config_conflict');die('预检期间配置被其他操作修改，尚未提交或重载。请重新读取并核对。');}
 }
 function checksum(path){
-	if(fs.lstat(path)?.type!='file'||!(fs.stat(path)?.size>0)||fs.stat(path).size>25000000)return null;
+	if(fs.lstat(path)?.type!='file'||!(fs.stat(path)?.size>0)||fs.stat(path).size>ceiling.output_bytes)return null;
 	let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
 	let proc=fs.popen('sha256sum '+quote(path)+' 2>/dev/null','r');if(!proc)return null;
 	let output=proc.read('all'),code=proc.close(),digest=split(output??'',' ')[0];
@@ -115,7 +117,7 @@ function list() {
 	}
 	let legacy;try{legacy=json(uci.get('adzero','main','dns_enhance')??'null');}catch(e){}
 	let capacity=null;try{capacity=read(dir+'/sources-capacity.json');if(capacity){capacity.current=capacity.selection==capacity_key();delete capacity.selection;}}catch(e){}
-	return {catalog:lib.catalog,items,revision:revision(),capacity,dns:dns_profile(),dns_failover:dns_profile().failover??legacy?.failover??false,dns_test_proxy_port:legacy?.proxy_port??0,pending:!!read(journal),last:read(dir+'/sources-last.json')};
+	return {catalog:lib.catalog,items,revision:revision(),capacity,limits:ceiling,dns:dns_profile(),dns_failover:dns_profile().failover??legacy?.failover??false,dns_test_proxy_port:legacy?.proxy_port??0,pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
 function download(address,kind,fresh,manual) {
 	lib.url(address);if(kind!='auto')lib.format(kind);
@@ -147,11 +149,11 @@ function download(address,kind,fresh,manual) {
 	let file=fs.open(path,'wx',0600);if (!file || !file.close()) die('无法创建临时规则文件。');
 	try {
 		let fixture=getenv('ADZERO_SOURCE_FETCH_FIXTURE');
-		let argv = root && fixture ? [fixture,address,path] : ['curl','--fail','--location','--silent','--show-error','--proto','=https','--proto-redir','=https','--connect-timeout','10','--max-time','60','--max-filesize','25000000','--output',path,address];
+		let argv = root && fixture ? [fixture,address,path] : ['curl','--fail','--location','--silent','--show-error','--proto','=https','--proto-redir','=https','--connect-timeout','10','--max-time','60','--max-filesize',''+ceiling.source_bytes,'--output',path,address];
 		// Quiet output: a custom subscription URL may contain a private token.
 		let quote=s=>"'"+replace(s,/'/g,"'\\''")+"'";
 		if (system(join(' ',map(argv,quote))+' >/dev/null 2>&1',65000) != 0) {progress.failure('source_download');die('规则下载失败，请检查 HTTPS 地址和网络。');}
-		let raw=fs.readfile(path,25000001),result,identical=snapshot&&raw==fs.readfile(snapshot.path);
+		let raw=fs.readfile(path,ceiling.source_bytes+1),result,identical=snapshot&&raw==fs.readfile(snapshot.path);
 		try{
 			progress.stage(identical?'checking':'validating');
 			if(identical)result=snapshots.summary(snapshot,kind)??snapshots.parsed(snapshot,kind);
@@ -180,8 +182,8 @@ function capacity_names(s,kind,checked){
 	}catch(e){return null;}
 }
 function validate_sources(only,fresh,manual,strict) {
-	let union={}, count=0,enabled=filter(selected(),s=>s.enabled!='0'),position=0,unknown=[];
-	function include(names){for(let name in names){union[name]=true;if(length(union)>500000){capacity_receipt(length(union),unknown,length(enabled),true);progress.failure('source_limit');die('所选规则合计超过 50 万个域名，请减少列表。');}}}
+	let union={}, count=0,enabled=filter(selected(),s=>s.enabled!='0'),position=0,unknown=[],input_count=0,per_source=[];
+	function include(names){input_count+=length(names);for(let name in names){union[name]=true;if(length(union)>ceiling.candidate_domains){capacity_receipt(length(union),unknown,length(enabled),true,{input_domains:input_count,unique_domains:length(union),effective_domains:null});progress.failure('source_limit');die('规则容量:预处理输入超过本机资源保护上限，未提交或重载。');}}}
 	let manual_blocks=uci.get('adblock-fast','config','blocked_domain')??[];
 	include(map(type(manual_blocks)=='array'?manual_blocks:[manual_blocks],name=>hostname(name)));
 	for (let s in enabled) {
@@ -199,6 +201,7 @@ function validate_sources(only,fresh,manual,strict) {
 		if(!names&&!checking&&strict){checked=download(s.url,kind,false,false);names=capacity_names(s,kind,checked);}
 		if(names){
 			progress.source(position,length(enabled));
+			push(per_source,{index:position,domains:length(names)});
 			include(names);
 		}else push(unknown,position);
 		if(!checking)continue;
@@ -206,7 +209,7 @@ function validate_sources(only,fresh,manual,strict) {
 		// The backend uses this size to schedule downloads. Without it, a new
 		// source triggers another HEAD request despite already being downloaded.
 		let snapshot=checked?null:snapshots.load(s.url,root),bytes=checked?.bytes??(snapshot?fs.stat(snapshot.path)?.size:null);
-		if(bytes>0&&bytes<=25000000&&!uci.set('adblock-fast',s['.name'],'size',''+bytes))die('无法保存规则下载大小。');
+		if(bytes>0&&bytes<=ceiling.source_bytes&&!uci.set('adblock-fast',s['.name'],'size',''+bytes))die('无法保存规则下载大小。');
 		if(!checked){
 			uci.delete('adblock-fast',s['.name'],'adzero_domains');uci.delete('adblock-fast',s['.name'],'adzero_detected_format');uci.delete('adblock-fast',s['.name'],'adzero_skipped');
 			if(!uci.set('adblock-fast',s['.name'],'adzero_validation','backend_only')||!uci.set('adblock-fast',s['.name'],'adzero_updated',''+time()))die('无法保存规则检查记录。');
@@ -218,7 +221,9 @@ function validate_sources(only,fresh,manual,strict) {
 		if(!uci.set('adblock-fast',s['.name'],'adzero_validation','validated')||(kind=='auto'&&!uci.set('adblock-fast',s['.name'],'adzero_detected_format',checked.format)))die('无法保存规则格式记录。');
 		count++;
 	}
-	capacity_receipt(length(union),unknown,length(enabled),false);
+	let effective=capacity.effective(union,uci.get('adblock-fast','config','allowed_domain'),uci.get('adblock-fast','config','dns'));
+	capacity_receipt(length(union),unknown,length(enabled),effective>ceiling.total_domains,{input_domains:input_count,unique_domains:length(union),effective_domains:effective,per_source});
+	if(effective>ceiling.total_domains){progress.failure('source_limit');die(sprintf('规则容量:合并优化后预计 %d 个域名，超过本机 %d 上限；并非累计启用配额。',effective,ceiling.total_domains));}
 	if(strict&&length(unknown)){progress.source(unknown[0],length(enabled));progress.failure('source_capacity_unknown');die('部分来源无法完整预检容量，尚未提交或重载。请选择域名、Hosts 或基础 DNS Adblock 格式；现有配置保留。');}
 	progress.source(null);
 	return count;

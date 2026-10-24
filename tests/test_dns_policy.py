@@ -56,19 +56,27 @@ def read(c,n):
 
 @unittest.skipUnless(UCODE,'requires actual OpenWrt ucode/socket')
 class PoolTest(unittest.TestCase):
-    def peer(self,delay=0,code=0,bad=False,socks=False):
+    def peer(self,delay=0,code=0,bad=False,socks=False,persistent=False,drop_reuse=False,bad_reuse=False):
         s=socket.socket();s.bind(('127.0.0.1',0));s.listen();s.settimeout(.1);self.addCleanup(s.close)
         stop=threading.Event();self.addCleanup(stop.set);seen=[]
+        if not hasattr(self,'connections'):self.connections={}
+        connections=self.connections[s.getsockname()[1]]=[]
         def handle(c):
+            connections.append(True)
             with c:
                 c.settimeout(4)
                 try:
                     if socks:
                         self.assertEqual(read(c,3),b'\x05\x01\0');c.sendall(b'\x05\0');h=read(c,4);host=read(c,4 if h[3]==1 else 16);port=read(c,2);seen.append((host,struct.unpack('!H',port)[0]));c.sendall(b'\x05\0\0\x01\x7f\0\0\x01\0\x35')
-                    q=read(c,struct.unpack('!H',read(c,2))[0]);seen.append(q);time.sleep(delay)
-                    r=bytearray(answer(q,[]));r[3]=(r[3]&240)|code
-                    if bad:r[1]^=1
-                    frame=struct.pack('!H',len(r))+r;c.sendall(frame[:1]);c.sendall(frame[1:])
+                    uses=0
+                    while True:
+                        q=read(c,struct.unpack('!H',read(c,2))[0]);uses+=1
+                        if drop_reuse and uses>1:return
+                        seen.append(q);time.sleep(delay)
+                        r=bytearray(answer(q,[]));r[3]=(r[3]&240)|code
+                        if bad or bad_reuse and uses>1:r[1]^=1
+                        frame=struct.pack('!H',len(r))+r;c.sendall(frame[:1]);c.sendall(frame[1:])
+                        if not persistent:return
                 except (OSError,AssertionError):pass
         def run():
             while not stop.is_set():
@@ -122,3 +130,34 @@ class PoolTest(unittest.TestCase):
     def test_dead_socks_never_falls_back_to_direct(self):
         direct,seen=self.peer(.01);ports=self.start([direct],[direct],dict(proxy_port=freeport()))
         r,_=self.ask(ports['foreign']);self.assertEqual(r[3]&15,2);self.assertFalse(seen)
+
+    def test_warm_tcp_upstream_is_reused_across_client_transports_but_not_groups(self):
+        endpoint,seen=self.peer(.001,persistent=True);ports=self.start([endpoint],[endpoint])
+        for tcp in (False,True,False):self.assertEqual(self.ask(ports['domestic'],tcp)[0][3]&15,0)
+        self.assertEqual(len(self.connections[endpoint['port']]),1)
+        self.ask(ports['foreign']);self.assertEqual(len(self.connections[endpoint['port']]),2)
+        self.ask(ports['domestic']);self.assertEqual(len(self.connections[endpoint['port']]),2)
+        self.assertEqual(len(seen),5)
+
+    def test_socks_handshake_is_reused_without_direct_foreign_fallback(self):
+        direct,unused=self.peer(.001);proxy,seen=self.peer(.001,socks=True,persistent=True)
+        ports=self.start([direct],[dict(address='1.1.1.1',port=53)],dict(proxy_port=proxy['port']))
+        for tcp in (False,True,False):self.assertEqual(self.ask(ports['foreign'],tcp)[0][3]&15,0)
+        self.assertEqual(len(self.connections[proxy['port']]),1)
+        self.assertEqual(len([v for v in seen if isinstance(v,tuple)]),1);self.assertFalse(unused)
+
+    def test_closed_reused_transport_reconnects_once_within_original_deadline(self):
+        endpoint,seen=self.peer(.001,persistent=True,drop_reuse=True);ports=self.start([endpoint])
+        self.ask(ports['domestic']);reply,elapsed=self.ask(ports['domestic'])
+        self.assertEqual(reply[3]&15,0);self.assertLess(elapsed,1)
+        self.assertEqual(len(self.connections[endpoint['port']]),2);self.assertEqual(len(seen),2)
+
+    def test_mismatched_reused_answer_is_not_retried_or_accepted(self):
+        endpoint,_=self.peer(.001,persistent=True,bad_reuse=True);ports=self.start([endpoint])
+        self.ask(ports['domestic']);reply,_=self.ask(ports['domestic'])
+        self.assertEqual(reply[3]&15,2);self.assertEqual(len(self.connections[endpoint['port']]),1)
+
+    def test_reused_upstream_has_a_bounded_query_lifetime(self):
+        endpoint,seen=self.peer(.001,persistent=True);ports=self.start([endpoint])
+        for _ in range(33):self.assertEqual(self.ask(ports['domestic'])[0][3]&15,0)
+        self.assertEqual(len(self.connections[endpoint['port']]),2);self.assertEqual(len(seen),33)

@@ -9,16 +9,20 @@ while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
 	current_path=$(/usr/libexec/adzero/probe | jsonfilter -e '@.dns.active_proxies' -e '@.dns.uncertain_proxies' 2>/dev/null)
 	path_changed=
 	if [ -n "$current_path" ] && [ "$current_path" = "$previous_path" ] && [ "$current_path" != "$stable_path" ]; then
-		stable_path=$current_path
 		path_changed=1
 	fi
 	previous_path=$current_path
 	guard_waiting=
 	[ ! -f /etc/adzero/dns-guard.json ] || guard_waiting=$(jsonfilter -i /etc/adzero/dns-guard.json -e '@.state' 2>/dev/null)
 	if [ -n "$path_changed" ] || [ -e /etc/adzero/pause.json ] || { [ -s /etc/adzero/temporary-allow.json ] && /usr/libexec/adzero/policy temporary-due; } || [ "$ticks" -ge 12 ] || [ "$guard_waiting" = held ] || [ "$guard_waiting" = error ]; then
-		ADZERO_LOCK_WAIT_SECONDS=0 /usr/libexec/adzero/ctl reconcile >/dev/null || {
+		if ADZERO_LOCK_WAIT_SECONDS=0 /usr/libexec/adzero/ctl reconcile >/dev/null; then
+			# A busy lock or failed migration is not an acknowledged path. Keep
+			# the two-sample candidate pending and retry on the next five-second
+			# tick, instead of leaving the new proxy unsynchronized for a minute.
+			[ -z "$path_changed" ] || stable_path=$current_path
+		else
 			[ "$ticks" -lt 12 ] || logger -t adzero 'DNS synchronization/resume failed; check AdZero recovery state'
-		}
+		fi
 		[ "$ticks" -lt 12 ] || ticks=0
 	fi
 	sleep 5

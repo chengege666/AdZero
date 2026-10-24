@@ -1,7 +1,10 @@
 'use strict';
+import { limits } from './capacity-lib.uc';
+const capacity=limits();
 
-export function domains(raw, mode) {
-	if (length(raw) > 25000000) die('Processed blocklist exceeds the adapter size limit');
+export function domains(raw, mode, ceiling) {
+	ceiling??=capacity;
+	if (length(raw) > ceiling.output_bytes) die('Processed blocklist exceeds the adapter size limit');
 	let values = {}, allowed = [];
 	// ucode compiles a regex literal when its expression executes. Compile
 	// once per import, rather than several times for every domain/label.
@@ -30,10 +33,10 @@ export function domains(raw, mode) {
 			die('Invalid processed domain');
 		for (let label in split(line, '.')) if (length(label) > 63 || substr(label, 0, 1) == '-' || substr(label, -1) == '-') die('Invalid domain label');
 		values[line] = true;
+		if(length(values)>ceiling.total_domains)die('Processed blocklist exceeds domain limit');
 	}
 	let result = sort(keys(values));
 	if(!length(result))die('Empty processed blocklist');
-	if(length(result)>500000)die('Processed blocklist exceeds domain limit');
 	for (let allow in allowed) {
 		let parent = allow;
 		while (index(parent, '.') >= 0) {

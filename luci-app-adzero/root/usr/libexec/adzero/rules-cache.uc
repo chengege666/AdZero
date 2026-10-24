@@ -3,6 +3,8 @@
 // A miss or any cache error always falls back to the original strict parser.
 import * as fs from 'fs';
 import { domains } from './adapter-lib.uc';
+import { limits } from './capacity-lib.uc';
+const capacity=limits();
 const digest_re=/^[a-f0-9]{64}$/, uuid_re=/^[a-f0-9-]{36}$/;
 const modes=['dnsmasq.servers','dnsmasq.addnhosts','smartdns.domainset','unbound.adb_list'];
 function data_path(dir,source,mode){return dir+'/'+source+'-'+index(modes,mode)+'.json';}
@@ -20,19 +22,19 @@ function directory(root){
 	let s=fs.lstat(path),uid=fs.stat('/proc/self')?.uid;
 	return s?.type=='directory'&&!(s.mode&0077)&&uid!=null&&s.uid==uid?path:null;
 }
-function read_cache(dir,source,mode){
+function read_cache(dir,source,mode,ceiling){
 	try{
 		if(!dir||fs.lstat(dir+'/proof.json')?.type!='file'||fs.stat(dir+'/proof.json').size>2048)return null;
 		let proof=json(fs.readfile(dir+'/proof.json'));
 		if(proof?.schema!=1||proof.source!=source||proof.mode!=mode||!match(proof.sha256??'',digest_re))return null;
 		let path=data_path(dir,source,mode);
-		if(digest(path,32000000)!=proof.sha256)return null;
+		if(digest(path,ceiling.cache_file_bytes)!=proof.sha256)return null;
 		let list=json(fs.readfile(path));
-		if(type(list)!='array'||length(list)!=proof.count||!length(list)||length(list)>500000)return null;
+		if(type(list)!='array'||length(list)!=proof.count||!length(list)||length(list)>ceiling.total_domains)return null;
 		return list;
 	}catch(e){return null;}
 }
-function save_cache(dir,source,mode,list){
+function save_cache(dir,source,mode,list,ceiling){
 	if(!dir)return;
 	let nonce=trim(fs.readfile('/proc/sys/kernel/random/uuid')??'');if(!match(nonce,uuid_re))return;
 	let data_path=dir+'/'+nonce+'.data',proof_path=dir+'/'+nonce+'.proof';
@@ -42,7 +44,7 @@ function save_cache(dir,source,mode,list){
 		let count=f.write(text),closed=f.close();if(count!=length(text)||!closed)die('cache_write');
 		// Hash the private temporary file, never a shared path another writer
 		// could replace before the proof is committed.
-		let hash=digest(data_path,32000000);if(!hash)die('cache_digest');
+		let hash=digest(data_path,ceiling.cache_file_bytes);if(!hash)die('cache_digest');
 		text=sprintf('%J',{schema:1,source,mode,count:length(list),sha256:hash});
 		f=fs.open(proof_path,'wx',0600);if(!f)die('cache_open');
 		count=f.write(text);closed=f.close();if(count!=length(text)||!closed)die('cache_write');
@@ -57,13 +59,13 @@ function save_cache(dir,source,mode,list){
 }
 export function load(path,mode,root){
 	if(index(modes,mode)<0)die('Unsupported rule export mode');
-	let source=digest(path,25000000),dir=null;
+	let ceiling=limits(root),source=digest(path,ceiling.output_bytes),dir=null;
 	try{dir=source?directory(root??''):null;}catch(e){}
-	let cached=source?read_cache(dir,source,mode):null;
-	if(cached!=null&&digest(path,25000000)==source)return cached;
-	let list=domains(fs.readfile(path,25000001),mode);
+	let cached=source?read_cache(dir,source,mode,ceiling):null;
+	if(cached!=null&&digest(path,ceiling.output_bytes)==source)return cached;
+	let list=domains(fs.readfile(path,ceiling.output_bytes+1),mode,ceiling);
 	// Do not attach a proof to content replaced while it was being parsed.
-	if(source&&digest(path,25000000)==source)save_cache(dir,source,mode,list);
+	if(source&&digest(path,ceiling.output_bytes)==source)save_cache(dir,source,mode,list,ceiling);
 	return list;
 };
-export function fingerprint(path){return digest(path,25000000);};
+export function fingerprint(path){return digest(path,capacity.output_bytes);};

@@ -2,12 +2,13 @@
 // Disposable HTTPS subscription snapshots. A bad/missing snapshot is a miss,
 // never a reason to skip the downloader or the final backend verification.
 import * as fs from 'fs';
-const limit=25000000;
+import { limits } from './capacity-lib.uc';
+const capacity=limits(),limit=capacity.source_bytes;
 let memory=match(fs.readfile('/proc/meminfo')??'',/MemTotal:\s+([0-9]+)/);
 const budget=memory?min(96000000,int(memory[1])*128):16000000;
 function quote(s){return "'"+replace(s,/'/g,"'\\''")+"'";}
 function hash(path){
-	let s=fs.lstat(path);if(s?.type!='file'||s.size>32000000||!s.size)return null;
+	let s=fs.lstat(path);if(s?.type!='file'||s.size>capacity.cache_file_bytes||!s.size)return null;
 	let p=fs.popen('sha256sum '+quote(path)+' 2>/dev/null','r');if(!p)return null;
 	let out=p.read('all'),code=p.close(),digest=split(out??'',' ')[0];
 	return code==0&&match(digest??'',/^[a-f0-9]{64}$/)?digest:null;
@@ -45,9 +46,9 @@ export function load(address,root){
 export function parsed(snapshot,kind){
 	try{
 		let p=snapshot?.proof,path=snapshot.dir+'/'+snapshot.id+'.parsed';
-		if(p.parser!=3||p.kind!=kind||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		if(p.parser!=3||p.kind!=kind||!p.parsed||!private_file(path,capacity.cache_file_bytes)||hash(path)!=p.parsed)return null;
 		let value=json(fs.readfile(path));
-		if(type(value?.names)!='array'||!length(value.names)||length(value.names)>500000)return null;
+		if(type(value?.names)!='array'||!length(value.names)||length(value.names)>capacity.source_domains)return null;
 		return value;
 	}catch(e){return null;}
 };
@@ -57,7 +58,7 @@ export function parsed(snapshot,kind){
 export function contains(snapshot,domain){
 	try{
 		let p=snapshot?.proof,path=snapshot.dir+'/'+snapshot.id+'.parsed';
-		if(!match(domain??'',/^[a-z0-9-]+(\.[a-z0-9-]+)+$/)||p.parser!=3||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		if(!match(domain??'',/^[a-z0-9-]+(\.[a-z0-9-]+)+$/)||p.parser!=3||!p.parsed||!private_file(path,capacity.cache_file_bytes)||hash(path)!=p.parsed)return null;
 		return index(fs.readfile(path),sprintf('%J',domain))>=0;
 	}catch(e){return null;}
 };
@@ -66,8 +67,8 @@ export function summary(snapshot,kind){
 	try{
 		let p=snapshot?.proof,v=p?.summary,path=snapshot.dir+'/'+snapshot.id+'.parsed';
 		if(p.parser!=3||p.kind!=kind||!v||index(['domains','hosts','adblock'],v.format)<0||
-			type(v.domains)!='int'||v.domains<1||v.domains>500000||type(v.skipped)!='int'||v.skipped<0||
-			!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+			type(v.domains)!='int'||v.domains<1||v.domains>capacity.source_domains||type(v.skipped)!='int'||v.skipped<0||
+			!private_file(path,capacity.cache_file_bytes)||hash(path)!=p.parsed)return null;
 		return {format:v.format,domains:v.domains,skipped:v.skipped};
 	}catch(e){return null;}
 };
@@ -77,7 +78,7 @@ export function summary(snapshot,kind){
 export function semantic(snapshot){
 	try{
 		let p=snapshot?.proof,path=snapshot.dir+'/'+snapshot.id+'.parsed';
-		if(p.parser!=3||!p.parsed||!private_file(path,32000000)||hash(path)!=p.parsed)return null;
+		if(p.parser!=3||!p.parsed||!private_file(path,capacity.cache_file_bytes)||hash(path)!=p.parsed)return null;
 		let f=fs.open(path,'r');if(!f)return null;let prefix=f.read(256);f.close();
 		let header=match(prefix??'',/^[[:space:]]*\{[[:space:]]*"format"[[:space:]]*:[[:space:]]*"(domains|adblock)"[[:space:]]*,[[:space:]]*"names"[[:space:]]*:[[:space:]]*\[/);
 		return header?'v3:'+header[1]+':'+p.parsed:null;
@@ -93,7 +94,7 @@ export function renew(snapshot,kind,result){
 	try{
 		if(!snapshot||snapshot.proof.kind!=kind||snapshot.proof.parser!=3||
 			!private_file(snapshot.path,limit)||hash(snapshot.path)!=snapshot.proof.body||
-			!private_file(snapshot.dir+'/'+snapshot.id+'.parsed',32000000)||
+			!private_file(snapshot.dir+'/'+snapshot.id+'.parsed',capacity.cache_file_bytes)||
 			hash(snapshot.dir+'/'+snapshot.id+'.parsed')!=snapshot.proof.parsed)return false;
 		let nonce=trim(fs.readfile('/proc/sys/kernel/random/uuid')??'');if(!match(nonce,/^[a-f0-9-]{36}$/))return false;
 		temp=snapshot.dir+'/'+nonce+'.proof';let file=fs.open(temp,'wx',0600);if(!file)die('cache_open');

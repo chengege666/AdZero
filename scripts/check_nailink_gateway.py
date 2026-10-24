@@ -129,7 +129,7 @@ def main(package=None):
                 names = [r[0] for r in db.execute("select name from sqlite_master where type='table' order by name")]
                 return {name: db.execute('select * from "' + name.replace('"', '""') + '" order by rowid').fetchall() for name in names}
 
-        for directory in ['dev', 'tmp', 'etc/adzero', 'var/run/ubus']:
+        for directory in ['dev', 'tmp', 'etc/adzero', 'var/run/ubus', 'proc/self']:
             (base / directory).mkdir(parents=True, exist_ok=True)
         os.mknod(base / 'dev/null', 0o666 | 0o20000, os.makedev(1, 3))
         os.mknod(base / 'dev/urandom', 0o666 | 0o20000, os.makedev(1, 9))

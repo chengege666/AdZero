@@ -12,6 +12,8 @@ import * as proxy from './proxy-state.uc';
 import * as native from './dns-native-lib.uc';
 import { lan_valid } from './dns-handoff-lib.uc';
 import { config as enhance_config } from './dns-enhance-lib.uc';
+import { limits } from './capacity-lib.uc';
+import { store } from './provider-store.uc';
 
 const root = getenv('ADZERO_ADAPTER_ROOT') ?? '';
 const state_dir = root + '/etc/adzero';
@@ -91,19 +93,23 @@ function read_journal() {
 	if (value.schema != 1 || !value.plugin || type(value.files) != 'array') die('Invalid adapter recovery journal');
 	return value;
 }
+const providers=store(state_dir+'/providers',limits(root).output_bytes,atomic);
+function file_pack(raw,kind){return kind=='owned'||length(raw??'')>65536?providers.put(raw):raw;}
+function file_read(ref,kind){return type(ref)=='object'||kind=='owned'?providers.read(ref):ref;}
+function file_match(path,ref,kind){return type(ref)=='object'||kind=='owned'?providers.matches(path,ref):fs.readfile(path)==ref;}
 function tracked(path, content, kind, mode) {
 	let original = fs.readfile(path), entry;
 	for (let file in journal.files) if (file.path == path) entry = file;
 	if (entry) {
-		if ((kind == 'owned' ? b64enc(original) : original) != entry.after) die('Adapter file changed externally; refusing to overwrite');
+		if (!file_match(path,entry.after,kind)) die('Adapter file changed externally; refusing to overwrite');
 		if (original == content) return;
 	} else {
 		if (kind == 'owned' && original != null) die('Reserved AdZero provider file already exists');
-		entry = {path, before:original, after:original, kind, mode:(fs.stat(path)?.mode ?? mode ?? 0600) & 0777};
+		entry = {path, before:file_pack(original,kind), after:file_pack(original,kind), kind, mode:(fs.stat(path)?.mode ?? mode ?? 0600) & 0777};
 		push(journal.files, entry);
 	}
 	entry.previous_after = entry.after;
-	entry.after = kind == 'owned' ? b64enc(content) : content;
+	entry.after = file_pack(content,kind);
 	save(); // durable intent precedes mutation
 	atomic(path, content, mode ?? entry.mode);
 	changed = true;
@@ -423,8 +429,7 @@ nailink_completed = function() {
 		if (dns.id != proof.dns.id || dns.dns.string != proof.dns.text) return false;
 		if (proof.traffic) { let traffic=selected_traffic(); if (traffic.id != proof.traffic.id || traffic.text != proof.traffic.text) return false; }
 		for (let file in journal.files) {
-			let current=fs.readfile(file.path);
-			if ((file.kind=='owned'?b64enc(current):current) != file.after) return false;
+			if (!file_match(file.path,file.after,file.kind)) return false;
 		}
 		if (!proof.input || !same(proof.input,rules_signature('nailink'))) return false;
 		return true;
@@ -458,7 +463,7 @@ function settle_nailink() {
 	if(journal.nailink_completion.input)journal.rules_source=journal.nailink_completion.input;
 	clear_nailink_pending();
 	finish_guard('nailink');
-	fs.unlink(state_dir+'/adapter.previous.json');
+	fs.unlink(state_dir+'/adapter.previous.json');providers.gc([journal]);
 }
 function restart(plugin) {
 	progress.stage('restarting');
@@ -640,7 +645,7 @@ function country_cached(plugin) {
 	let suffixes=plugin=='nailink'?['adzero-cn-geosite.dat','adzero-cn-geoip.dat',...(pool_needed(plugin)?['adzero-cn-domains.txt']:[])]:['adzero-cn-domains.txt','adzero-cn-ips.txt'];
 	for(let suffix in suffixes){
 		let entries=filter(journal.files,f=>substr(f.path,-length(suffix)-1)=='/'+suffix);
-		if(length(entries)!=1||entries[0].kind!='owned'||b64enc(fs.readfile(entries[0].path))!=entries[0].after)return false;
+		if(length(entries)!=1||entries[0].kind!='owned'||!providers.matches(entries[0].path,entries[0].after))return false;
 	}
 	return true;
 }
@@ -745,8 +750,8 @@ function restore() {
 	// Restore configuration first, restart, then remove provider files.
 	for (let file in journal.files) {
 		if (file.kind == 'owned') continue;
-		let current = fs.readfile(file.path), restored = file.before;
-		if (current != file.after && current != file.before && current != file.previous_after) {
+		let current = fs.readfile(file.path), restored = file_read(file.before,file.kind);
+		if (!file_match(file.path,file.after,file.kind) && !file_match(file.path,file.before,file.kind) && !file_match(file.path,file.previous_after,file.kind)) {
 			if (file.kind == 'block') restored = lib.strip_block(current ?? '');
 			else die('Mixin was edited externally; recovery journal retained for review');
 		}
@@ -774,12 +779,13 @@ function restore() {
 	retire_alias();
 	for (let file in journal.files) if (file.kind == 'owned') {
 		let current = fs.readfile(file.path);
-		if (current != null && b64enc(current) != file.after && b64enc(current) != file.previous_after) die('Provider edited externally; journal retained');
+		if (current != null && !providers.matches(file.path,file.after) && !providers.matches(file.path,file.previous_after)) die('Provider edited externally; journal retained');
 		if (current != null && !fs.unlink(file.path)) die('Cannot remove owned provider');
 	}
 	if (!fs.unlink(journal_path)) die('Cannot clear adapter journal');
-	fs.unlink(state_dir + '/adapter.previous.json');
+	fs.unlink(state_dir + '/adapter.previous.json');providers.gc([journal]);
 	journal = null;
+	providers.gc([]);
 	if(action=='remove'){
 		guard('cleanup');
 		stop_pool();
@@ -792,10 +798,9 @@ function rollback_update(previous) {
 	journal.stage='rolling_back';
 	for (let file in journal.files) {
 		let saved = filter(old.files, f => f.path == file.path)[0];
-		let value = saved ? (saved.kind == 'owned' ? b64dec(saved.after) : saved.after) : file.before;
+		let value = saved ? file_read(saved.after,saved.kind) : file_read(file.before,file.kind);
 		let current = fs.readfile(file.path);
-		let encoded = file.kind == 'owned' ? b64enc(current) : current;
-		if (current != value && encoded != file.after && encoded != file.previous_after) die('Concurrent edit prevents update rollback');
+		if (current != value && !file_match(file.path,file.after,file.kind) && !file_match(file.path,file.previous_after,file.kind)) die('Concurrent edit prevents update rollback');
 		if (value == null) fs.unlink(file.path); else atomic(file.path, value, file.mode);
 	}
 	for (let flag in journal.flags) {
@@ -818,6 +823,7 @@ function rollback_update(previous) {
 	atomic(journal_path, previous);
 	fs.unlink(state_dir + '/adapter.previous.json');
 	journal = old;
+	providers.gc([journal]);
 }
 
 function routing_check(wanted) {
@@ -916,7 +922,7 @@ function reconfigure_nailink(with_rules) {
 		journal.stage='configured_unverified';
 		let source=rules_signature('nailink');
 		if(source&&(with_rules||source.sha256==journal.rules_source?.sha256))journal.rules_source=source;else delete journal.rules_source;
-		save();finish_guard('nailink');fs.unlink(state_dir+'/adapter.previous.json');
+		save();finish_guard('nailink');fs.unlink(state_dir+'/adapter.previous.json');providers.gc([journal]);
 	}catch(e){
 		if(journal?.nailink_reload_unconfirmed)die(e);
 		progress.failure('adapter');
@@ -945,7 +951,7 @@ function reconfigure_passwall(with_rules){
 		journal.stage='restarting';save();restart('passwall');
 		journal.stage='configured_unverified';journal.rules_source=rules_signature('passwall');save();
 		finish_guard('passwall');
-		fs.unlink(state_dir+'/adapter.previous.json');
+		fs.unlink(state_dir+'/adapter.previous.json');providers.gc([journal]);
 	}catch(e){
 		progress.failure('adapter');
 		try{rollback_update(previous);}catch(recovery){journal.stage='recovery_required';save();die('PassWall 更新恢复未完成，请保留恢复记录。');}
@@ -956,7 +962,7 @@ function reconfigure_passwall(with_rules){
 function unchanged(plugin,signature) {
 	if(!journal||journal.stage!='configured_unverified'||journal.plugin!=plugin||!signature||!same(journal.rules_source,signature)||!!journal.split!=split_enabled)return false;
 	if(split_enabled&&index(['nailink','nikki','openclash'],plugin)>=0&&!country_cached(plugin))return false;
-	for(let f in journal.files){let raw=fs.readfile(f.path);if((f.kind=='owned'?b64enc(raw):raw)!=f.after)return false;}
+	for(let f in journal.files)if(!file_match(f.path,f.after,f.kind))return false;
 	for(let f in journal.flags)if(length(uci.changes(f.config)?.[f.config]??[])||!same(uci.get(f.config,f.section,f.option),f.after))return false;
 	if(journal.dns){let current=selected_dns();if(current.id!=journal.dns.id||current.dns.string!=journal.dns.after)return false;}
 	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id||current.text!=journal.traffic.after)return false;}
@@ -1106,7 +1112,7 @@ try {
 			retire_alias();
 			if(runtime)record_dns_runtime(runtime);
 			if(!native_needs_reload(runtime)||((journal.runtime_retry_after??0)>time()||(journal.runtime_retries??0)>=3)&&getenv('ADZERO_ADAPTER_REFRESH')!='1'){
-				finish_guard(plugin);fs.unlink(state_dir+'/adapter.previous.json');exit(0);
+				finish_guard(plugin);fs.unlink(state_dir+'/adapter.previous.json');providers.gc([journal]);exit(0);
 			}
 		}
 		let list = rules();
@@ -1133,7 +1139,7 @@ try {
 			}
 			let signature_after=rules_signature(plugin);
 			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;
-			if (!changed && journal.stage == 'configured_unverified' && !native_needs_reload(runtime)) { journal.count=length(list);save();finish_guard(plugin);fs.unlink(state_dir + '/adapter.previous.json'); exit(0); }
+			if (!changed && journal.stage == 'configured_unverified' && !native_needs_reload(runtime)) { journal.count=length(list);save();finish_guard(plugin);fs.unlink(state_dir + '/adapter.previous.json');providers.gc([journal]); exit(0); }
 			if(changed||getenv('ADZERO_ADAPTER_REFRESH')=='1')delete journal.runtime_retries;
 			journal.count = length(list); journal.stage = 'restarting'; journal.generation = time(); save();
 			restart(plugin);
@@ -1143,7 +1149,7 @@ try {
 			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;
 			save();
 			finish_guard(plugin);
-			fs.unlink(state_dir + '/adapter.previous.json');
+			fs.unlink(state_dir + '/adapter.previous.json');providers.gc([journal]);
 		} catch (e) {
 			if(journal?.nailink_reload_unconfirmed)die(e);
 			if (previous == null) {

@@ -98,7 +98,7 @@ def main():
         os.mknod(base/'dev/null',0o666 | 0o20000,os.makedev(1,3))
         os.mknod(base/'dev/urandom',0o666 | 0o20000,os.makedev(1,9))
         (base/'var/run/ubus/ubus.sock').symlink_to('/tmp/ubus.sock')
-        for relative in ('usr/share/rpcd/ucode/adzero','usr/libexec/adzero/observe-state.uc','usr/libexec/adzero/policy-lib.uc','usr/libexec/adzero/source-lib.uc','usr/libexec/adzero/routing-lib.uc','usr/libexec/adzero/progress-lib.uc','usr/libexec/adzero/job','usr/share/rpcd/acl.d/luci-app-adzero.json'):
+        for relative in ('usr/share/rpcd/ucode/adzero','usr/libexec/adzero/observe-state.uc','usr/libexec/adzero/policy-lib.uc','usr/libexec/adzero/source-lib.uc','usr/libexec/adzero/capacity-lib.uc','usr/libexec/adzero/routing-lib.uc','usr/libexec/adzero/progress-lib.uc','usr/libexec/adzero/job','usr/share/rpcd/acl.d/luci-app-adzero.json'):
             target=base/relative; target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(ROOT/'luci-app-adzero/root'/relative,target)
             if relative.endswith('/job'): target.chmod(0o755)

@@ -1,0 +1,41 @@
+{
+  "runtime": "pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot",
+  "source_sha256": "2deeb291259e2c2957c0a676f17fd7c5a288e79c139840d78ccc647909ea9ecb",
+  "checks": 68,
+  "empty_ruleset_and_unknown_capacity_reasons": "passed",
+  "controls_private_batch_and_write_acl": "passed",
+  "stats_reset_unavailable_rejected": "passed",
+  "observation_snapshot_seconds": [
+    0.0026,
+    0.0021,
+    0.002
+  ],
+  "observation_no_network_lifecycle": "passed",
+  "unavailable_verification_rejected": "passed",
+  "recent_typed_write_and_stop": "passed",
+  "rpcd_exec_timeout_seconds": 1,
+  "old_direct_exec_orphan_lock": "reproduced",
+  "private_batch_payload_and_detached_apply": "passed",
+  "finished_elapsed_is_fixed": "passed",
+  "nested_rpcd_call": "passed",
+  "typed_input_and_no_log_leak": "passed",
+  "detached_source_job": "passed",
+  "enable_disable_refresh_survive_timeout": "passed",
+  "routing_on_off_survive_timeout": "passed",
+  "public_stage_and_reason": "passed",
+  "interrupted_worker_record": "passed",
+  "large_status": {
+    "rules": 206375,
+    "rule_bytes": 5365750,
+    "journal_bytes": 7154533,
+    "rpcd_seconds": [
+      0.1724,
+      0.1662,
+      0.1645
+    ],
+    "unchanged_files": true,
+    "missing_output_and_stopped_resolver": "rejected",
+    "scope": "actual ctl/UCI/ucode/file.exec; procd service data fixture; no network services"
+  },
+  "router": "not_touched"
+}

@@ -1,6 +1,8 @@
 'use strict';
 import { hostname } from './policy-lib.uc';
 import * as dns from './routing-lib.uc';
+import { limits } from './capacity-lib.uc';
+const capacity=limits();
 
 export const catalog = [
 	{id:'hagezi-light',family:'hagezi-multi',name:'HaGeZi Light',group:'综合过滤',format:'domains',description:'轻量广告与跟踪过滤；同系列通常选择一项即可。',home:'https://github.com/hagezi/dns-blocklists',url:'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt'},
@@ -50,7 +52,7 @@ export function plan(raw) {
 };
 export function inspect(raw, kind, native) {
 	format(kind);
-	if (type(raw) != 'string' || length(raw) > 25000000) die('规则文件为空或超过 25 MB。');
+	if (type(raw) != 'string' || length(raw) > capacity.source_bytes) die('规则容量:规则文件为空或超过本机单文件上限。');
 	let names = {}, count=0, skipped=0,steven_header=false;
 	let bom_re=/^\xef\xbb\xbf/, header_re=/^\[Adblock( Plus)?( [0-9.]+)?\]$/, comment_re=/[[:space:]]+#.*$/;
 	let system_re=/^(\S+)\s+(localhost|local|broadcasthost|ip6-)/, space_re=/[[:space:]]+/;
@@ -105,7 +107,7 @@ export function inspect(raw, kind, native) {
 		try { name = hostname(line); } catch(e) { die('规则包含不支持的内容，请检查所选格式。'); }
 		if(ipv6){skipped++;continue;}
 		if (!names[name]) { names[name]=true;count++; }
-		if (count > 500000) die('单个列表超过 50 万个域名。');
+		if (count > capacity.source_domains) die(sprintf('规则容量:单个列表超过本机 %d 个域名上限。',capacity.source_domains));
 	}
 	let result = sort(keys(names));
 	if (!length(result)) die('规则文件没有有效域名。');
@@ -115,14 +117,14 @@ export function parse(raw,kind) { return inspect(raw,kind).names; };
 // Legacy backend subscriptions have no AdZero format field. Detect only our
 // three strict formats; other native formats remain explicitly backend-only.
 export function detect(raw) {
-	if(type(raw)!='string'||length(raw)>25000000)die('规则文件为空或超过 25 MB。');
+	if(type(raw)!='string'||length(raw)>capacity.source_bytes)die('规则容量:规则文件为空或超过本机单文件上限。');
 	// Legacy native formats may remain backend-only, but a successful HTTP
 	// response containing a CDN/login/error page is not a usable rule list.
 	let prefix=lc(trim(replace(substr(raw,0,1024),/^\uFEFF/,'')));
 	if(match(prefix,/^<!doctype[[:space:]]+html|^<(html|head|body|meta)([[:space:]>])/))die('订阅返回了 HTML 网页，未替换已有规则快照。');
 	for(let kind in ['domains','hosts','adblock']){
 		try{return inspect(raw,kind,true);}
-		catch(e){if(e.message=='单个列表超过 50 万个域名。')die(e);}
+		catch(e){if(index(e.message,'规则容量:')==0)die(e);}
 	}
 	return null;
 };

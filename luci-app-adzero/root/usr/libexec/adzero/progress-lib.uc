@@ -13,7 +13,7 @@ export const messages={
 	source_download:'规则下载失败，已停止应用。请检查该订阅的 HTTPS 地址与网络。',
 	source_format:'下载内容未通过规则格式校验，原有选择未被替换。',
 	source_check:'订阅预检未完成，请核对本地快照、临时文件或订阅设置；具体错误保留在路由器任务日志。未确认的更改不会视为已应用。',
-	source_limit:'规则超过安全上限（单文件 25 MB、单列表或合并后 50 万个域名）。请减少启用的列表；不会因为不同列表包含相同域名而报错。',
+	source_limit:'规则超过当前设备的单源、预处理或最终加载保护上限。请核对规则页的设备容量；不是已启用规则占用的累计配额，重复域名会自动去重。',
 	source_duplicate:'存在完全相同的订阅地址或规则标识，请编辑或删除重复项。不同列表的域名重叠会自动去重。',
 	country_data:'国内分类库下载或校验失败，未能开启自动分流。',
 	adapter:'代理配置应用或恢复未完成，请检查 AdZero 的恢复记录。',
@@ -57,7 +57,7 @@ export function source(index,total){
 };
 export function source_reason(message){
 	if(type(message)!='string')return null;
-	if(index(message,'50 万')>=0||index(message,'25 MB')>=0)return 'source_limit';
+	if(index(message,'规则容量:')==0||index(message,'50 万')>=0||index(message,'25 MB')>=0)return 'source_limit';
 	if(message=='待应用规则中存在重复项。'||message=='该订阅地址已存在。')return 'source_duplicate';
 	return null;
 };

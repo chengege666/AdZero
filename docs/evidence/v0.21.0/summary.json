@@ -1,0 +1,23 @@
+{
+  "version": "0.21.0",
+  "source_sha256": "2deeb291259e2c2957c0a676f17fd7c5a288e79c139840d78ccc647909ea9ecb",
+  "python_tests": 600,
+  "ui_assertions": 374,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 62,
+  "installer_delivery_cases": 6,
+  "native_components": [
+    "rpc",
+    "openclash",
+    "passwall"
+  ],
+  "browser_qa": "state-only change: regression assertions; existing visual layout retained",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "audit_findings": "adaptive source and resident capacity, compact verified recovery, bounded DNS connection reuse, switch retry after lock contention",
+  "capacity_scale_domains": 4000000,
+  "capacity_scale_dns_queries": 16,
+  "mihomo_dns_cases": 40,
+  "new_runtime_dependencies": false
+}

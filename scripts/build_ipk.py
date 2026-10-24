@@ -103,6 +103,8 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/libexec/adzero/sources.uc",
         "usr/libexec/adzero/source-lib.uc",
         "usr/libexec/adzero/source-cache.uc",
+        "usr/libexec/adzero/capacity-lib.uc",
+        "usr/libexec/adzero/provider-store.uc",
         "usr/libexec/adzero/cache-curl.uc",
         "usr/libexec/adzero/cache-curl/curl",
         "usr/libexec/adzero/job",

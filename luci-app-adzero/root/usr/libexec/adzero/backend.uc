@@ -4,8 +4,10 @@ import * as fs from 'fs';
 import { cursor } from 'uci';
 import { connect } from 'ubus';
 import * as rulecache from './rules-cache.uc';
+import { limits } from './capacity-lib.uc';
 
 const root = getenv('ADZERO_BACKEND_ROOT') ?? '';
+const capacity=limits(root);
 const fixture = getenv('ADZERO_BACKEND_SERVICE_FIXTURE');
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
@@ -55,15 +57,15 @@ try {
 	let instances = services[split(mode, '.')[0]]?.instances;
 	for (let name in keys(instances ?? {})) if (instances[name].running === true) result.resolver_running = true;
 	let file = fs.stat(root + output);
-	if (file?.size > 25000000) die('oversized_output');
+	if (file?.size > capacity.output_bytes) die('oversized_output');
 	let stopped = !(file?.size > 0) && (!data || ((!data.status || data.status == 'statusStopped') && !result.errors));
 	if (stopped && result.resolver_running) { result.state = 'stopped'; result.reason = 'none'; }
 	else if (uci.get('adblock-fast', 'config', 'enabled') == '1' && data?.status == 'statusSuccess' &&
 		type(errors) == 'array' && !length(errors) && data.dns == mode && data.outputFile == output &&
 		data.force_dns_active === false && int(data.entries) > 0 && file?.size > 0 && result.resolver_running) {
-		if(int(data.entries)>500000)die('domain_limit');
+		if(int(data.entries)>capacity.total_domains)die('domain_limit');
 		// A page read needs live service/output metadata, not another complete
-		// import of up to 500k rules. Keep the expensive content validation for
+		// import of the device's full rule set. Keep content validation for
 		// ready (mutation preconditions and post-start checks). Never imply that
 		// inspect verified the rule contents or the client's DNS path.
 		if (action == 'inspect') {

@@ -87,7 +87,10 @@ def main():
             with tarfile.open(fileobj=io.BytesIO(raw)) as outer:
                 member=next(m for m in outer if m.name.endswith('data.tar.gz'))
                 with tarfile.open(fileobj=io.BytesIO(outer.extractfile(member).read())) as tar:tar.extractall(base,filter='fully_trusted')
-        for name in ('etc/adzero','etc/openclash/config','etc/openclash/custom','etc/openclash/core','usr/share/openclash/ui','etc/ssl','tmp/untrusted-ui','var/run/adblock-fast','dev'):(base/name).mkdir(parents=True,exist_ok=True)
+        for name in ('etc/adzero','etc/openclash/config','etc/openclash/custom','etc/openclash/core','usr/share/openclash/ui','etc/ssl','tmp/untrusted-ui','var/run/adblock-fast','dev','proc/self','proc/sys/kernel/random'):(base/name).mkdir(parents=True,exist_ok=True)
+        # Supply only the process-owner and nonce metadata used by private
+        # recovery storage; do not mount the host's /proc into this fixture.
+        (base/'proc/sys/kernel/random/uuid').write_text('11111111-1111-4111-8111-111111111111\n')
         os.mknod(base/'dev/null',0o666|0o20000,os.makedev(1,3));os.mknod(base/'dev/urandom',0o666|0o20000,os.makedev(1,9))
         shutil.copytree(ROOT/'luci-app-adzero/root/usr/libexec/adzero',base/'usr/libexec/adzero',dirs_exist_ok=True)
         for path in (base/'usr/libexec/adzero').iterdir():path.chmod(0o755)

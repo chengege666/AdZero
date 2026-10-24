@@ -117,9 +117,9 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.20.5'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.21.0'), 'current CSS version prevents stale layout after upgrade');
   const brandLogo=nodes(root,n=>n.attrs&&n.attrs.class==='az-brand-mark')[0];
-  check(brandLogo.tag==='img'&&brandLogo.attrs.src==='/luci-static/resources/view/adzero/logo.png?v=0.20.5','page header uses the packaged approved Z shield instead of a generic status icon');
+  check(brandLogo.tag==='img'&&brandLogo.attrs.src==='/luci-static/resources/view/adzero/logo.png?v=0.21.0','page header uses the packaged approved Z shield instead of a generic status icon');
   check(brandLogo.attrs.alt===''&&brandLogo.attrs.draggable==='false','adjacent brand text names the logo without duplicate screen reader output');
   check(brandLogo.attrs.width==='44'&&brandLogo.attrs.height==='44','brand image reserves a square before loading');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
@@ -812,5 +812,8 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset();ruleData.capacity={state:'unknown',known_domains:123,unknown_sources:[1],total:2,limit:500000,current:false};await app.openRules();
   check(text(find('az-rule-capacity')).includes('不完整')&&text(find('az-rule-capacity')).includes('123 / 500,000'),'unknown source capacity is a partial known count rather than a fake zero or complete proof');
   await app.stageSource('source_add',['','Capacity draft','https://capacity.example/list','domains']);check(text(find('az-rule-capacity')).includes('当前草稿尚未预检'),'a previous receipt never pretends to count the current browser draft');
+  reset();ruleData.limits={source_domains:2000000,total_domains:4000000};ruleData.capacity={state:'complete',known_domains:640001,effective_domains:540001,unique_domains:640001,input_domains:900001,limit:4000000,current:true};await app.openRules();
+  check(text(find('az-rule-capacity')).includes('4,000,000')&&text(find('az-rule-capacity')).includes('2,000,000'),'device limits distinguish individual source and final resident capacity');
+  check(text(find('az-rule-capacity')).includes('540,001')&&text(find('az-rule-capacity')).includes('900,001'),'optimized native estimate is distinct from downloaded source records');
   console.log(`AdZero LuCI: ${assertions} UI regression assertions passed.`);
 })().catch(err => { console.error(err); process.exitCode = 1; });

@@ -35,23 +35,23 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-本版将插件页头统一为已确认的 Z 字盾牌 Logo，与 README 和在线文档保持一致，并随安装包提供图片。详见 [更新说明](docs/RELEASE_0.20.5.md)。
+本版改为按设备内存检查规则容量，分别显示单来源和最终上限；优化大规则恢复、DNS 并发连接复用和代理切换重试。详见 [更新说明](docs/RELEASE_0.21.0.md)。
 
-当前为 **v0.20.5 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.21.0 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.20.5/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.20.5/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.20.5) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.21.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
