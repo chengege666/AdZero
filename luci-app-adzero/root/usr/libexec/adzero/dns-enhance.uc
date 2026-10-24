@@ -58,6 +58,7 @@ function install(context){
 }
 function context(){
 	if(!active()||!settings().enabled||mutation_locked())return null;
+	if(dns.profile(decode(cursor().get('adzero','main','dns_profile')??'null')).strict)return null;
 	if(cursor().get('adblock-fast','config','dns')!='dnsmasq.servers')return null;
 	let adapted=adapter_state();if(!adapted.present||adapted.stage!='configured_unverified')return null;
 	let c=decode(command([base+'/dns-handoff','context']));
@@ -78,13 +79,14 @@ if(!fs.lstat(dir)&&!fs.mkdir(dir,0700)&&!fs.lstat(dir))die('无法创建 DNS 增
 let st=fs.lstat(dir);if(st?.type!='directory'||st.uid!=uid||(st.mode&077))die('DNS 增强目录无效。');
 function scan(){
 	let c=cursor(),profile=dns.profile(decode(c.get('adzero','main','dns_profile')??'null')),s=settings(),groups={};
-	for(let group in ['domestic','foreign'])groups[group]=map(profile[group].servers,address=>io.test(address,group=='foreign',s.proxy_port));
-	let result={updated:time(),profile,proxy_port:s.proxy_port,groups};atomic(dir+'/tests.json',result);return result;
+	let port=profile.proxy_port??s.proxy_port;
+	for(let group in ['domestic','foreign'])groups[group]=map(profile[group].servers,address=>io.test(address,group=='foreign',port));
+	let result={updated:time(),profile,proxy_port:port,groups};atomic(dir+'/tests.json',result);return result;
 }
 function switch_plan(group,expected,next){
 	let s=settings(),c=cursor(),profile=dns.profile(decode(c.get('adzero','main','dns_profile')??'null')),tested=decode(read(dir+'/tests.json'));
 	if(index(['domestic','foreign'],group)<0||!s.failover||!active()||c.get('adzero','main','routing_enabled')!='1'||
-		profile[group].active!=expected||index(profile[group].servers,next)<0||tested?.proxy_port!=s.proxy_port||time()-tested.updated>45||
+		profile[group].mode=='parallel'||profile[group].active!=expected||index(profile[group].servers,next)<0||tested?.proxy_port!=(profile.proxy_port??s.proxy_port)||time()-tested.updated>45||
 		sprintf('%J',profile)!=sprintf('%J',tested.profile)||!length(filter(tested.groups[group],r=>r.address==next&&r.ok)))die('DNS 备用切换条件已变化。');
 	let adapter=decode(read(state+'/adapter.json',25000000));if(index(['nailink','passwall','openclash','nikki'],adapter?.plugin)<0||adapter.stage!='configured_unverified'||!adapter.split)die('当前代理分流尚未确认。');
 	let current=decode(command([base+'/sources','list']));if(!current||current.pending)die('有待完成的规则变更。');
@@ -138,6 +140,7 @@ try{
 			if(s.failover&&active()&&c.get('adzero','main','routing_enabled')=='1'&&io.now()-last>=60&&!fs.stat('/tmp/adzero.lock')){
 				last=io.now();let result=scan();
 				for(let g in ['domestic','foreign']){
+					if(result.profile[g].mode=='parallel')continue;
 					hist[g]=lib.fallback(hist[g],result.profile[g],result.groups[g],int(io.now()));
 					if(hist[g].next){let rc=system(join(' ',map([base+'/ctl','dns-switch',g,result.profile[g].active,hist[g].next],quote)));hist[g].result=rc==0?'switched':'not_applied';break;}
 				}

@@ -1,0 +1,29 @@
+{
+  "checks": [
+    "baseline public DNS fixture",
+    "baseline IPv6 DNS fixture",
+    "baseline IPv6 LAN listener",
+    "held public DNS False",
+    "HTTPS remains available False",
+    "held public DNS True",
+    "HTTPS remains available True",
+    "held LAN DNS",
+    "bootstrap exception False",
+    "foreign direct DNS blocked False",
+    "direct 853 blocked False",
+    "public IPv6 DNS blocked False",
+    "IPv6 HTTPS available False",
+    "bootstrap exception True",
+    "foreign direct DNS blocked True",
+    "direct 853 blocked True",
+    "public IPv6 DNS blocked True",
+    "IPv6 HTTPS available True",
+    "LAN external DNS redirected",
+    "IPv6 LAN DNS blocked",
+    "LAN 853 blocked",
+    "handoff returns to held DNS"
+  ],
+  "source_sha256": "4b85d46f831c1e1746574b667e8e81b46e8e70ec650e94bb65055899344b6b6a",
+  "nft": "official OpenWrt 24.10.8",
+  "scope": "private Linux veth/network namespaces; no router touched"
+}

@@ -23,6 +23,7 @@ with tempfile.TemporaryDirectory(prefix='adzero-routing-dae-') as tmp:
     (home/'adzero-cn-geosite.dat').write_bytes(base64.b64decode(transform('geosite',['cn.example'],ad=True)))
     (home/'adzero-cn-geoip.dat').write_bytes(base64.b64decode(transform('geoip',['223.5.5.0/24','2400:3200::/32'])))
     profiles=[None,{'domestic':{'servers':['119.29.29.29'],'active':'119.29.29.29'},'foreign':{'servers':['8.8.8.8'],'active':'8.8.8.8'}},{'domestic':{'servers':['2400:3200::1'],'active':'2400:3200::1'},'foreign':{'servers':['2606:4700:4700::1111'],'active':'2606:4700:4700::1111'}}]
+    profiles.append({'strict':True,'proxy_port':1070,'domestic':{'servers':['223.5.5.5','119.29.29.29'],'active':'223.5.5.5','mode':'parallel'},'foreign':{'servers':['1.1.1.1','8.8.8.8'],'active':'1.1.1.1','mode':'parallel'}})
     for profile in profiles:
         for response in (True,False):
             dns='upstream { original: "udp://223.5.5.5:53" }\nrouting { request { fallback: original }'+(' response { fallback: accept }' if response else '')+' }'
@@ -31,5 +32,5 @@ with tempfile.TemporaryDirectory(prefix='adzero-routing-dae-') as tmp:
             config=home/'config.dae';config.write_text('global { log_level: info }\nnode { mynode: "socks5://127.0.0.1:9" }\ngroup { proxy { filter: name(mynode)\npolicy: fixed(0) } }\ndns { '+dns+' }\nrouting { '+routing+' }\n');config.chmod(0o600)
             p=subprocess.run([str(binary),'validate','-c',str(config)],text=True,capture_output=True)
             assert p.returncode==0,p.stdout+p.stderr
-    report={'status':'passed','source_sha256':source_hash(root/'luci-app-adzero'),'asset_sha256':SHA256,'core':'dae v2.1.1','profiles':['default','custom_ipv4','custom_ipv6'],'response_shapes':['explicit_response','request_only'],'configurations':6,'scope':'real DNS/traffic config parser and v4/v6 GeoIP DAT; no eBPF, router or LAN execution'}
+    report={'status':'passed','source_sha256':source_hash(root/'luci-app-adzero'),'asset_sha256':SHA256,'core':'dae v2.1.1','profiles':['default','custom_ipv4','custom_ipv6','parallel_strict'],'response_shapes':['explicit_response','request_only'],'configurations':8,'scope':'real DNS/traffic config parser and v4/v6 GeoIP DAT; no eBPF, router or LAN execution'}
     (root/'artifacts/runtime/routing-dae-result.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))

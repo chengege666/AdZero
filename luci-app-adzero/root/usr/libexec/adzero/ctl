@@ -291,6 +291,8 @@ print_status() {
 	[ -n "$backend_status" ] || backend_status=null
 	if [ "$state" = configured_unverified ]; then
 		case "$adapter_status" in null|*recovery_required*|*preparing*|*restarting*|*restoring*) state=inconsistent ;; esac
+		if [ "$(printf '%s' "$adapter_status" | jsonfilter -e '@.dns_policy.strict' 2>/dev/null)" = true ] && \
+		   [ "$(printf '%s' "$adapter_status" | jsonfilter -e '@.dns_policy.guard' 2>/dev/null)" != active ]; then state=inconsistent; fi
 		[ "$backend_ready" = 1 ] || state=inconsistent
 	fi
 	policy_status=$("$POLICY" status 2>/dev/null) || policy_status=null
@@ -590,6 +592,9 @@ change_sources() {
 	fi
 	error '规则未应用，请检查订阅地址和格式。'
 }
+strict_dns_selected() {
+	[ -n "$(get_uci adzero.main.dns_profile)" ] && "$SOURCES" strict >/dev/null 2>&1
+}
 apply_settings() {
 	verify_supported
 	reject_insecure_custom_fetch_flags
@@ -601,6 +606,7 @@ apply_settings() {
 		[ "$(get_uci adzero.main.enabled)" = 0 ] && [ "$(get_uci adblock-fast.config.enabled)" = 0 ] || error '后端正由其他服务管理。'
 		[ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ] || error '存在未完成恢复记录。'
 	fi
+	guard_was_present=0; [ ! -f "$STATE_DIR/dns-guard.json" ] || guard_was_present=1
 	settings_file=$1
 	settings_plan=$("$SOURCES" plan-check "$settings_file") || error '待应用配置检查失败。'
 	case "$settings_plan" in [01]' '[01]' '[01]' '[01]) ;; *) error '批量应用计划无效。' ;; esac
@@ -625,9 +631,15 @@ apply_settings() {
 		elif [ "$routing_method" = nailink ] || [ "$routing_method" = passwall ]; then
 			if [ "$rules_changed" = 0 ]; then "$ADAPTER" "reconfigure-$routing_method" && applied=1
 			else backend_rebuild_if_changed && "$ADAPTER" "reconfigure-$routing_method-rules" && applied=1; fi
-		else "$ADAPTER" remove && { [ "$rules_changed" = 0 ] || backend_rebuild_if_changed; } && "$ADAPTER" apply && applied=1
+		else "$ADAPTER" detach && { [ "$rules_changed" = 0 ] || backend_rebuild_if_changed; } && "$ADAPTER" apply && applied=1
 		fi
-		if [ "$applied" = 1 ]; then "$SOURCES" finish || error '更改已应用，但完成记录未能清理。'; return 0; fi
+		if [ "$applied" = 1 ]; then
+			"$SOURCES" finish || error '更改已应用，但完成记录未能清理。'
+			if [ "$active" = 1 ] && [ "$dns_changed" = 1 ] && { strict_dns_selected || [ "$guard_was_present" = 1 ]; }; then
+				[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero reload || error 'DNS 已应用，但后台检查服务未能刷新。'
+			fi
+			return 0
+		fi
 	fi
 	if ! sources_clean; then
 		retain_pending_reload
@@ -638,7 +650,7 @@ apply_settings() {
 			if [ "$rules_changed" = 0 ]; then "$ADAPTER" "reconfigure-$routing_method" && restored=1
 			else backend_restart dl && "$ADAPTER" "reconfigure-$routing_method-rules" && restored=1; fi
 		else
-			if [ "$routing_changed" = 1 ]; then "$ADAPTER" remove || error '代理恢复未完成，批量记录已保留。'; fi
+			if [ "$routing_changed" = 1 ]; then "$ADAPTER" detach || error '代理恢复未完成，批量记录已保留。'; fi
 			{ [ "$rules_changed" = 0 ] || backend_restart dl; } && "$ADAPTER" apply && restored=1
 		fi
 		if [ "$restored" = 1 ]; then "$SOURCES" discard || error '旧配置已恢复，但记录未清理。'; error '更改未能应用，已恢复之前的配置。'; fi
@@ -663,6 +675,7 @@ refresh_blocklists() {
 }
 change_routing() {
 	case "$1" in 0|1) ;; *) error '自动分流开关无效。' ;; esac
+	if [ "$1" = 0 ] && strict_dns_selected; then error '请同时关闭严格 DNS，再关闭自动分流。'; fi
 	require_active
 	[ "$(get_uci adzero.main.routing_enabled)" != "$1" ] || { printf 'routing preference already applied\n'; return 0; }
 	routing_method=$("$ADAPTER" routing-check "$1") || error '当前代理配置未通过分流预检，原接入保持不变。'
@@ -679,11 +692,11 @@ change_routing() {
 		fi
 		error '自动分流切换与恢复未确认，请关闭并恢复；记录已保留。'
 	fi
-	if "$ADAPTER" remove && "$POLICY" routing-save && "$ADAPTER" apply; then
+	if "$ADAPTER" detach && "$POLICY" routing-save && "$ADAPTER" apply; then
 		"$POLICY" routing-finish || error '分流已应用，但完成记录未能清理。'
 		printf 'routing preference synchronized\n'; return 0
 	fi
-	if "$ADAPTER" remove && "$POLICY" routing-rollback && "$ADAPTER" apply; then
+	if "$ADAPTER" detach && "$POLICY" routing-rollback && "$ADAPTER" apply; then
 		"$POLICY" routing-finish || error '原配置已恢复，但切换记录未清理。'
 		error '自动分流切换未完成，已恢复原配置。'
 	fi
@@ -765,6 +778,7 @@ expire_allow() {
 }
 pause_protection() {
 	case "$1" in 300|900|1800) ;; *) error '暂停时长仅支持 5、15、30 分钟。' ;; esac
+	if strict_dns_selected; then error '严格 DNS 模式下不能临时暂停；请先关闭严格模式，或使用关闭并恢复。'; fi
 	require_active
 	"$POLICY" pause-begin "$1" || error '未能记录暂停计划。'
 	"$ADAPTER" remove || error '代理规则未恢复，暂停未完成；请关闭并恢复。'

@@ -57,6 +57,7 @@ jobs:
           python3 scripts/check_routing_dae.py
           python3 scripts/check_routing_data.py
           sudo python3 scripts/check_routing_core.py
+          sudo python3 scripts/check_dns_guard_runtime.py
           sudo chown -R "$(id -u):$(id -g)" artifacts .sdk
           export PATH="$PWD/.sdk/runtime-24.10.8/wrappers:$PATH"
           python3 scripts/check_rule_source.py

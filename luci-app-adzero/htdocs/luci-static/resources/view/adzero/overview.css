@@ -360,6 +360,12 @@
 .az-root .az-network-body { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--az-line); }
 .az-root .az-network-body > .az-card { padding: 14px 18px; margin: 0; box-shadow: none; border: 0; border-radius: 0; background: transparent; }
 .az-root .az-network-body > .az-card + .az-card { border-left: 1px solid var(--az-line); }
+.az-root .az-network-body.is-editing { grid-template-columns: minmax(0,1fr); }
+.az-root .az-network-body.is-editing > .az-card + .az-card { border-left: 0; border-top: 1px solid var(--az-line); }
+.az-root .az-network-body.is-editing > .az-card:first-child { display: grid; grid-template-columns: minmax(160px,220px) minmax(0,1fr); gap: 4px 20px; align-items: center; }
+.az-root .az-network-body.is-editing > .az-card:first-child .az-section-heading { grid-row: 1/3; margin: 0; }
+.az-root .az-network-body.is-editing > .az-card:first-child p { margin: 0; }
+@media (max-width: 640px) { .az-root .az-network-body.is-editing > .az-card:first-child { display: block; } }
 @media(max-width:760px) {
   .az-root .az-app { padding: 12px 8px; }
   .az-root .az-live-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }

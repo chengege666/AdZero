@@ -54,21 +54,22 @@ def main():
     binary.parent.mkdir(parents=True,exist_ok=True)
     binary.write_bytes(gzip.decompress(archive.read_bytes()));binary.chmod(0o755)
     assert binary.read_bytes()==gzip.decompress(archive.read_bytes())
-    dns_records=[];proxy_records=[];servers=[];threads=[];checks=[]
+    dns_records=[];proxy_records=[];servers=[];threads=[];checks=[];fail_proxy={'dns':False}
 
-    def dns_reply(packet,group):
+    def dns_reply(packet,group,endpoint=None):
         pos=12;labels=[]
         while packet[pos]:
             size=packet[pos];pos+=1;labels.append(packet[pos:pos+size].decode());pos+=size
         name='.'.join(labels);kind=struct.unpack('!H',packet[pos+1:pos+3])[0]
-        dns_records.append({'group':group,'name':name,'type':kind})
+        dns_records.append({'group':group,'name':name,'type':kind,'endpoint':endpoint})
+        if name.startswith('race.'):time.sleep(.45 if endpoint in ('223.5.5.5','1.1.1.1') else .02)
         addr=('2400:3200::42' if group=='domestic' else '2606:4700:4700::42') if kind==28 else ('223.5.5.42' if group=='domestic' else '8.8.8.42')
         ip=socket.inet_pton(socket.AF_INET6 if kind==28 else socket.AF_INET,addr)
         return packet[:2]+struct.pack('!HHHHH',0x8180,1,1,0,0)+packet[12:pos+5]+b'\xc0\x0c'+struct.pack('!HHIH',kind,1,60,len(ip))+ip
 
     class UDPDNS(socketserver.BaseRequestHandler):
         def handle(self):
-            packet,sock=self.request;sock.sendto(dns_reply(packet,'domestic'),self.client_address)
+            packet,sock=self.request;sock.sendto(dns_reply(packet,'domestic',self.server.server_address[0]),self.client_address)
 
     class TCPDNS(socketserver.BaseRequestHandler):
         def handle(self):
@@ -76,7 +77,7 @@ def main():
             try:
                 while True:
                     packet=recv_exact(self.request,struct.unpack('!H',recv_exact(self.request,2))[0])
-                    answer=dns_reply(packet,'domestic');self.request.sendall(struct.pack('!H',len(answer))+answer)
+                    answer=dns_reply(packet,'domestic',self.server.server_address[0]);self.request.sendall(struct.pack('!H',len(answer))+answer)
             except OSError:pass
 
     class SOCKS(socketserver.BaseRequestHandler):
@@ -87,10 +88,11 @@ def main():
                 version,command,_,kind=recv_exact(sock,4);assert (version,command)==(5,1)
                 host=socket.inet_ntop(socket.AF_INET,recv_exact(sock,4)) if kind==1 else socket.inet_ntop(socket.AF_INET6,recv_exact(sock,16)) if kind==4 else recv_exact(sock,recv_exact(sock,1)[0]).decode()
                 port=struct.unpack('!H',recv_exact(sock,2))[0];proxy_records.append({'host':host,'port':port})
+                if port==53 and fail_proxy['dns']:return
                 sock.sendall(b'\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x01')
                 if host in ('1.1.1.1','8.8.8.8') and port==53:
                     while True:
-                        packet=recv_exact(sock,struct.unpack('!H',recv_exact(sock,2))[0]);answer=dns_reply(packet,'foreign-through-proxy');sock.sendall(struct.pack('!H',len(answer))+answer)
+                        packet=recv_exact(sock,struct.unpack('!H',recv_exact(sock,2))[0]);answer=dns_reply(packet,'foreign-through-proxy',host);sock.sendall(struct.pack('!H',len(answer))+answer)
                 else:
                     data=b''
                     while b'\r\n\r\n' not in data:data+=recv_exact(sock,1)
@@ -134,6 +136,7 @@ def main():
 
     try:
         profiles=[('default',None),('custom',{'domestic':{'servers':['119.29.29.29'],'active':'119.29.29.29'},'foreign':{'servers':['8.8.8.8'],'active':'8.8.8.8'}})]
+        profiles.append(('parallel-strict',{'strict':True,'domestic':{'servers':['223.5.5.5','119.29.29.29'],'active':'223.5.5.5','mode':'parallel'},'foreign':{'servers':['1.1.1.1','8.8.8.8'],'active':'1.1.1.1','mode':'parallel'}}))
         for label,settings in profiles:
             for mode in ('redir-host','fake-ip'):
                 with tempfile.TemporaryDirectory(prefix='adzero-routing-core-') as tmp:
@@ -166,6 +169,20 @@ def main():
                             for host,expected in [('www.cn.example','DIRECT'),('www.foreign.example','PROXY'),('override.cn.example','PROXY'),('223.5.5.42','DIRECT'),('8.8.8.42','PROXY'),('[2400:3200::42]','DIRECT'),('[2606:4700:4700::42]','PROXY')]:
                                 actual=connection_path(mixed_port,host);assert actual==expected,(mode,host,actual,proxy_records)
                                 checks.append({'profile':label,'mode':mode,'target':host,'actual_connection_path':actual})
+                            if label=='parallel-strict':
+                                for name,expected in [('race.cn.example',{'223.5.5.5','119.29.29.29'}),('race.real.foreign.example',{'1.1.1.1','8.8.8.8'})]:
+                                    start=time.monotonic();result=query(dns_port,name,1,False);elapsed=time.monotonic()-start
+                                    assert result[0]==0 and elapsed<.35,(name,elapsed,result)
+                                    actual={r['endpoint'] for r in dns_records if r['name']==name};assert expected<=actual,(name,actual)
+                                    checks.append({'profile':label,'mode':mode,'parallel':name,'seconds':elapsed,'upstreams':sorted(actual)})
+                                fail_proxy['dns']=True
+                                try:
+                                    try:failed=query(dns_port,'failed.real.foreign.example',1,False)
+                                    except OSError:failed=(2,0)
+                                    assert failed[0]!=0,failed
+                                    assert not any(r['group']=='domestic' and r['name']=='failed.real.foreign.example' for r in dns_records)
+                                    checks.append({'profile':label,'mode':mode,'proxy_unavailable':'no direct DNS fallback'})
+                                finally:fail_proxy['dns']=False
                         finally:process.terminate();process.wait(timeout=5)
         assert any(r['group']=='domestic' and r['name']=='www.cn.example' for r in dns_records)
         assert any(r['group']=='foreign-through-proxy' and r['name']=='test.real.foreign.example' for r in dns_records)

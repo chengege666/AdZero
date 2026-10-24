@@ -1,0 +1,45 @@
+{
+  "source_sha256": "4b85d46f831c1e1746574b667e8e81b46e8e70ec650e94bb65055899344b6b6a",
+  "results": [
+    {
+      "name": "full",
+      "exit_code": 0
+    },
+    {
+      "name": "check_rpc",
+      "exit_code": 0
+    },
+    {
+      "name": "check_passwall_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_openclash_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_nailink_gateway",
+      "exit_code": 0
+    },
+    {
+      "name": "check_dns_guard_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_routing_core",
+      "exit_code": 0
+    },
+    {
+      "name": "check_routing_dae",
+      "exit_code": 0
+    },
+    {
+      "name": "check_dns_handoff_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_dns_enhance_runtime",
+      "exit_code": 0
+    }
+  ]
+}

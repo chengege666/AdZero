@@ -4,6 +4,7 @@
 export const domestic = ['223.5.5.5', '119.29.29.29'];
 export const foreign = '1.1.1.1';
 let ip_bytes;
+export function addresses(p,group){let g=p[group];return g.mode=='parallel'?[g.active,...filter(g.servers,v=>v!=g.active)]:[g.active];};
 export function profile(value) {
 	let defaults={domestic:{servers:[...domestic],active:domestic[0]},foreign:{servers:[foreign,'8.8.8.8'],active:foreign}};
 	if(value==null)return defaults;
@@ -20,12 +21,20 @@ export function profile(value) {
 			if(length(filter(servers,other=>ip_bytes(other)==bytes)))die('同组 DNS 地址不能重复。');push(servers,address);
 		}
 		if(type(item.active)!='string'||index(servers,lc(item.active))<0)die('请从每组地址中选择当前使用的 DNS。');
+		if(item.mode!=null&&index(['single','parallel'],item.mode)<0)die('DNS 查询策略无效。');
+		if(item.mode=='parallel'&&length(servers)>3)die('组内并发最多设置 3 个 DNS，避免请求放大。');
 		result[group]={servers,active:lc(item.active)};
+		if(item.mode=='parallel')result[group].mode='parallel';
 	}
 	if(ip_bytes(result.domestic.active)==ip_bytes(result.foreign.active))die('国内和国外 DNS 请选择不同地址，以便分别指定连接路径。');
+	if(value.strict!=null&&type(value.strict)!='bool')die('严格 DNS 模式需要明确的开关值。');
+	if(value.strict===true)result.strict=true;
+	if(value.proxy_port!=null){if(type(value.proxy_port)!='int'||value.proxy_port!=0&&(value.proxy_port<1024||value.proxy_port>65535))die('本机 SOCKS5 端口需要 1024–65535。');result.proxy_port=value.proxy_port;}
+	for(let d in addresses(result,'domestic'))for(let f in addresses(result,'foreign'))if(ip_bytes(d)==ip_bytes(f))die('国内和国外的生效 DNS 地址不能重叠。');
 	return result;
 };
-function selected(value){let p=profile(value);return {domestic:[p.domestic.active],foreign:p.foreign.active};}
+export function effective(value){let p=profile(value);return {domestic:addresses(p,'domestic'),foreign:addresses(p,'foreign'),strict:p.strict===true,proxy_port:p.strict||p.foreign.mode=='parallel'?p.proxy_port??0:0};};
+function selected(value){let p=profile(value);return {domestic:addresses(p,'domestic'),foreign:p.foreign.active,foreign_all:addresses(p,'foreign'),profile:p};}
 export function endpoint(address){return index(address,':')>=0?'['+address+']:53':address+':53';};
 function literal(address){return index(address,':')>=0?sprintf('%J',address):address;}
 const country_record_re=/^server=\/([a-z0-9.-]+)\/[0-9.]+$/, country_name_re=/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/, number_re=/^[0-9.]+$/;
@@ -143,8 +152,8 @@ export function dae_dns(raw,settings) {
 	// Add no new response policy when none existed. Only protect our upstreams
 	// from an existing response retry chain when the user actually has one.
 	for(let block in blocks){
-		if(block.path=='upstream')push(edits,{at:block.close,text:'\n'+owned('UPSTREAM','adzero_cn: "udp://'+endpoint(domestic[0])+'"\nadzero_global: "tcp://'+endpoint(foreign)+'"')});
-		if(block.path=='routing.request')push(edits,{at:block.close,text:'\n'+owned('REQUEST','qname(ext:"adzero-cn-geosite.dat:adzero") -> adzero_cn\nqname(regex: ".*") -> adzero_global')});
+		if(block.path=='upstream')push(edits,{at:block.close,text:'\n'+owned('UPSTREAM','adzero_cn: "'+(addresses.profile.domestic.mode=='parallel'||addresses.profile.strict?'tcp://127.0.0.1:5356':'udp://'+endpoint(domestic[0]))+'"\nadzero_global: "'+(addresses.profile.foreign.mode=='parallel'||addresses.profile.strict?'tcp://127.0.0.1:5357':'tcp://'+endpoint(foreign))+'"')});
+		if(block.path=='routing.request')push(edits,{at:addresses.profile.strict?block.open+1:block.close,text:'\n'+owned('REQUEST',(addresses.profile.strict?'qname(ext:"adzero-geosite.dat:adzero") -> reject\n':'')+'qname(ext:"adzero-cn-geosite.dat:adzero") -> adzero_cn\nqname(regex: ".*") -> adzero_global')});
 		if(block.path=='routing.response')push(edits,{at:block.open+1,text:'\n'+owned('RESPONSE','upstream(adzero_cn, adzero_global) -> accept')});
 	}
 	for(let e in sort(edits,(a,b)=>b.at-a.at))raw=substr(raw,0,e.at)+e.text+substr(raw,e.at);
@@ -160,7 +169,7 @@ export function dae_routing(raw,target,settings) {
 	if(!fallback)die('Expected a standalone dae fallback line');
 	let at=index(raw,fallback[0]);
 	let direct='dip('+join(', ',map([...domestic,'127.0.0.0/8','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','::1/128','fc00::/7','fe80::/10'],v=>index(v,':')>=0?sprintf('%J',v):v))+') -> direct';
-	let prefix=owned('TRANSPORT','dip('+literal(foreign)+') && dport(53) -> '+target+'\ndip('+join(', ',map(domestic,literal))+') && dport(53) -> direct');
+	let prefix=owned('TRANSPORT','dip('+join(', ',map(addresses.foreign_all,literal))+') && dport(53) -> '+target+'\ndip('+join(', ',map(domestic,literal))+') && dport(53) -> direct');
 	let defaults=owned('ROUTING',direct+'\ndomain(ext:"adzero-cn-geosite.dat:adzero") -> direct\ndip(ext:"adzero-cn-geoip.dat:adzero") -> direct');
 	return prefix+substr(raw,0,at)+'\n'+defaults+substr(raw,at);
 };
@@ -183,11 +192,12 @@ export function mihomo(config,domain_path,ip_path,settings) {
 	rules=filter(rules,r=>index(own,r)<0);pop(rules);config.rules=[...rules,...own,matches[0]];config.mode='rule';
 	let dns=config.dns;
 	dns['default-nameserver']=[...domestic];dns['proxy-server-nameserver']=[...domestic];dns['direct-nameserver']=[...domestic];
-	dns.nameserver=['tcp://'+endpoint(foreign)+'#'+target];delete dns.fallback;delete dns['fallback-filter'];
+	if(addresses.profile.strict){delete dns['direct-nameserver'];dns['direct-nameserver-follow-policy']=true;}
+	dns.nameserver=map(addresses.foreign_all,f=>'tcp://'+endpoint(f)+'#'+target);delete dns.fallback;delete dns['fallback-filter'];
 	let policies={};
 	// Keep the existing ad reject provider before the China domain provider.
 	if(dns['nameserver-policy']?.['rule-set:adzero-dns'])policies['rule-set:adzero-dns']=dns['nameserver-policy']['rule-set:adzero-dns'];
-	for(let key in keys(dns['nameserver-policy']??{}))if(key!='rule-set:adzero-dns'&&key!='rule-set:adzero-cn-domain')policies[key]=dns['nameserver-policy'][key];
+	if(!addresses.profile.strict)for(let key in keys(dns['nameserver-policy']??{}))if(key!='rule-set:adzero-dns'&&key!='rule-set:adzero-cn-domain')policies[key]=dns['nameserver-policy'][key];
 	policies['rule-set:adzero-cn-domain']=map(domestic,d=>'udp://'+endpoint(d)+'#DIRECT');dns['nameserver-policy']=policies;
 	let fake=dns['fake-ip-filter-mode']=='rule'?'RULE-SET,adzero-cn-domain,real-ip':'rule-set:adzero-cn-domain';
 	dns['fake-ip-filter']=[fake,...filter(dns['fake-ip-filter']??[],f=>f!=fake)];

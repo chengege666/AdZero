@@ -64,7 +64,8 @@ function list() {
 			domains: s.adzero_domains ? int(s.adzero_domains) : null,skipped:int(s.adzero_skipped??'0'),updated:s.adzero_updated ? int(s.adzero_updated) : null,
 			checked:s.adzero_checked?int(s.adzero_checked):s.adzero_updated?int(s.adzero_updated):null});
 	}
-	return {catalog:lib.catalog,items,revision:checksum(config),dns:dns_profile(),pending:!!read(journal),last:read(dir+'/sources-last.json')};
+	let legacy;try{legacy=json(uci.get('adzero','main','dns_enhance')??'null');}catch(e){}
+	return {catalog:lib.catalog,items,revision:checksum(config),dns:dns_profile(),dns_test_proxy_port:legacy?.proxy_port??0,pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
 function download(address,kind,fresh,manual) {
 	lib.url(address);if(kind!='auto')lib.format(kind);
@@ -191,7 +192,8 @@ function batch_plan(path){
 	if(p.revision!=checksum(config)||(uci.get('adzero','main','routing_enabled')=='1')!=p.routing_before){progress.failure('config_conflict');die('配置已被其他操作修改，请重新读取并核对待应用选择。');}
 	if(p.dns&&!same(p.dns_before,dns_profile())){progress.failure('config_conflict');die('DNS 设置已被其他操作修改，请重新读取。');}
 	p.dns_changed=!!p.dns&&!same(p.dns,p.dns_before);
-	let active_changed=p.dns_changed&&(p.dns.domestic.active!=p.dns_before.domestic.active||p.dns.foreign.active!=p.dns_before.foreign.active);
+	if((p.dns??dns_profile()).strict&&!p.routing_enabled)die('严格 DNS 模式需要自动分流；请同时修改后应用。');
+	let active_changed=p.dns_changed&&!same(dns.effective(p.dns),dns.effective(p.dns_before));
 	p.routing_changed=p.routing_before!=p.routing_enabled||active_changed&&p.routing_enabled;
 	let existing=selected();
 	for(let item in p.items)if(item.id){
@@ -334,6 +336,7 @@ function stamp_verified_metadata(before){
 let action=shift(ARGV);if (action == '--') action=shift(ARGV);
 try {
 	if (action == 'list') print(sprintf('%J\n',list()));
+	else if(action=='strict')exit(dns_profile().strict?0:1);
 	else if(action=='plan-check'){let p=batch_plan(shift(ARGV));print((p.rules_changed?'1':'0')+' '+(p.routing_changed?'1':'0')+' '+(p.routing_enabled?'1':'0')+' '+(p.dns_changed?'1':'0')+'\n');}
 	else if(action=='verify'){
 		clean_uci();if(read(journal))die('请先完成待应用操作。');

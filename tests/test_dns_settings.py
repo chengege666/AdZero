@@ -64,6 +64,44 @@ class DNSSettingsTest(unittest.TestCase):
         self.assertEqual(f.status()['state'],'disabled')
         self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
 
+    def test_strict_requires_split_before_committing_any_configuration(self):
+        f=self.fixture;before=(self.root/'etc/config/adzero').read_bytes()
+        p=self.plan({**CUSTOM,'strict':True});f.ctl('settings-apply',str(p),ok=False)
+        self.assertEqual(before,(self.root/'etc/config/adzero').read_bytes())
+
+    def test_test_only_socks_port_edit_does_not_reload_a_single_mode_proxy(self):
+        f=self.fixture;api=self.nailink();f.ctl('enable');f.ctl('routing-on')
+        before=json.loads(api.read_text());p=json.loads(f.ctl('sources-list').stdout)['dns'];p['proxy_port']=1070
+        f.ctl('settings-apply',str(self.plan(p)))
+        self.assertEqual(json.loads(api.read_text())['runs'],before['runs'])
+        self.assertEqual(json.loads(f.ctl('sources-list').stdout)['dns']['proxy_port'],1070)
+
+    def test_passwall_xray_foreign_parallel_is_rejected_and_rolls_back(self):
+        count=routing.RoutingControllerTest.passwall(self);f=self.fixture;f.ctl('enable');f.ctl('routing-on')
+        old=json.loads(f.ctl('sources-list').stdout)['dns'];p=json.loads(json.dumps(CUSTOM));p['foreign']['mode']='parallel'
+        f.ctl('settings-apply',str(self.plan(p)),ok=False)
+        self.assertEqual(json.loads(f.ctl('sources-list').stdout)['dns'],old)
+        self.assertIn("dns_mode 'xray'",(self.root/'etc/config/passwall').read_text())
+        self.assertEqual(f.status()['state'],'configured_unverified')
+
+    def test_parallel_pool_bind_failure_keeps_working_nailink_configuration(self):
+        f=self.fixture;api=self.nailink();f.ctl('enable');f.ctl('routing-on')
+        before=json.loads(api.read_text());p=json.loads(json.dumps(CUSTOM));p['domestic']['mode']='parallel'
+        f.ctl('settings-apply',str(self.plan(p)),ok=False)
+        self.assertEqual(json.loads(api.read_text())['dns'],before['dns'])
+        self.assertEqual(f.status()['state'],'configured_unverified')
+
+    def test_passwall_tcp_foreign_pool_requires_explicit_socks_path(self):
+        count=routing.RoutingControllerTest.passwall(self);f=self.fixture
+        file=self.root/'etc/config/passwall';file.write_text(file.read_text().replace("dns_mode 'xray'","dns_mode 'tcp'"))
+        f.write('usr/bin/chinadns-ng','#!/bin/sh\nexit 0\n',True)
+        f.ctl('enable');f.ctl('routing-on');before=json.loads(f.ctl('sources-list').stdout)['dns']
+        p=json.loads(json.dumps(CUSTOM));p['foreign']['mode']='parallel'
+        failed=f.ctl('settings-apply',str(self.plan(p)),ok=False)
+        self.assertIn('SOCKS5',failed.stderr)
+        self.assertEqual(json.loads(f.ctl('sources-list').stdout)['dns'],before)
+        self.assertEqual(f.status()['state'],'configured_unverified')
+
     def test_nailink_dns_only_edit_uses_one_reload_and_no_backend_restart(self):
         f=self.fixture;p=self.nailink();f.ctl('enable');f.ctl('routing-on')
         plan=self.plan();before=json.loads(p.read_text())

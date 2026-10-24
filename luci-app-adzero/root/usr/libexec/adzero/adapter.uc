@@ -27,6 +27,7 @@ let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 let openclash_error = 'hook_failed';
 const native_runtime={passwall:proxy.dns_runtime(root,'passwall'),ssrplus:proxy.dns_runtime(root,'ssrplus')};
+let guard, finish_guard, pool_needed, prepare_pool, strict_target, policy_prerequisites, passwall_pool_foreign, stop_pool;
 
 function quote(s) { return "'" + replace(s, /'/g, "'\\''") + "'"; }
 function service_command(plugin,operation){
@@ -274,7 +275,7 @@ function active_plugin() {
 	if (length(data.dns?.uncertain_proxies ?? [])) die(index(data.dns.uncertain_proxies,'nailink')>=0?'无法确认 NaiLink 内核状态，请检查 NaiLink 后重新检测；尚未修改配置。':'无法确认当前代理内核状态，请检查对应插件后重新检测；尚未修改配置。');
 	let active = filter(data.plugins, proxy.active);
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
-	if (!length(active)) { if(split_enabled)timeout_helper();return 'none'; }
+	if (!length(active)) { if(split_enabled)timeout_helper();policy_prerequisites('none');return 'none'; }
 	if (index(['nailink','passwall','openclash','nikki','ssrplus'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
 	if(active[0].id!='nailink')timeout_helper();
 	if(active[0].id=='passwall'){
@@ -299,13 +300,14 @@ function active_plugin() {
 	if (active[0].id == 'nailink' && type(nailink_runtime?.running) != 'bool') die('NaiLink returned invalid runtime state');
 	if (split_enabled && active[0].id!='ssrplus') {
 		if (active[0].id == 'nailink') {
-			if (nailink_runtime?.running !== true) return 'none';
-		} else if (active[0].runtime == 'stopped') return 'none';
+			if (nailink_runtime?.running !== true) {policy_prerequisites('none');return 'none';}
+		} else if (active[0].runtime == 'stopped') {policy_prerequisites('none');return 'none';}
 		else if (active[0].runtime != 'running') {
 			let expected=active[0].id=='passwall'?['xray','sing-box']:['mihomo','clash'];
 			if (!length(filter(data.cores??[],c=>index(expected,c)>=0))) die('无法确认当前代理内核状态，请检查代理服务。');
 		}
 	}
+	policy_prerequisites(active[0].id);
 	return active[0].id;
 }
 function selected_dns() {
@@ -410,6 +412,7 @@ function settle_nailink() {
 	journal.stage='configured_unverified';
 	if(journal.nailink_completion.input)journal.rules_source=journal.nailink_completion.input;
 	clear_nailink_pending();
+	finish_guard('nailink');
 	fs.unlink(state_dir+'/adapter.previous.json');
 }
 function restart(plugin) {
@@ -589,7 +592,7 @@ function apply_plugin(plugin, list) {
 }
 function country_cached(plugin) {
 	if(!same(journal?.country_sources,route.sources))return false;
-	let suffixes=plugin=='nailink'?['adzero-cn-geosite.dat','adzero-cn-geoip.dat']:['adzero-cn-domains.txt','adzero-cn-ips.txt'];
+	let suffixes=plugin=='nailink'?['adzero-cn-geosite.dat','adzero-cn-geoip.dat',...(pool_needed(plugin)?['adzero-cn-domains.txt']:[])]:['adzero-cn-domains.txt','adzero-cn-ips.txt'];
 	for(let suffix in suffixes){
 		let entries=filter(journal.files,f=>substr(f.path,-length(suffix)-1)=='/'+suffix);
 		if(length(entries)!=1||entries[0].kind!='owned'||b64enc(fs.readfile(entries[0].path))!=entries[0].after)return false;
@@ -602,6 +605,7 @@ function country_files(plugin) {
 	if(plugin=='nailink'){
 		tracked(root+prefix+'adzero-cn-geosite.dat',lib.geosite(routing_data.domains),'owned',0644);
 		tracked(root+prefix+'adzero-cn-geoip.dat',route.geoip(routing_data.cidrs),'owned',0644);
+		if(pool_needed(plugin))tracked(root+prefix+'adzero-cn-domains.txt',join('\n',routing_data.domains)+'\n','owned',0644);
 	}else{
 		tracked(root+prefix+'adzero-cn-domains.txt',join('\n',map(routing_data.domains,d=>'+.'+d))+'\n','owned',0644);
 		tracked(root+prefix+'adzero-cn-ips.txt',join('\n',routing_data.cidrs)+'\n','owned',0644);
@@ -626,12 +630,14 @@ function apply_split(plugin) {
 		let instances=[];uci.foreach('dhcp','dnsmasq',s=>push(instances,s));
 		if(length(instances)!=1 || instances[0].port=='0' || index(['dnsmasq.servers','dnsmasq.addnhosts'],uci.get('adblock-fast','config','dns'))<0)die('无代理自动模式需要一个启用的 dnsmasq 实例。');
 		let s=instances[0],servers=s.server??[];if(type(servers)!='array')servers=[servers];
-		setting('dhcp',s['.name'],'server',[dns_profile.domestic.active,...filter(servers,v=>substr(v,0,1)=='/')]);
+		setting('dhcp',s['.name'],'server',[...route.addresses(dns_profile,'domestic'),...filter(servers,v=>substr(v,0,1)=='/')]);
+		if(dns_profile.domestic.mode=='parallel')setting('dhcp',s['.name'],'allservers','1');
 		setting('dhcp',s['.name'],'noresolv','1');
 		return;
 	}
 	if(plugin=='nailink'){
 		country_files(plugin);
+		prepare_pool(plugin);
 		let current=selected_dns();
 		if(current.id!=journal.dns.id || current.dns.string!=journal.dns.after)die('NaiLink DNS 已变化，拒绝覆盖。');
 		let after=route.dae_dns(current.dns.string,dns_profile);
@@ -658,7 +664,10 @@ function apply_split(plugin) {
 		restore_passwall_option(section,'dns_shunt');
 		if(engine=='dnsmasq')setting('passwall',section,'use_default_dns','remote');
 		else restore_passwall_option(section,'use_default_dns');
-		for(let entry in [['chn_list','direct'],['direct_dns_mode','udp'],['direct_dns',route.endpoint(dns_profile.domestic.active)],['remote_dns',route.endpoint(dns_profile.foreign.active)],['v2ray_dns_mode','tcp']])setting('passwall',section,entry[0],entry[1]);
+		prepare_pool(plugin);
+		for(let entry in [['chn_list','direct'],['direct_dns_mode',dns_profile.domestic.mode=='parallel'?'tcp':'udp'],['direct_dns',dns_profile.domestic.mode=='parallel'?'127.0.0.1:5356':route.endpoint(dns_profile.domestic.active)],['remote_dns',passwall_pool_foreign()?'127.0.0.1:5357':route.endpoint(dns_profile.foreign.active)],['v2ray_dns_mode','tcp']])setting('passwall',section,entry[0],entry[1]);
+		if(dns_profile.strict){setting('passwall',section,'use_direct_list','0');setting('passwall',section,'chinadns_ng_default_tag','gfw');}
+		else for(let name in ['use_direct_list','chinadns_ng_default_tag'])restore_passwall_option(section,name);
 		journal.split.target='current-node';return;
 	}
 	let files=country_files(plugin);
@@ -683,7 +692,8 @@ function apply_split(plugin) {
 	}
 }
 function restore() {
-	if (!journal) return;
+	if(fs.lstat(state_dir+'/dns-guard.json'))guard('hold');
+	if (!journal) {if(action=='remove'){guard('cleanup');stop_pool();}return;}
 	confirm_nailink_recovery();
 	progress.stage('restoring');
 	journal.stage = 'restoring'; save();
@@ -723,6 +733,10 @@ function restore() {
 	if (!fs.unlink(journal_path)) die('Cannot clear adapter journal');
 	fs.unlink(state_dir + '/adapter.previous.json');
 	journal = null;
+	if(action=='remove'){
+		guard('cleanup');
+		stop_pool();
+	}
 }
 function rollback_update(previous) {
 	confirm_nailink_recovery();
@@ -759,6 +773,7 @@ function rollback_update(previous) {
 
 function routing_check(wanted) {
 	if(index(['0','1'],wanted)<0)die('自动分流目标无效。');
+	if(wanted=='0'&&dns_profile.strict)die('请同时关闭严格 DNS 模式，再关闭自动分流。');
 	let plugin=active_plugin();
 	if(plugin=='ssrplus'&&wanted=='1')die('SSR Plus+ 当前仅支持广告过滤，请使用其原生分流设置。');
 	if(plugin=='passwall'&&journal?.plugin=='passwall'&&journal.stage=='configured_unverified'){
@@ -809,7 +824,7 @@ rules_signature = function(plugin) {
 			let options=[];
 			uci.foreach('adzero',null,s=>{
 				let values={};for(let k in sort(keys(s)))if(substr(k,0,1)!='.'&&k!='dns_profile')values[k]=s[k];
-				if(s['.name']=='main'&&split_enabled)values.dns_profile={domestic:dns_profile.domestic.active,foreign:dns_profile.foreign.active};
+				if(s['.name']=='main'&&split_enabled)values.dns_profile=route.effective(dns_profile);
 				push(options,{id:s['.name'],type:s['.type'],values});
 			});
 			dependencies[name]=options;continue;
@@ -821,6 +836,7 @@ rules_signature = function(plugin) {
 };
 function reconfigure_nailink(with_rules) {
 	if(routing_check(split_enabled?'1':'0')!='nailink')die('快速切换仅适用于当前 NaiLink 接入。');
+	guard('hold');
 	if(split_enabled&&!country_cached('nailink'))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
 	let previous=sprintf('%J',journal);transaction_previous=previous;
 	try{
@@ -828,7 +844,7 @@ function reconfigure_nailink(with_rules) {
 		if(with_rules){let list=rules();tracked(root+'/etc/daed/adzero-geosite.dat',lib.geosite(list),'owned',0644);journal.count=length(list);}
 		let dns=selected_dns(),after=lib.dae_dns(journal.dns.before),traffic=null,next=null;
 		if(split_enabled){
-			country_files('nailink');after=route.dae_dns(after,dns_profile);traffic=selected_traffic();
+			country_files('nailink');prepare_pool('nailink');after=route.dae_dns(after,dns_profile);traffic=selected_traffic();
 			journal.traffic??={id:traffic.id,before:traffic.text,after:traffic.text};
 			next=route.dae_routing(journal.traffic.before,traffic.target,dns_profile);
 			journal.split={mode:'proxy',target:traffic.target,traffic_verified:false};
@@ -840,13 +856,14 @@ function reconfigure_nailink(with_rules) {
 		if(selected_dns().dns.string!=dns.dns.string)die('NaiLink DNS 存在并发修改。');
 		journal.dns.after=after;if(traffic)journal.traffic.after=next;
 		journal.stage='preparing';save(); // one durable intent covers both profiles
+		if(dns_profile.strict)guard('pin',['nailink',strict_target('nailink')]);
 		if(dns.dns.string!=after)update_dns(dns.id,after);
 		if(traffic&&traffic.text!=next)update_traffic(traffic.id,next);
 		journal.stage='restarting';save();restart('nailink');
 		journal.stage='configured_unverified';
 		let source=rules_signature('nailink');
 		if(source&&(with_rules||source.sha256==journal.rules_source?.sha256))journal.rules_source=source;else delete journal.rules_source;
-		save();fs.unlink(state_dir+'/adapter.previous.json');
+		save();finish_guard('nailink');fs.unlink(state_dir+'/adapter.previous.json');
 	}catch(e){
 		if(journal?.nailink_reload_unconfirmed)die(e);
 		progress.failure('adapter');
@@ -857,6 +874,7 @@ function reconfigure_nailink(with_rules) {
 
 function reconfigure_passwall(with_rules){
 	if(routing_check(split_enabled?'1':'0')!='passwall')die('当前不是可直接更新的 PassWall 接入。');
+	guard('hold');
 	let previous=sprintf('%J',journal);transaction_previous=previous;
 	try{
 		progress.stage('adapting');
@@ -864,14 +882,16 @@ function reconfigure_passwall(with_rules){
 		if(split_enabled)apply_split('passwall');
 		else{
 			let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
-			for(let name in ['dns_shunt','chn_list','use_default_dns','direct_dns_mode','direct_dns','remote_dns','v2ray_dns_mode'])restore_passwall_option(section,name);
+			for(let name in ['dns_shunt','chn_list','use_default_dns','direct_dns_mode','direct_dns','remote_dns','v2ray_dns_mode','use_direct_list','chinadns_ng_default_tag'])restore_passwall_option(section,name);
 			delete journal.split;
 		}
 		let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
 		journal.dns_engine=uci.get('passwall',section,'dns_shunt')??'dnsmasq';
 		journal.runtime_supported=index(['dnsmasq','chinadns-ng'],journal.dns_engine)>=0&&(uci.get('passwall',section,'dns_redirect')??'1')=='1';
+		if(dns_profile.strict)guard('pin',['passwall',strict_target('passwall')]);
 		journal.stage='restarting';save();restart('passwall');
 		journal.stage='configured_unverified';journal.rules_source=rules_signature('passwall');save();
+		finish_guard('passwall');
 		fs.unlink(state_dir+'/adapter.previous.json');
 	}catch(e){
 		progress.failure('adapter');
@@ -890,10 +910,84 @@ function unchanged(plugin,signature) {
 	return true;
 }
 
+guard=function(action,target){
+	if(action!='socks'&&!dns_profile.strict&&!fs.lstat(state_dir+'/dns-guard.json'))return;
+	let program=getenv('ADZERO_GUARD_PROGRAM')??root+'/usr/libexec/adzero/dns-guard';
+	let argv=['env','ADZERO_GUARD_ROOT='+root,program,action];if(target)argv=[...argv,...target];
+	if(system(argv)!=0)die('严格 DNS 保护未确认，原配置或恢复记录已保留。');
+};
+finish_guard=function(plugin){
+	prepare_pool(plugin);
+	if(dns_profile.strict){
+		let target=strict_target(plugin);guard('pin',[plugin,target]);
+		guard('ready');
+	}else guard('cleanup');
+	if(!pool_needed(plugin))stop_pool();
+};
+stop_pool=function(){
+	let marker=state_dir+'/dns-pool-needed';if(fs.lstat(marker)){
+		if(fs.lstat(marker)?.type!='file'||fs.readfile(marker)!='AdZero DNS pool v1\n')die('DNS 并发所有权标记无效，未清理。');
+		if(!fs.unlink(marker))die('DNS 并发退出记录未确认。');
+	}
+	if(fs.access(root+'/etc/init.d/adzero-dns','x'))system(service_command('adzero-dns','stop'));
+};
+passwall_pool_foreign=function(){return dns_profile.foreign.mode=='parallel'||dns_profile.strict&&(uci.get('passwall','@global[0]','dns_mode')??'tcp')=='tcp';};
+pool_needed=function(plugin){return plugin=='nailink'&&(dns_profile.strict||dns_profile.domestic.mode=='parallel'||dns_profile.foreign.mode=='parallel')||plugin=='passwall'&&(dns_profile.domestic.mode=='parallel'||passwall_pool_foreign());};
+prepare_pool=function(plugin){
+	if(!pool_needed(plugin))return;
+	let marker=state_dir+'/dns-pool-needed';
+	if(fs.lstat(marker)?.type=='link'||fs.lstat(marker)&&fs.readfile(marker)!='AdZero DNS pool v1\n')die('DNS 并发所有权标记冲突，未覆盖。');
+	if(!fs.access(root+'/etc/init.d/adzero-dns','x'))die('缺少 DNS 并发启动服务，尚未重载代理。');
+	if(!fs.lstat(marker))atomic(marker,'AdZero DNS pool v1\n',0600);
+	if(system(service_command('adzero-dns','enable'))!=0)die('DNS 并发开机服务未确认，尚未重载代理。');
+	let status=root+'/tmp/adzero-dns-pool.json',expected=sprintf('%J',route.effective(dns_profile)),value;
+	function ready(){let s=fs.lstat(status);if(s?.type!='file'||s.uid!=fs.stat('/proc/self').uid||(s.mode&077)||s.size>10000)return false;try{value=json(fs.readfile(status));}catch(e){return false;}let stamp=clock(true),at=stamp[0]+stamp[1]/1000000000.0;return value?.profile==expected&&index(['double','int'],type(value.updated))>=0&&at-value.updated>=0&&at-value.updated<3;}
+	if(ready())return;
+	if(system([timeout_helper(),'-k','3','15',...service_command('adzero-dns','start')])!=0)die('DNS 并发实例未能启动，尚未重载代理。');
+	for(let i=0;i<30;i++){if(ready())return;system(['sleep','0.1']);}
+	die('DNS 并发入口尚未就绪，尚未重载代理。');
+};
+strict_target=function(plugin){
+	if(plugin=='nailink')return '127.0.0.1#5358';
+	let port;
+	if(plugin=='passwall'){let text=fs.readfile(root+'/tmp/etc/passwall/acl/default/dnsmasq.conf')??'';port=match(text,/(^|\n)port=([0-9]+)(\n|$)/)?.[2];}
+	else{let cfg=plugin=='nikki'?yaml(root+'/etc/nikki/run/config.yaml','nikki'):yaml(root+openclash_paths().generated,'openclash');port=match(cfg.dns?.listen??'',/:([0-9]+)$/)?.[1];}
+	if(!port||int(port)<1024||int(port)>65535)die('严格模式无法确认原生 DNS 监听端口，原网络保持不变。');
+	return '127.0.0.1#'+port;
+};
+policy_prerequisites=function(plugin){
+	if(dns_profile.strict&&!split_enabled)die('严格 DNS 模式需要先应用自动分流。');
+	if(!split_enabled)return;
+	if(dns_profile.strict){
+		if(plugin=='none'||plugin=='ssrplus')die('严格 DNS 模式需要唯一活动且受支持的代理；不会回落直连。');
+		if(plugin=='nailink'&&!dns_profile.proxy_port)die('NaiLink 严格模式需要填写其本机无认证 SOCKS5 端口。');
+		if(plugin=='nailink')guard('socks');
+		if(plugin=='passwall'){
+			let enabled=0,section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
+			for(let kind in ['acl_rule','acl_rules'])uci.foreach('passwall',kind,s=>{if(s.enabled=='1')enabled++;});
+			if(enabled)die('PassWall 自定义 ACL 尚不支持严格 DNS，请保留原设置。');
+			if((uci.get('passwall',section,'dns_redirect')??'1')!='1'||(uci.get('passwall',section,'localhost_proxy')??'1')!='1')die('PassWall 严格模式需要其默认 DNS 接管和路由器本机代理开启。');
+		}
+		guard('preflight');strict_target(plugin);
+	}
+	if(plugin=='passwall'&&dns_profile.foreign.mode=='parallel'){
+		let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
+		if((uci.get('passwall',section,'dns_mode')??'tcp')!='tcp')die('PassWall 国外并发当前需要原生 TCP DNS 模式；不会更换现有 Xray／Sing-box 引擎。');
+	}
+	if(plugin=='passwall'&&passwall_pool_foreign()){
+		if(!dns_profile.proxy_port)die('PassWall 国外并发或严格 TCP DNS 需要填写其本机无认证 SOCKS5 端口，避免直连回落。');
+		guard('socks');
+	}
+}
+
+;
+
 try {
 	journal = read_journal();
 	if (action == 'status') {
+		let protection;try{protection=json(fs.readfile(state_dir+'/dns-guard.json',16001));}catch(e){}
 		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
+			dns_policy:{domestic:dns_profile.domestic.mode??'single',foreign:dns_profile.foreign.mode??'single',strict:!!dns_profile.strict,guard:protection?.state??'off',scope:'default_lan_ipv4_dns',doh:'device_policy_required'},
 			client_dns_verified:false, router_dns_verified:false,reload_pending:!!journal?.nailink_reload_unconfirmed,
 			runtime:native_runtime[journal?.plugin]?native_dns_state():null,
 			runtime_retry_exhausted:(journal?.runtime_retries??0)>=3,
@@ -904,7 +998,7 @@ try {
 		print(sprintf('%J\n', {authorized:true,running:state.running,modified:type(state.modified) == 'bool' ? state.modified : null}));
 	} else if (action == 'pending') { if(journal?.nailink_reload_unconfirmed){print('nailink\n');exit(0);}exit(1); }
 	else if (action == 'settle') settle_nailink();
-	else if (action == 'remove') restore();
+	else if (action == 'remove'||action=='detach') restore();
 	else if(action=='routing-check')print(routing_check(shift(ARGV))+'\n');
 	else if(action=='reconfigure-nailink')reconfigure_nailink();
 	else if(action=='reconfigure-nailink-rules')reconfigure_nailink(true);
@@ -945,12 +1039,13 @@ try {
 		if(unchanged(plugin,signature)&&!(native_runtime[plugin]&&!journal.runtime_samples)){
 			if(runtime)record_dns_runtime(runtime);
 			if(!native_needs_reload(runtime)||((journal.runtime_retry_after??0)>time()||(journal.runtime_retries??0)>=3)&&getenv('ADZERO_ADAPTER_REFRESH')!='1'){
-				fs.unlink(state_dir+'/adapter.previous.json');exit(0);
+				finish_guard(plugin);fs.unlink(state_dir+'/adapter.previous.json');exit(0);
 			}
 		}
 		let list = rules();
+		guard('hold');
 		if (journal && journal.plugin != plugin) restore();
-		if (plugin == 'none' && !split_enabled) exit(0);
+		if (plugin == 'none' && !split_enabled) {finish_guard(plugin);exit(0);}
 		if(split_enabled && plugin!='none' && plugin!='passwall'&&!country_cached(plugin))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
 		let previous = journal ? sprintf('%J', journal) : null;
 		transaction_previous = previous;
@@ -960,6 +1055,7 @@ try {
 			if(split_enabled)journal.split??={mode:plugin=='none'?'direct':'proxy',traffic_verified:false};
 			apply_plugin(plugin, list);
 			apply_split(plugin);
+			if(dns_profile.strict)guard('pin',[plugin,strict_target(plugin)]);
 			if(native_runtime[plugin]){
 				let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
 				journal.dns_engine=plugin=='passwall'?(uci.get('passwall',section,'dns_shunt')??'dnsmasq'):null;
@@ -969,7 +1065,7 @@ try {
 			}
 			let signature_after=rules_signature(plugin);
 			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;
-			if (!changed && journal.stage == 'configured_unverified' && !native_needs_reload(runtime)) { journal.count=length(list);save();fs.unlink(state_dir + '/adapter.previous.json'); exit(0); }
+			if (!changed && journal.stage == 'configured_unverified' && !native_needs_reload(runtime)) { journal.count=length(list);save();finish_guard(plugin);fs.unlink(state_dir + '/adapter.previous.json'); exit(0); }
 			if(changed||getenv('ADZERO_ADAPTER_REFRESH')=='1')delete journal.runtime_retries;
 			journal.count = length(list); journal.stage = 'restarting'; journal.generation = time(); save();
 			restart(plugin);
@@ -977,6 +1073,7 @@ try {
 			signature_after=rules_signature(plugin);
 			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;
 			save();
+			finish_guard(plugin);
 			fs.unlink(state_dir + '/adapter.previous.json');
 		} catch (e) {
 			if(journal?.nailink_reload_unconfirmed)die(e);

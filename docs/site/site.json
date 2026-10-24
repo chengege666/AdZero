@@ -1,8 +1,8 @@
 {
   "title": "AdZero",
   "url": "https://slobys.github.io/AdZero/",
-  "version": "0.18.2",
-  "release": "v0.18.2",
+  "version": "0.19.0",
+  "release": "v0.19.0",
   "groups": [
     {"title": "开始使用", "pages": [
       {"id":"index","title":"使用文档","description":"从开启保护到日常设置，按需使用 AdZero。"},

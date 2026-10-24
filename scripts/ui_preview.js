@@ -34,7 +34,7 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   if (document.getElementById('fail').checked) return {ok:false,message:'模拟：操作未完成，请重新检测。'};
   if(spec.method==='enhance_status')return {ok:true,data:structuredClone({...enhanceFixture,profile:sourceData.dns})};
   if(spec.method==='enhance_save'){enhanceFixture.config=JSON.parse(args[0]).after;return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
-  if(spec.method==='dns_test'){enhanceFixture.tests={profile:structuredClone(sourceData.dns),proxy_port:enhanceFixture.config.proxy_port,groups:{domestic:sourceData.dns.domestic.servers.map((address,i)=>({address,ok:true,ms:4+i*3})),foreign:sourceData.dns.foreign.servers.map((address,i)=>({address,ok:!!enhanceFixture.config.proxy_port,skipped:!enhanceFixture.config.proxy_port,ms:85+i*10}))}};return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
+  if(spec.method==='dns_test'){let port=sourceData.dns.proxy_port??enhanceFixture.config.proxy_port;enhanceFixture.tests={profile:structuredClone(sourceData.dns),proxy_port:port,groups:{domestic:sourceData.dns.domestic.servers.map((address,i)=>({address,ok:true,ms:4+i*3})),foreign:sourceData.dns.foreign.servers.map((address,i)=>({address,ok:!!port,skipped:!port,ms:85+i*10}))}};return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='temporary'){state.policy.allowed.push(args[1]);state.policy.temporary=[{scope:args[1],duration:args[2],remaining:args[2]}];return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='observation')return {ok:true,data:document.getElementById('scenario').value==='observer-pending'?{available:true,active:false,queries:0,blocked:0,reason:'adapter_pending',verification:{state:'idle'}}:{...structuredClone(observerFixture),active:state.state==='configured_unverified'}};
   if(spec.method==='verification_start'){
@@ -56,7 +56,7 @@ const rpc = {getSessionID:()=> 'b'.repeat(32),declare: spec => async (...args) =
   if(spec.method==='settings_apply'){
     const p=JSON.parse(args[0]);
     sourceData.items=p.items.map((i,n)=>({...i,id:i.id||'batch_'+n,https:true,domains:i.enabled?66425:null,updated:Math.floor(Date.now()/1000)}));
-    if(p.dns)sourceData.dns=structuredClone(p.dns);sourceData.revision='d'.repeat(64);state.policy.routing_enabled=p.routing_enabled;state.adapter.routing={mode:p.routing_enabled?'proxy':'inactive'};
+    if(p.dns)sourceData.dns=structuredClone(p.dns);sourceData.revision='d'.repeat(64);state.policy.routing_enabled=p.routing_enabled;state.adapter.routing={mode:p.routing_enabled?'proxy':'inactive'};state.adapter.dns_policy={strict:!!sourceData.dns.strict,guard:sourceData.dns.strict?'active':'off',domestic:sourceData.dns.domestic.mode||'single',foreign:sourceData.dns.foreign.mode||'single'};
     return {ok:true,job:'11111111-1111-1111-1111-111111111111'};
   }
   if (['enable','disable','refresh','reload'].includes(spec.method)) {

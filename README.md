@@ -35,26 +35,26 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.18.2 测试版**，统一收紧四页布局，规则库采用紧凑双列卡片；可在 DNS 增强页直接编辑国内／国外地址，并核对保存配置与测试结果。增强 DNS 入口与自动备用默认关闭，保留现有代理工作路径。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.19.0 测试版**，统一在运行概览配置 DNS，新增国内／国外组内并发和可选严格 DNS 防旁路。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.18.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.19.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.18.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.19.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.18.2) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.19.0) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
 1. **选规则**：在「过滤规则」添加需要的列表，也可以粘贴自己的订阅地址。
-2. **按需改设置**：修改 DNS 或分流开关，选择会进入「待应用」。每组第一条 DNS 为当前地址；在「DNS 增强」可测试保存的地址，按需启用同组备用切换。
+2. **按需改设置**：修改 DNS 或分流开关，选择会进入「待应用」。每组可选单一或并发；严格模式按需启用。在「DNS 增强」测试已保存地址，单一模式可启用同组备用切换。
 3. **统一应用**：改完后点击「应用并重新加载」。平时用「重新加载」应用当前配置，用「更新订阅」获取新规则；「手动校验」只检查本地已下载规则。
 
 「访问控制」集中管理最近拦截和自定义名单；用法及范围见 [统计与访问控制](docs/ACCESS_CONTROL.md)。

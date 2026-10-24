@@ -353,7 +353,7 @@ return view.extend({
 		if(this.draftCount()||this.controlCount())return _('先应用上方待应用更改，再测试 DNS。');
 		if(this.dnsEditing())return _('DNS 地址尚未暂存，请先加入待应用并应用。');
 		if(this.enhanceDirty())return _('先保存增强设置，再测试 DNS。');
-		return _('测试已保存的地址，按组使用备用。');
+		return _('测试统一配置的地址；并发组无需切换备用。');
 	},
 	dnsTestBlocked:function(){return !!(this.enhanceDirty()||this.draftCount()||this.controlCount()||this.dnsEditing());},
 	dnsResultsKey:function(){var d=this.enhanceData||{};return JSON.stringify([d.profile,d.tests,(this.draft||{}).dns,(this.enhanceDraft||{}).before]);},
@@ -366,11 +366,11 @@ return view.extend({
 	renderDNSTests:function(){
 		var self=this,d=self.enhanceData||{},result=d.tests||{},saved=d.profile||(self.sourcesData||{}).dns,profile=self.draft&&self.draft.dns||saved,pending=!!(self.draft&&self.draft.dns&&!sameDNS(self.draft.dns,self.draft.dns_before));
 		self.enhanceResultsKey=self.dnsResultsKey();
-		var current=!!(saved&&result.profile&&sameDNS(saved,result.profile)),port=d.config||(self.enhanceDraft||{}).before||{},rows=result.groups||{};
+		var current=!!(saved&&result.profile&&sameDNS(saved,result.profile)),port={proxy_port:saved&&saved.proxy_port!=null?saved.proxy_port:(d.config||(self.enhanceDraft||{}).before||{}).proxy_port||0},rows=result.groups||{};
 		return el('div',{'class':'az-dns-test-grid'},['domestic','foreign'].map(function(g){var group=profile&&profile[g];return el('section',{'class':'az-dns-test-group','aria-label':g==='domestic'?_('国内 DNS 地址与测试结果'):_('国外 DNS 地址与测试结果')},[
-			el('div',{'class':'az-dns-group-heading'},[el('h4',{},g==='domestic'?_('国内组'):_('国外组')),el('small',{},pending?_('待应用'):g==='domestic'?'UDP':_('经 SOCKS5'))]),
+			el('div',{'class':'az-dns-group-heading'},[el('h4',{},g==='domestic'?_('国内组'):_('国外组')),el('small',{},pending?_('待应用'):(group&&group.mode==='parallel'?_('并发 · '):'')+(g==='domestic'?'UDP':_('经 SOCKS5')))]),
 			group&&Array.isArray(group.servers)&&group.servers.length?group.servers.map(function(address){var sample=(rows[g]||[]).find(function(t){return t.address===address;}),valid=current&&(g==='domestic'||result.proxy_port===port.proxy_port),status=pending?_('待应用'):!valid||!sample?sample?_('需重测'):_('尚未测试'):sample.skipped?_('已跳过'):sample.ok?number(sample.ms)+' ms':_('未通过');return el('div',{'class':'az-dns-test-result'},[
-				el('span',{'class':'az-dns-address',translate:'no'},[address,address===group.active?el('small',{},pending?_('首选'):_('当前')):null]),el('span',{'class':!pending&&valid&&sample&&!sample.skipped?(sample.ok?'az-test-passed':'az-test-failed'):'az-test-skipped'},status)]);}):el('p',{'class':'az-test-empty'},_('DNS 地址尚未读取')),
+				el('span',{'class':'az-dns-address',translate:'no'},[address,group.mode==='parallel'?el('small',{},_('并发')):address===group.active?el('small',{},pending?_('首选'):_('当前')):null]),el('span',{'class':!pending&&valid&&sample&&!sample.skipped?(sample.ok?'az-test-passed':'az-test-failed'):'az-test-skipped'},status)]);}):el('p',{'class':'az-test-empty'},_('DNS 地址尚未读取')),
 			g==='foreign'&&!port.proxy_port?el('p',{'class':'az-dns-group-hint'},_('填入本机 SOCKS5 端口后可测试')):null]);}));
 	},
 	renderEnhanceRuntime:function(){var d=this.enhanceData||{},r=d.runtime||{},counts=r.counts||{},recovery=r.state==='recovery_required';if(this.enhanceError)return el('div',{'class':'az-enhance-status'},[pill(_('增强状态未更新'),'attention'),el('p',{'class':'az-inline-warning'},_('暂时无法取得新状态。编辑已保留，后台将继续读取。'))]);return el('div',{'class':'az-enhance-status'},[
@@ -387,14 +387,14 @@ return view.extend({
 			el('div',{'class':'az-enhance-workbench'},[
 			el('section',{'class':'az-card az-enhance-entry'},[el('div',{'class':'az-section-heading'},[el('h3',{},_('增强过滤')),el('span',{'class':'az-section-caption'},_('可选功能'))]),el('p',{'class':'az-section-intro'},_('补充检查别名与设备规则，沿用原生上游。')),
 				el('div',{id:'az-enhance-runtime','aria-live':'polite'},[self.renderEnhanceRuntime()]),
-				toggle('enabled',_('增强 DNS 入口'),_('仅接入默认 IPv4 局域网 DNS')),
+				toggle('enabled',_('增强 DNS 入口'),(self.enhanceData.profile||{}).strict?_('严格模式期间保留此选择，暂不接入'):_('仅接入默认 IPv4 局域网 DNS')),
 				toggle('cname',_('CNAME 别名过滤'),_('检查广告与追踪别名，入口启用后生效')),
 				self.disclosure('enhance-scope',_('适用范围'),[el('p',{},_('仅接入确认可用的默认 IPv4 LAN DNS 路径。NaiLink、Mihomo、未知 ACL 或切换期间保留原生路径。')),el('p',{},_('继续使用原生代理上游和缓存，不改变节点。独立加密 DNS、IPv6 等未接入路径不受这些附加规则控制。'))])]),
 			el('section',{'class':'az-card az-enhance-upstream'},[el('div',{'class':'az-section-heading'},[el('h3',{},_('上游与备用')),el('button',{id:'az-dns-test',type:'button','class':'az-button az-button-compact',disabled:!editable||self.dnsTestBlocked()?true:null,click:function(){return self.runEnhance('test');}},[icon('refresh'),_('测试 DNS')])]),
 				el('p',{id:'az-enhance-test-hint','class':'az-section-intro'},self.dnsTestHint()),
-				self.renderDNS(self.currentStatus||{},true),el('div',{id:'az-enhance-dns-results','aria-live':'polite'},[self.renderDNSTests()]),
-				el('label',{'class':'az-enhance-field az-port-field'},[el('span',{},_('本机 SOCKS5 端口')),el('input',{id:'az-dns-proxy-port',type:'number',min:1024,max:65535,value:s.proxy_port||'',placeholder:_('例如 1070…'),disabled:!editable?true:null,input:function(e){s.proxy_port=e.target.value?Number(e.target.value):0;updateDirty();}}),el('small',{},_('仅用于国外测试；留空跳过，无认证'))]),
-				toggle('failover',_('自动使用备用 DNS'),_('连续 3 轮失败后，在同组内切换')),
+				el('button',{id:'az-dns-manage',type:'button','class':'az-button az-button-compact',click:function(){return self.openDNS();}},_('管理 DNS 与分流')),el('div',{id:'az-enhance-dns-results','aria-live':'polite'},[self.renderDNSTests()]),
+				el('p',{'class':'az-field-hint'},_('地址、策略和 SOCKS5 端口统一在运行概览的 DNS 与分流中设置。旧版测试端口仍可沿用。')),
+				toggle('failover',_('自动使用备用 DNS'),_('仅单一模式：连续 3 轮失败后切换同组备用')),
 				self.disclosure('dns-test-help',_('测试与切换说明'),[el('p',{},_('国内使用 UDP；国外通过指定的本机 SOCKS5 TCP 端口。未配置代理端口时跳过国外测试。连通性通过不代表解析未受污染，也不代表浏览器访问正常。')),el('p',{},_('自动备用要求 AdZero 自动分流已应用；每分钟检查，切换后至少冷却 5 分钟。国内、国外不会混组竞争。'))])])]),
 			el('section',{'class':'az-card az-enhance-devices'},[el('div',{'class':'az-section-heading'},[el('div',{},[el('h3',{},_('设备附加规则')),el('p',{'class':'az-section-intro'},_('为固定 IPv4 设备补充拦截或豁免。'))]),el('button',{id:'az-device-add',type:'button','class':'az-button az-button-compact',disabled:!editable||s.devices.length>=32?true:null,click:function(){s.devices.push({ip:'',name:'',enabled:true,allowed:[],blocked:[]});self.paint('az-device-'+(s.devices.length-1)+'-name');}},_('添加设备'))]),
 				self.disclosure('device-scope',_('规则作用范围'),el('p',{},_('放行只豁免该设备的附加拦截和 CNAME 检查，不能撤销全局规则或其他插件的拦截；全局误杀请到“访问控制”处理。'))),
@@ -640,6 +640,7 @@ return view.extend({
 		var checked = self.lastChecked ? new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(self.lastChecked) : '—';
 		var pause = (s.policy || {}).pause || {}, allowed = (s.policy || {}).allowed || [];
 		var routing = adapter.routing || {}, routingWanted = (s.policy || {}).routing_enabled === true;
+		var strictDNS=!!(adapter.dns_policy||{}).strict,guardState=(adapter.dns_policy||{}).guard;
 		var titles = { configured_unverified: _('广告过滤已开启'), disabled: _('广告过滤未开启'), paused: _('保护已临时暂停'),
 			inconsistent: _('配置需要检查'), external_owner: _('当前由其他服务管理'),
 			unavailable: _('过滤组件尚未就绪'), error: _('暂时无法读取状态'), loading: _('正在读取运行状态…') };
@@ -648,6 +649,7 @@ return view.extend({
 			inconsistent: _('部分配置尚未确认，请关闭并恢复后再开启。'), external_owner: _('请先在原服务中关闭过滤后端，再启用 AdZero。'),
 			unavailable: _('请检查插件依赖是否完整，然后重新检测。'), error: _('状态请求未完成，请查看错误详情后重新检测。'), loading: _('页面已就绪，正在读取后端与代理状态。') };
 		if(adapter.reload_pending){titles.inconsistent=_('正在确认代理重载');descriptions.inconsistent=_('本批规则已保留，后台正在核对代理是否完成。请勿重复应用或重载。');}
+		if(strictDNS&&guardState!=='active'){titles.inconsistent=guardState==='error'?_('严格 DNS 保护待检查'):_('严格 DNS 正在等待接入');descriptions.inconsistent=guardState==='error'?_('防火墙保护未能确认，请检查日志；可关闭并恢复。'):_('DNS 查询保持阻断，等待代理接入确认。可重新检测，或关闭并恢复。');}
 		if(confirming){titles.inconsistent=self.notice.action==='disable'?_('正在确认关闭'):_('正在确认配置');descriptions.inconsistent=_('操作已执行，正在核对最终状态，请勿重复提交。');}
 		if(operating){var operationTitles={reconcile:_('正在同步代理接入'),disable:_('正在关闭并恢复'),'enhance-save':_('正在保存增强设置'),'dns-switch':_('正在切换备用 DNS'),temporary:_('正在应用临时放行'),'temporary-expire':_('正在恢复到期规则')};titles[s.state]=operationTitles[s.operation.action]||_('正在执行其他操作');descriptions[s.state]=_('后台操作尚未结束，完成后页面会自动更新。请稍候，无需再次关闭或应用。');}
 		var blocker = proxyBlocker(s)||(s.state==='disabled'&&s.dns_mode_safe!==true?_('当前 DNS 模式不支持自动启用，请检查过滤后端设置。'):null);
@@ -669,7 +671,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.18.2 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.19.0 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -692,10 +694,10 @@ return view.extend({
 			el('span', {}, _('暂时关闭保护，保留个人放行与分流选择。')),
 			el('div', { 'class': 'az-action-row' }, [ el('button', { id: 'az-resume', type: 'button', 'class': 'az-button az-button-primary', disabled: locked ? true : null, click: function() { return self.runPolicy('resume', []); } }, _('立即恢复')),
 				el('button', { type: 'button', 'class': 'az-button az-button-quiet', disabled: locked ? true : null, click: function() { return self.runAction('disable'); } }, _('保持关闭')) ])
-		] : [ el('span', {}, _('网页或 App 异常？先暂停对比，或前往“访问控制”检查域名。')),
+		] : [ el('span', {}, strictDNS?_('严格 DNS 已开启 · 临时暂停不可用；误拦截请到“访问控制”处理。'):_('网页或 App 异常？先暂停对比，或前往“访问控制”检查域名。')),
 			el('div', { 'class': 'az-action-row' }, [ el('label', { 'for': 'az-pause-duration', 'class': 'az-sr-only' }, _('暂停时长')),
-				el('select', { id: 'az-pause-duration', disabled: locked ? true : null, change: function(e) { self.pauseSeconds = Number(e.target.value); } }, [300,900,1800].map(function(seconds) { return el('option', { value: seconds, selected: self.pauseSeconds === seconds ? true : null }, seconds / 60 + _(' 分钟')); })),
-				el('button', { id: 'az-pause', type: 'button', 'class': 'az-button az-button-quiet', disabled: locked ? true : null, click: function() { return self.runPolicy('pause', [self.pauseSeconds]); } }, _('临时暂停')) ]) ]));
+				el('select', { id: 'az-pause-duration', disabled: locked||strictDNS ? true : null, change: function(e) { self.pauseSeconds = Number(e.target.value); } }, [300,900,1800].map(function(seconds) { return el('option', { value: seconds, selected: self.pauseSeconds === seconds ? true : null }, seconds / 60 + _(' 分钟')); })),
+				el('button', { id: 'az-pause', type: 'button', 'class': 'az-button az-button-quiet', disabled: locked||strictDNS ? true : null, click: function() { return self.runPolicy('pause', [self.pauseSeconds]); } }, _('临时暂停')) ]) ]));
 		nodes.push(el('div',{id:'az-live-metrics'},[self.renderMetrics(s)]));
 		nodes.push(el('div',{id:'az-stats-actions'},[self.renderStatsActions()]));
 		nodes.push(el('p',{id:'az-stats-notice','class':'az-live-caption',role:'status'},self.statsNotice||''));
@@ -712,36 +714,40 @@ return view.extend({
 			el('p',{'class':'az-operation-note'},routingUnavailable?_('SSR Plus+ 当前支持广告过滤，请关闭 AdZero 自动分流；连接去向与 DNS 上游由 SSR Plus+ 原生设置管理。'):_('有代理时国内直连、国外走当前代理；无代理时使用国内 DNS 与本地直连。切换可能短暂重载网络，实际出口需在设备上验证。')) ]));
 		network.push(self.renderDNS(s));
 		nodes.push(el('details',{'class':'az-card az-network-settings',open:self.networkOpen?true:null,toggle:function(e){self.networkOpen=e.target.open;}},[
-			el('summary',{},[el('div',{},[el('strong',{},_('DNS 与分流')),el('p',{},routingWanted?_('自动分流已开启'):_('使用当前网络设置'))]),el('span',{'class':'az-details-hint'},_('展开设置'))]),el('div',{'class':'az-network-body'},network)
+			el('summary',{},[el('div',{},[el('strong',{},_('DNS 与分流')),el('p',{},routingWanted?_('自动分流已开启'):_('使用当前网络设置'))]),el('span',{'class':'az-details-hint'},_('展开设置'))]),el('div',{'class':'az-network-body'+(self.dnsOpen?' is-editing':'')},network)
 		]));
 		if (backend.errors > 0) nodes.push(el('p', { 'class': 'az-inline-warning', role: 'alert' }, _('过滤后端报告错误，请检查服务日志后重新检测。')));
 		if (!s.compatibility && !loading && s.state !== 'error') nodes.push(el('p', { 'class': 'az-inline-warning', role: 'alert' }, _('网络环境检测未完成，请检查插件安装文件后重新检测。')));
 		nodes.push(el('footer', { 'class': 'az-footer' }, [ icon('info'), _('DNS 过滤无法覆盖同域视频广告、网页占位或绕过路由器的请求。') ]));
 		return el('div', { 'class': 'az-app' }, nodes);
 	},
-	renderDNS: function(s,inline) {
-		var self=this,data=self.sourcesData,profile=self.draft&&self.draft.dns||data&&data.dns||inline&&(self.enhanceData||{}).profile||defaultDNS();
+	openDNS:function(){var self=this,editing=self.dnsEditing();self.networkOpen=true;self.dnsOpen=true;self.selectPage('overview');return self.loadSources().then(function(){if(!editing&&!self.dnsEditing())self.dnsForm=null;self.paint('az-dns-domestic');});},
+	renderDNS: function(s) {
+		var self=this,data=self.sourcesData,profile=self.draft&&self.draft.dns||data&&data.dns||defaultDNS();
 		var editable=!!data&&self.canStage()&&!self.sourcesLoading&&!data.pending;
-		if(!self.dnsForm){self.dnsForm={};['domestic','foreign'].forEach(function(g){var p=profile[g];self.dnsForm[g]=[p.active].concat(p.servers.filter(function(v){return v!==p.active;})).join('\n');});self.dnsFormSaved=JSON.stringify(self.dnsForm);self.dnsFormBase=JSON.parse(JSON.stringify(data&&data.dns||defaultDNS()));}
-		return el(inline?'div':'section',{'class':inline?'az-dns-inline':'az-card az-domain-card'},[
-			el('div',{'class':'az-section-heading'},[el(inline?'h4':'h3',{},inline?_('DNS 地址'):_('DNS 设置')),el('button',{id:'az-dns-open',type:'button','class':'az-button az-button-quiet az-button-compact','aria-expanded':self.dnsOpen?'true':'false','aria-controls':'az-dns-editor',click:function(){self.dnsOpen=!self.dnsOpen;if(self.dnsOpen){if(!self.dnsEditing())self.dnsForm=null;if(!self.sourcesData)return self.loadSources();}self.paint(self.dnsOpen&&inline?'az-dns-domestic':'az-dns-open');}},self.dnsOpen?_('收起'):_('编辑 DNS'))]),
-			!inline?el('p',{'class':'az-card-copy'},!data?_('打开编辑后读取已保存的 DNS 设置。'):(self.draft&&self.draft.dns&&!sameDNS(self.draft.dns,self.draft.dns_before)?_('待应用 · '):_('已保存 · '))+_('国内：')+profile.domestic.active+_(' · 国外：')+profile.foreign.active):null,
+		if(!self.dnsForm){self.dnsForm={strict:!!profile.strict,proxy_port:profile.proxy_port!=null?profile.proxy_port:data&&data.dns_test_proxy_port||0};['domestic','foreign'].forEach(function(g){var p=profile[g];self.dnsForm[g]=[p.active].concat(p.servers.filter(function(v){return v!==p.active;})).join('\n');self.dnsForm[g+'_mode']=p.mode||'single';});self.dnsFormSaved=JSON.stringify(self.dnsForm);self.dnsFormBase=JSON.parse(JSON.stringify(data&&data.dns||defaultDNS()));}
+		return el('section',{'class':'az-card az-domain-card'},[
+			el('div',{'class':'az-section-heading'},[el('h3',{},_('DNS 设置')),el('button',{id:'az-dns-open',type:'button','class':'az-button az-button-quiet az-button-compact','aria-expanded':self.dnsOpen?'true':'false','aria-controls':'az-dns-editor',click:function(){self.dnsOpen=!self.dnsOpen;if(self.dnsOpen){if(!self.dnsEditing())self.dnsForm=null;if(!self.sourcesData)return self.loadSources();}self.paint('az-dns-open');}},self.dnsOpen?_('收起'):_('编辑 DNS'))]),
+			el('p',{'class':'az-card-copy'},!data?_('打开编辑后读取已保存的 DNS 设置。'):(self.draft&&self.draft.dns&&!sameDNS(self.draft.dns,self.draft.dns_before)?_('待应用 · '):_('已保存 · '))+_('国内：')+profile.domestic.active+(profile.domestic.mode==='parallel'?_(' 等 · 并发'):'')+_(' · 国外：')+profile.foreign.active+(profile.foreign.mode==='parallel'?_(' 等 · 并发'):'')+(profile.strict?_(' · 严格模式'):'')),
 			self.sourcesError&&self.dnsOpen?el('div',{'class':'az-inline-warning',role:'alert'},[_('DNS 设置读取失败，编辑内容已保留。'),el('button',{type:'button','class':'az-button az-button-quiet az-button-compact',disabled:self.busy||self.sourcesLoading?true:null,click:function(){return self.loadSources();}},_('重新读取'))]):null,
 			self.dnsOpen?el('div',{id:'az-dns-editor'},[
-				el('p',{'class':'az-card-copy'},inline?_('每行一个 IP，最多 8 个；第一条优先，其他为备用。使用标准 53 端口。'):_('每行一个 IPv4 或 IPv6 地址。第一行为当前使用，其他地址保存为备选；调整顺序即可切换。使用标准 53 端口。')),
-				el('div',{'class':'az-dns-grid'},['domestic','foreign'].map(function(g){return el('label',{'class':'az-dns-field'},[el('span',{},g==='domestic'?_('国内 DNS'):_('国外 DNS')),el('textarea',{id:'az-dns-'+g,rows:inline?3:4,spellcheck:'false',value:self.dnsForm[g],disabled:!editable?true:null,input:function(e){self.dnsForm[g]=e.target.value;self.updateDNSTestActions();}},self.dnsForm[g])]);})),
-				el('div',{'class':'az-action-row'},[
-					el('button',{id:'az-dns-stage',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.stageDNS();}},_('保存到待应用')),
-					el('button',{id:'az-dns-default',type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){return self.stageDNS(defaultDNS());}},_('恢复默认到待应用'))]),
-				el('p',{'class':'az-operation-note'},inline?_('暂存后点击上方“应用并重新加载”。自动分流关闭时仅保存地址。'):_('关闭自动分流时只保存设置。开启后，有代理时分别使用国内和国外 DNS，无代理时仅使用国内 DNS。与其他修改统一应用。'))]) : null]);
+				el('p',{'class':'az-card-copy'},_('每行一个 IP。单一模式使用第一条，其余备用；并发模式同时查询同组最多 3 个地址，采用首个有效应答。')),
+				el('div',{'class':'az-dns-grid'},['domestic','foreign'].map(function(g){return el('div',{'class':'az-dns-field'},[el('label',{'for':'az-dns-'+g},g==='domestic'?_('国内 DNS · 直连'):_('国外 DNS · 当前代理')),el('select',{id:'az-dns-'+g+'-mode','aria-label':g==='domestic'?_('国内查询策略'):_('国外查询策略'),value:self.dnsForm[g+'_mode'],disabled:!editable?true:null,change:function(e){self.dnsForm[g+'_mode']=e.target.value;self.updateDNSTestActions();}},[el('option',{value:'single',selected:self.dnsForm[g+'_mode']==='single'?true:null},_('单一 + 备用')),el('option',{value:'parallel',selected:self.dnsForm[g+'_mode']==='parallel'?true:null},_('组内并发'))]),el('textarea',{id:'az-dns-'+g,rows:3,spellcheck:'false',value:self.dnsForm[g],disabled:!editable?true:null,input:function(e){self.dnsForm[g]=e.target.value;self.updateDNSTestActions();}},self.dnsForm[g])]);})),
+				el('label',{'class':'az-setting-row'},[el('span',{'class':'az-setting-copy'},[el('strong',{},_('严格防 DNS 泄露')),el('small',{},_('接入未确认时阻断 DNS，禁止国外组回落直连'))]),el('span',{'class':'az-setting-switch'},[el('input',{id:'az-dns-strict',type:'checkbox',role:'switch',checked:self.dnsForm.strict?true:null,disabled:!editable?true:null,change:function(e){self.dnsForm.strict=e.target.checked;self.updateDNSTestActions();}}),el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))])]),
+				el('label',{'class':'az-enhance-field az-port-field'},[el('span',{},_('本机无认证 SOCKS5 端口')),el('input',{id:'az-dns-proxy-port',type:'number',min:1024,max:65535,value:self.dnsForm.proxy_port||'',placeholder:_('例如 1070'),disabled:!editable?true:null,input:function(e){self.dnsForm.proxy_port=e.target.value?Number(e.target.value):0;self.updateDNSTestActions();}}),el('small',{},_('国外测试使用；NaiLink 严格模式、PassWall 国外并发或严格 TCP 模式必填。'))]),
+				self.disclosure('dns-compatibility',_('兼容性与保护范围'),[el('p',{},_('OpenClash／Nikki 使用内核原生并发；NaiLink 使用本机并发转发。PassWall 国内并发可用，国外并发要求原生 TCP DNS 模式和可用的本机 SOCKS5；不会替换现有 Xray／Sing-box 引擎。无代理时仅使用国内组。')),
+					el('p',{},_('严格模式要求自动分流及唯一活动的受支持代理。接管默认 IPv4 LAN 的 53 端口查询，阻断该 LAN 的 IPv6 DNS 和 853 端口；保留国内组作为节点引导解析例外。加密 DNS 经当前代理转发时由代理提供传输保护；普通 TCP 本身不加密。')),
+					el('p',{},_('浏览器／应用内置 DoH 使用 HTTPS，需在设备侧禁用或统一管理；其他 VLAN、VPN 和代理自身额外 DNS 不在承诺范围。严格模式期间增强 CNAME／设备入口及临时暂停不可用，关闭并恢复仍可使用。'))]),
+				el('div',{'class':'az-action-row'},[el('button',{id:'az-dns-stage',type:'button','class':'az-button az-button-primary',disabled:!editable?true:null,click:function(){return self.stageDNS();}},_('保存到待应用')),el('button',{id:'az-dns-default',type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){return self.stageDNS(defaultDNS());}},_('恢复默认到待应用'))]),
+				el('p',{'class':'az-operation-note'},_('与其他修改统一应用。严格模式会同时开启自动分流；不支持的组合会拒绝应用并保留恢复记录。'))]) : null]);
 	},
 	stageDNS: function(value){
 		var self=this;if(!self.canStage()||!self.sourcesData)return Promise.resolve();
 		try{
 			if(!self.draft&&!sameDNS(self.dnsFormBase,self.sourcesData.dns))throw new Error(_('DNS 设置已变化，请重新打开编辑。'));
 			var profile=value||{};
-			if(!value)['domestic','foreign'].forEach(function(g){var servers=self.dnsForm[g].split(/\r?\n/).map(function(v){return v.trim().toLowerCase();}).filter(Boolean);if(!servers.length||servers.length>8||servers.some(function(v){return !/^[0-9a-f:.]+$/.test(v);})||new Set(servers).size!==servers.length)throw new Error(_('每组请输入 1–8 个不同的 DNS IP 地址。'));profile[g]={servers:servers,active:servers[0]};});
-			self.ensureDraft();self.draft.dns=profile;self.dnsForm=null;if(self.enhanceOpen)self.dnsOpen=false;self.notice=null;if(!self.draftCount())self.draft=null;self.paint();
+			if(!value){['domestic','foreign'].forEach(function(g){var servers=self.dnsForm[g].split(/\r?\n/).map(function(v){return v.trim().toLowerCase();}).filter(Boolean),parallel=self.dnsForm[g+'_mode']==='parallel';if(!servers.length||servers.length>(parallel?3:8)||servers.some(function(v){return !/^[0-9a-f:.]+$/.test(v);})||new Set(servers).size!==servers.length)throw new Error(_('每组需要不同的 DNS IP；单一模式最多 8 个，并发最多 3 个。'));profile[g]={servers:servers,active:servers[0]};if(parallel)profile[g].mode='parallel';});if(self.dnsForm.strict)profile.strict=true;profile.proxy_port=self.dnsForm.proxy_port||0;if(self.dnsForm.proxy_port){if(!Number.isInteger(self.dnsForm.proxy_port)||self.dnsForm.proxy_port<1024||self.dnsForm.proxy_port>65535)throw new Error(_('SOCKS5 端口需要 1024–65535。'));profile.proxy_port=self.dnsForm.proxy_port;}}
+			self.ensureDraft();self.draft.dns=profile;if(profile.strict)self.draft.routing_enabled=true;self.dnsForm=null;self.notice=null;if(!self.draftCount())self.draft=null;self.paint();
 		}catch(e){self.notice={kind:'error',text:String(e.message||e)};self.paint();}
 		return Promise.resolve();
 	},
@@ -1058,7 +1064,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.18.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.19.0' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();
