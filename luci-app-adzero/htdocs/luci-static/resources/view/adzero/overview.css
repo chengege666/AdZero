@@ -228,7 +228,7 @@
 .az-root .az-snapshot-hint { font-size: 13px; color: var(--az-muted); margin-bottom: 8px; }
 .az-root .az-source-header { padding: 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .az-root .az-source-list { padding: 0 18px; margin-top: 12px; }
-.az-root .az-source-table-heading, .az-root .az-source-row { display: grid; grid-template-columns: minmax(0,1fr) 155px 196px; align-items: center; gap: 14px; }
+.az-root .az-source-table-heading, .az-root .az-source-row { display: grid; grid-template-columns: minmax(0,1fr) 155px 216px; align-items: center; gap: 14px; }
 .az-root .az-source-table-heading { color: var(--az-muted); font-size: 12px; padding: 10px 0; border-bottom: 1px solid var(--az-line); }
 .az-root .az-source-row { padding: 8px 0; border-bottom: 1px solid var(--az-line); }
 .az-root .az-source-row:last-child { border-bottom: 0; }
@@ -619,3 +619,50 @@
 
 .az-root .az-dns-validation:not(:empty){padding:8px 10px;border-left:3px solid var(--az-warning,#a97925);background:var(--az-soft);font-size:12px;line-height:1.5;margin:8px 0}.az-root .az-dns-validation:empty{display:none}
 .az-root #az-detail-dns-tests > .az-help-body{max-width:none}
+
+/* Shared interaction feedback. CSS only; no pointer polling or layout animation. */
+.az-root { --az-motion: 160ms; --az-ease: cubic-bezier(.2,.7,.2,1); }
+.az-root .az-card, .az-root .az-source-row, .az-root .az-control-row, .az-root .az-recent-row,
+.az-root .az-plugin-row, .az-root .az-enhance-setting, .az-root summary,
+.az-root .az-filter, .az-root .az-tabs a, .az-root .az-toggle {
+  transition: transform var(--az-motion) var(--az-ease), background-color var(--az-motion) ease,
+    border-color var(--az-motion) ease, box-shadow var(--az-motion) ease;
+}
+.az-root .az-button {
+  border-color: var(--az-line); font-weight: 600;
+  box-shadow: 0 1px 2px #142d2010;
+  transition: transform var(--az-motion) var(--az-ease), background-color var(--az-motion) ease,
+    border-color var(--az-motion) ease, box-shadow var(--az-motion) ease;
+}
+.az-root .az-button-quiet { background: var(--az-bg); border-color: var(--az-line); color: var(--az-text); }
+.az-root .az-button-primary { background: var(--az-accent); border-color: var(--az-accent); color: var(--az-on-accent); box-shadow: 0 2px 4px #142d2020; }
+.az-root .az-button-add { background: var(--az-soft); border-color: var(--az-accent); color: var(--az-accent); }
+.az-root .az-button-danger, .az-root .az-button-danger-soft { color: var(--az-error); border-color: var(--az-error); }
+.az-root .az-button-danger-soft { background: var(--az-error-bg); }
+.az-root .az-button-added:disabled { background: var(--az-soft); border-color: var(--az-line); color: var(--az-accent); opacity: 1; cursor: default; box-shadow: none; }
+.az-root .az-button:active:not(:disabled) { transform: translateY(1px) scale(.98); box-shadow: none; }
+.az-root .az-toggle:active:not(:disabled) .az-toggle-track { filter: brightness(.9); }
+.az-root .az-card:focus-within { border-color: var(--az-focus); }
+.az-root :is(input,textarea,select):focus-visible { outline: 2px solid var(--az-focus); outline-offset: 2px; }
+.az-root .az-library-footer .az-button { min-width: 103px; }
+.az-root .az-source-actions .az-button { gap: 4px; padding-inline: 8px; }
+@media (hover: hover) and (pointer: fine) {
+  .az-root .az-card:hover { border-color: var(--az-focus); box-shadow: 0 5px 14px #142d2012; }
+  .az-root .az-card:not(.az-source-list):not(.az-network-settings):hover { transform: translateY(-2px); }
+  .az-root .az-card .az-card:hover { transform: none; box-shadow: none; }
+  .az-root :is(.az-source-row,.az-control-row,.az-recent-row,.az-plugin-row,.az-enhance-setting):hover { background: var(--az-bg); transform: translateX(2px); }
+  .az-root summary:hover { background: var(--az-soft); }
+  .az-root .az-button:hover:not(:disabled) { border-color: var(--az-accent); background: var(--az-soft); transform: translateY(-1px); box-shadow: 0 3px 7px #142d2018; }
+  .az-root :is(.az-button-primary,.az-button-add):hover:not(:disabled) { background: var(--az-accent-hover); border-color: var(--az-accent-hover); color: var(--az-on-accent); }
+  .az-root :is(.az-button-danger,.az-button-danger-soft):hover:not(:disabled) { background: var(--az-error); border-color: var(--az-error); color: var(--az-card); }
+  .az-root .az-button:active:not(:disabled) { transform: translateY(1px) scale(.98); }
+  .az-root :is(.az-tabs a,.az-filter):hover { transform: translateY(-1px); }
+  .az-root .az-toggle:hover:not(:disabled) { background: var(--az-soft); box-shadow: 0 0 0 2px var(--az-line); }
+}
+/* Keep all controls in place for touch, keyboard and reduced-motion users. */
+@media (prefers-reduced-motion: reduce) {
+  .az-root *, .az-root *::before, .az-root *::after { animation: none !important; transition: none !important; }
+  .az-root .az-card:hover, .az-root :is(.az-source-row,.az-control-row,.az-recent-row,.az-plugin-row,.az-enhance-setting):hover,
+  .az-root .az-button:hover:not(:disabled), .az-root .az-button:active:not(:disabled),
+  .az-root :is(.az-tabs a,.az-filter):hover { transform: none !important; }
+}

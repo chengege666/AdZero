@@ -165,3 +165,56 @@ class BatchTest(unittest.TestCase):
         p=self.plan();self.add(p);self.add(p);self.apply(p,ok=False)
         self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
         self.assertFalse(self.fetches.exists())
+
+    def job_context(self):
+        context=self.root/'job-context';context.mkdir()
+        self.f.env['ADZERO_JOB_CONTEXT']=str(context)
+        return context
+
+    def test_overlapping_domains_across_many_lists_are_accepted(self):
+        context=self.job_context();p=self.plan()
+        for n in range(14):self.add(p,str(n),'https://rules.example/'+str(n))
+        self.apply(p)
+        self.assertEqual(len(self.sources.data()['items']),14)
+        self.assertFalse((context/'reason').exists())
+        self.assertFalse((context/'source').exists())
+
+    def test_second_failed_subscription_has_numeric_context_and_preserves_choices(self):
+        context=self.job_context();p=self.plan()
+        self.add(p);self.add(p,'Private name','https://invalid.example/list?token=secret')
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_download')
+        self.assertEqual(json.loads((context/'source').read_text()),dict(index=2,total=2))
+        self.assertNotIn('secret',''.join(x.read_text() for x in context.iterdir()))
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+
+    def test_duplicate_address_reports_specific_cause_before_download(self):
+        context=self.job_context();p=self.plan();self.add(p);self.add(p)
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_duplicate')
+        self.assertFalse(self.fetches.exists())
+
+    def test_bad_format_retains_source_position_without_committing(self):
+        context=self.job_context();p=self.plan();self.add(p)
+        self.sources.body.write_text('<html>provider error</html>')
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_format')
+        self.assertEqual(json.loads((context/'source').read_text()),dict(index=1,total=1))
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+
+    def test_oversized_list_reports_limit_without_committing(self):
+        context=self.job_context();p=self.plan();self.add(p)
+        self.sources.body.write_text(''.join('a'+str(n)+'.example\n' for n in range(500001)))
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_limit')
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+
+    def test_stale_temporary_file_is_not_misreported_as_invalid_format(self):
+        context=self.job_context();p=self.plan();self.add(p)
+        self.f.write('tmp/adzero-source-check','existing')
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_check')
+        self.assertEqual((self.root/'tmp/adzero-source-check').read_text(),'existing')

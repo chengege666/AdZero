@@ -1,0 +1,18 @@
+{
+  "version": "0.20.1",
+  "source_sha256": "9bc0e85e79af7fa61a99b0fde362aa1ee342756b3f71777846465d019e1e3783",
+  "python_tests": 556,
+  "ui_assertions": 347,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 59,
+  "installer_delivery_cases": 6,
+  "native_components": [
+    "rpc"
+  ],
+  "browser_qa": "desktop light/dark and 360px; visible edit/delete actions; DOM overflow false; source row hover transform confirmed; simulated RPC",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "reported_router_apply_failure": "confirmed pre-commit domain union over 500000 from user-provided job receipts",
+  "new_runtime_dependencies": false
+}

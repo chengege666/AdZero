@@ -109,6 +109,10 @@ return {adzero:{
 		let finished=int(trim(fs.readfile(path+'/finished')??'')),now=code!=null&&finished>=started?finished:int(time());
 		let elapsed=started>0?now-started:0;
 		let metadata={stage:index(progress.stages,phase)>=0?phase:'checking',elapsed:elapsed>0?elapsed:0};
+		try{
+			let source=json(fs.readfile(path+'/source',256)??'null');
+			if(type(source)=='object'&&type(source.index)=='int'&&type(source.total)=='int'&&source.index>=1&&source.index<=source.total&&source.total<=30)metadata.source={index:source.index,total:source.total};
+		}catch(e){}
 		let phase_start=int(trim(fs.readfile(path+'/stage_started')??'')),phase_elapsed=now-phase_start;
 		if(phase_start>0&&phase_elapsed>=0)metadata.phase_elapsed=phase_elapsed;
 		if (code == null) {

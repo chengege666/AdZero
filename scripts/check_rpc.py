@@ -211,6 +211,14 @@ esac
             (context/'result').write_text('1')
             safe=call('job_status',{'job':started['job']})
             assert 'private-backend' not in json.dumps(safe) and safe['reason']=='unknown',safe
+            (context/'reason').write_text('source_limit')
+            (context/'source').write_text(json.dumps({'index':2,'total':14,'url':'private-marker'}))
+            safe=call('job_status',{'job':started['job']})
+            assert safe['reason']=='source_limit' and safe['progress']['source']==dict(index=2,total=14),safe
+            assert 'private-marker' not in json.dumps(safe),safe
+            for raw in ('{"index":0,"total":14}','{"index":1,"total":31}','{"index":"1","total":14}','{"index":2,', 'null'):
+                (context/'source').write_text(raw)
+                assert 'source' not in call('job_status',{'job':started['job']})['progress']
             assert 'private-backend' not in json.dumps(done)
             assert run('/bin/ubus','-s','/tmp/ubus.sock','call','adzero','exec','{}').returncode != 0
             # Old direct file.exec kills ctl with SIGKILL before the EXIT trap.

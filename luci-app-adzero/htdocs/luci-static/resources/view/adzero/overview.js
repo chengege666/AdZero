@@ -61,7 +61,9 @@ var phaseText = {
 };
 function delay(ms) { return new Promise(function(resolve) { setTimeout(resolve,ms); }); }
 function taskError(reply, fallback) {
- var error=new Error(reply&&reply.message||fallback);error.reason=reply&&reply.reason;return error;
+ var message=reply&&reply.message||fallback, source=reply&&reply.progress&&reply.progress.source;
+ if(reply&&/^source_/.test(reply.reason||'')&&source&&Number.isInteger(source.index)&&Number.isInteger(source.total)&&source.index>=1&&source.index<=source.total&&source.total<=30)message+=_('（本批第 ')+source.index+' / '+source.total+_(' 个启用订阅；按页面顺序）');
+ var error=new Error(message);error.reason=reply&&reply.reason;return error;
 }
 function operationActive(s) {return !s.stale&&s.operation&&s.operation.active===true;}
 function lockNotice(action) {
@@ -71,7 +73,7 @@ function showProgress(self, value) {
  if (!self || !self.busy) return;
  var old=self.jobProgress || {};
  self.jobProgress=value;
- if (old.stage!==value.stage || Math.floor((old.elapsed || 0)/10)!==Math.floor((value.elapsed || 0)/10)) self.paint();
+ if (old.stage!==value.stage || JSON.stringify(old.source)!==JSON.stringify(value.source) || Math.floor((old.elapsed || 0)/10)!==Math.floor((value.elapsed || 0)/10)) self.paint();
 }
 function waitJob(reply,self) {
  if (!reply || !reply.ok) { if(self)self.jobUncertain=false;return Promise.reject(taskError(reply,_('操作未完成，请重新检测。'))); }
@@ -147,6 +149,9 @@ function finishJob(self) {
 
 // Phosphor Icons (MIT), license: /usr/share/licenses/luci-app-adzero/.
 var icons = {
+	plus: 'M120,48h16v72h72v16H136v72H120V136H48V120h72Z',
+	edit: 'M184,24l48,48L88,216H40V168Zm0,24-24,24,24,24,24-24ZM56,176v24H80L172,108,148,84Z',
+	trash: 'M96,24h64V48h56V64H40V48H96Zm16,16v8h32V40ZM56,80H72V208H184V80h16V208a16,16,0,0,1-16,16H72a16,16,0,0,1-16-16Zm40,16h16v96H96Zm48,0h16v96H144Z',
 	book: 'M32,40H96c13,0,24,5,32,14,8-9,19-14,32-14h64v168h-64c-10,0-18,4-24,12h-16c-6-8-14-12-24-12H32Zm16,16v136h48c9,0,17,2,24,6V76c-5-13-13-20-24-20Zm88,142c7-4,15-6,24-6h48V56h-48c-11,0-19,7-24,20Z',
 	youtube: 'M224,64c-5-13-13-17-26-19-23-3-117-3-140,0C45,47,37,51,32,64c-8,22-8,106,0,128,5,13,13,17,26,19,23,3,117,3,140,0,13-2,21-6,26-19,8-22,8-106,0-128ZM48,70c2-5,5-7,12-9,22-3,114-3,136,0,7,2,10,4,12,9,7,19,7,97,0,116-2,5-5,7-12,9-22,3-114,3-136,0-7-2-10-4-12-9-7-19-7-97,0-116Zm56,18v80l64-40Z',
 	telegram: 'M232,24,24,108c-10,4-9,17,1,20l53,16,23,69c3,10,15,12,21,4l30-32,48,35c8,6,18,1,20-8L248,42c2-12-5-22-16-18ZM43,116,221,44,88,130Zm57,27,101-77-84,96-9,30Zm31,29,94-108-20,139Z',
@@ -675,7 +680,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.20.0 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.20.1 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -765,8 +770,11 @@ return view.extend({
 	},
 	renderRuleAdvice:function(items,catalog){
 		var selected=items.filter(function(item){return item.enabled&&catalog.some(function(rule){return rule.family==='hagezi-multi'&&rule.url===item.url;});});
-		if(selected.length<2)return null;
-		return el('p',{'class':'az-inline-warning'},_('已同时选择 ')+selected.map(function(item){return item.name;}).join('、')+_('，同系列覆盖高度重叠。建议保留一项，再按需要补充其他用途的规则。'));
+		if(selected.length<2){
+			if(items.filter(function(item){return item.enabled;}).length<6)return null;
+			return el('p',{'class':'az-inline-warning'},_('已启用多份列表。重叠域名会自动去重；建议保留主列表并按需补充，避免增加下载耗时、内存占用和误拦截。'));
+		}
+		return el('p',{'class':'az-inline-warning'},_('已同时选择 ')+selected.map(function(item){return item.name;}).join('、')+_('，同系列覆盖高度重叠。重叠不会阻止应用，建议保留一项再补充其他用途。'));
 	},
 	renderRules: function(s) {
 		var self=this,data=self.sourcesData,items=self.draft?self.draft.items:data ? data.items || [] : [],catalog=data ? data.catalog || [] : [];
@@ -794,8 +802,8 @@ return view.extend({
 					el('div',{'class':'az-source-actions'},[
 						el('button',{type:'button','class':'az-toggle'+(item.enabled?' is-on':''),role:'switch','aria-checked':item.enabled?'true':'false','aria-label':_('启用规则 ')+item.name,disabled:!editable || !item.https && !item.enabled?true:null,
 							click:function(){return self.stageSource('source_toggle',[sourceKey(item),item.url,!item.enabled]);}},el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))),
-						el('button',{type:'button','class':'az-button az-button-quiet az-button-compact','aria-label':_('编辑规则 ')+item.name,disabled:!editable?true:null,click:function(){self.editSource=sourceKey(item);self.editForm={name:item.name,url:item.url,format:item.format==='unknown'?'domains':item.format};self.paint();}},_('编辑')),
-						el('button',{type:'button','class':'az-button az-button-quiet az-button-compact','aria-label':_('删除规则 ')+item.name,disabled:!editable?true:null,click:function(){self.removeSource=sourceKey(item);self.paint();}},_('删除')) ]),
+						el('button',{type:'button','class':'az-button az-button-compact','aria-label':_('编辑规则 ')+item.name,disabled:!editable?true:null,click:function(){self.editSource=sourceKey(item);self.editForm={name:item.name,url:item.url,format:item.format==='unknown'?'domains':item.format};self.paint();}},[icon('edit'),_('编辑')]),
+						el('button',{type:'button','class':'az-button az-button-danger-soft az-button-compact','aria-label':_('删除规则 ')+item.name,disabled:!editable?true:null,click:function(){self.removeSource=sourceKey(item);self.paint();}},[icon('trash'),_('删除')]) ]),
 					self.editSource===sourceKey(item)?self.renderSourceEdit(item,editable):null,
 					self.removeSource===sourceKey(item) ? el('div',{'class':'az-source-confirm',role:'group','aria-label':_('确认删除规则')},[el('span',{},_('加入待删除列表？应用后生效，个人放行名单会保留。')),
 						el('button',{type:'button','class':'az-button az-button-danger',disabled:!editable?true:null,click:function(){return self.stageSource('source_remove',[sourceKey(item),item.url]);}},_('待删除')),
@@ -814,7 +822,7 @@ return view.extend({
 			el('div',{'class':'az-library-grid'},catalog.filter(function(rule){return self.libraryFilter!=='available'||!items.some(function(i){return i.url===rule.url;});}).map(function(rule){var added=items.some(function(i){return i.url===rule.url;});return el('section',{'class':'az-card az-library-item'},[
 				el('div',{'class':'az-library-copy'},[el('div',{'class':'az-library-name'},[el('h3',{},rule.name),pill(rule.group)]),el('p',{},rule.description)]),
 				el('div',{'class':'az-library-footer'},[el('a',{href:rule.home,target:'_blank',rel:'noopener noreferrer','aria-label':rule.name+_(' 项目主页（新窗口）')},_('主页')),
-					el('button',{type:'button','class':'az-button az-button-compact'+(added?' az-button-quiet':''),'aria-label':(added?_('已添加 '):_('添加规则 '))+rule.name,disabled:added || !editable?true:null,click:function(){return self.stageSource('source_add',[rule.id,'','','domains']).then(function(){if(self.libraryFilter==='available')self.paint('az-library-available');});}},added?[icon('check'),_('已添加')]:_('添加规则'))]) ]);}).concat(self.libraryFilter==='available'&&catalog.length&&catalog.every(function(rule){return items.some(function(i){return i.url===rule.url;});})?[el('p',{'class':'az-library-empty',role:'status'},_('规则库中的列表均已添加，无需重复添加。'))]:[])),
+					el('button',{type:'button','class':'az-button az-button-compact'+(added?' az-button-added':' az-button-add'),'aria-label':(added?_('已添加 '):_('添加规则 '))+rule.name,disabled:added || !editable?true:null,click:function(){return self.stageSource('source_add',[rule.id,'','','domains']).then(function(){if(self.libraryFilter==='available')self.paint('az-library-available');});}},added?[icon('check'),_('已添加')]:[icon('plus'),_('添加规则')])]) ]);}).concat(self.libraryFilter==='available'&&catalog.length&&catalog.every(function(rule){return items.some(function(i){return i.url===rule.url;});})?[el('p',{'class':'az-library-empty',role:'status'},_('规则库中的列表均已添加，无需重复添加。'))]:[])),
 			data && data.last ? el('p',{'class':'az-source-footnote'},_('最近完成：')+date(data.last.at)+(enabled?_(' · 当前接入已同步。'):_(' · 开启保护后应用所选规则。'))) : null ]);
 	},
 	openRules: function() {
@@ -863,7 +871,9 @@ return view.extend({
 				else if(method==='source_remove')d.items=d.items.filter(function(i){return i!==item;});
 				else if(method==='source_edit'){
 					var form=self.editForm;if(!form.name.trim()||!/^https:\/\//i.test(form.url))throw new Error(_('请填写名称和 HTTPS 订阅地址。'));
-					item.name=form.name.trim();item.url=form.url.trim();item.format=form.format;item.https=true;item.domains=null;item.updated=null;item.checked=null;
+					var address=form.url.trim().replace(/^(https:\/\/[^/?]+)$/,'$1/');
+					if(d.items.some(function(i){return i!==item&&i.url===address;}))throw new Error(_('此地址已在列表中。不同列表的域名重叠会自动去重。'));
+					item.name=form.name.trim();item.url=address;item.format=form.format;item.https=true;item.domains=null;item.updated=null;item.checked=null;
 				}
 			}
 			self.removeSource=null;self.editSource=null;self.notice=null;if(!self.draftCount())self.draft=null;self.paint();
@@ -1077,7 +1087,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.20.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.20.1' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();

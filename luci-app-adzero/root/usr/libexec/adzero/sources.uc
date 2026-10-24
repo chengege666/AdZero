@@ -73,8 +73,9 @@ function download(address,kind,fresh,manual) {
 	if(manual){
 		if(!snapshot)die('没有可用的本地规则快照，请先更新订阅后再校验。');
 		progress.stage('validating');
-		let raw=fs.readfile(snapshot.path),result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);
-		if(!result)die('本地快照无法按支持的格式校验。');
+		let raw=fs.readfile(snapshot.path),result;
+		try{result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);if(!result)die('本地快照无法按支持的格式校验。');}
+		catch(e){progress.failure(progress.source_reason(e.message)??'source_format');die(e);}
 		snapshots.save(address,raw,root,kind,result);return {...result,bytes:length(raw)};
 	}
 	if(snapshot&&!fresh&&!uci.get('adblock-fast','config','curl_additional_param')){
@@ -105,7 +106,7 @@ function download(address,kind,fresh,manual) {
 			progress.stage(identical?'checking':'validating');
 			if(identical)result=snapshots.summary(snapshot,kind)??snapshots.parsed(snapshot,kind);
 			if(!result){progress.stage('validating');result=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);}
-		}catch(e){progress.failure('source_format');die(e);}
+		}catch(e){progress.failure(progress.source_reason(e.message)??'source_format');die(e);}
 		// From here the fresh response was accepted. If its optional cache
 		// write fails, the backend must not replay older bytes as this update.
 		if(fresh)snapshots.invalidate(address,root);
@@ -115,11 +116,14 @@ function download(address,kind,fresh,manual) {
 	} catch(e) { fs.unlink(path);die(e); }
 }
 function validate_sources(only,fresh,manual) {
-	let union={}, count=0;
-	for (let s in selected()) if (s.enabled != '0') {
+	let union={}, count=0,enabled=filter(selected(),s=>s.enabled!='0'),position=0;
+	for (let s in enabled) {
+		position++;
 		if(only && (type(only)=='array' ? index(only,s['.name'])<0 : s['.name']!=only))continue;
+		progress.source(position,length(enabled));
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
-		let checked=download(s.url,kind,fresh,manual);
+		let checked;
+		try{checked=download(s.url,kind,fresh,manual);}catch(e){progress.failure(progress.source_reason(e.message)??'source_check');die(e);}
 		if(!uci.set('adblock-fast',s['.name'],'adzero_checked',''+time()))die('无法保存规则检查时间。');
 		// The backend uses this size to schedule downloads. Without it, a new
 		// source triggers another HEAD request despite already being downloaded.
@@ -132,12 +136,13 @@ function validate_sources(only,fresh,manual) {
 		}
 		let names=checked.names??[];
 		for (let name in names) union[name]=true;
-		if (length(union) > 500000) die('所选规则合计超过 50 万个域名，请减少列表。');
+		if (length(union) > 500000) {progress.failure('source_limit');die('所选规则合计超过 50 万个域名，请减少列表。');}
 		let updated=checked.reused&&s.adzero_updated?s.adzero_updated:''+time();
 		if (!uci.set('adblock-fast',s['.name'],'adzero_domains',''+(checked.domains??length(names))) || !uci.set('adblock-fast',s['.name'],'adzero_skipped',''+checked.skipped) || !uci.set('adblock-fast',s['.name'],'adzero_updated',updated)) die('无法保存规则校验结果。');
 		if(!uci.set('adblock-fast',s['.name'],'adzero_validation','validated')||(kind=='auto'&&!uci.set('adblock-fast',s['.name'],'adzero_detected_format',checked.format)))die('无法保存规则格式记录。');
 		count++;
 	}
+	progress.source(null);
 	return count;
 }
 function begin(action,args) {
@@ -367,4 +372,4 @@ try {
 	else if(action=='cache-restamp')exit(cache_restamp()?0:1);
 	else if(action=='cache-sync')sync_snapshots();
 	else die('未知规则操作。');
-} catch(e) { fs.stderr.write('AdZero: '+e.message+'\n');exit(action == 'pending' ? 2 : 1); }
+} catch(e) { let reason=progress.source_reason(e.message);if(reason)progress.failure(reason);fs.stderr.write('AdZero: '+e.message+'\n');exit(action == 'pending' ? 2 : 1); }
