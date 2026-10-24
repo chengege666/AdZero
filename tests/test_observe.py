@@ -141,8 +141,13 @@ class ObserveTest(unittest.TestCase):
             self.assertFalse(self.decode(data)['blocked'])
 
     def test_zero_addresses_v4_v6(self):
-        for address in ('0.0.0.0','::','127.0.0.1'):
+        for address in ('0.0.0.0','::','127.0.0.1','::1'):
             self.assertTrue(self.decode(dns(response=True,address=address))['blocked'])
+
+    def test_truncated_address_is_not_evidence_of_filter_bypass(self):
+        result=self.decode(dns(response=True,address='198.51.100.7',tc=True))
+        self.assertFalse(result['positive'])
+        self.assertFalse(result['blocked'])
 
     def test_invalid_compression_lengths_and_questions(self):
         for raw in (b'',b'\0'*12,struct.pack('!HHHHHH',1,0x8000,1,0,0,0)+b'\xc0\x0c'+b'\0'*4,dns(response=True,address='1.2.3.4')[:-1]):

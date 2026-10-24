@@ -19,7 +19,7 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 - **广告过滤**：内置常用规则库，也能添加自己的 HTTPS 规则订阅。
 - **批量应用**：先添加、编辑或开关多项规则，再一次应用，减少重复加载。
-- **拦截统计**：每秒自动刷新局域网可观察范围内的 DNS 拦截请求数与比例，和规则域名数量分别展示；可一键清零请求数和拦截数，从同一时刻重新计算比例。
+- **拦截统计**：每秒刷新局域网可观察的请求数与「DNS请求拦截占比」，说明它不代表网页广告拦截率；可一键清零请求数和拦截数，从同一时刻重新计算。
 - **DNS 应答耗时**：分开显示正常、拦截应答的平均耗时，以及慢应答和 15 秒内未观察到应答的数量；只统计当前接入期间采集到的样本。
 - **最近拦截**：按需开启 5 分钟的内存记录，查看域名、次数并检查误杀。
 - **效果检测**：复制页面提供的查询命令，在电脑执行后自动核对拦截与正常解析。
@@ -35,21 +35,23 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-当前为 **v0.19.1 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+本版明确 DNS 请求占比的含义，并在支持的可选增强入口补充 HTTPS/SVCB AliasMode 和设备别名拦截。没有自动扩大规则或修改代理节点，详见 [更新说明](docs/RELEASE_0.19.2.md)。
+
+当前为 **v0.19.2 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.19.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.19.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.19.1/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.19.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.19.1) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.19.2) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 

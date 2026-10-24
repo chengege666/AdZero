@@ -21,6 +21,12 @@ export function message(raw){
 		let owner=name(raw,p);p=owner.end;let type=u16(raw,p),class_=u16(raw,p+2),size=u16(raw,p+8);p+=10;
 		if(p+size>length(raw))die('dns_record');
 		if(i<answer&&class_==1&&type==5){let target=name(raw,p);if(target.end!=p+size)die('dns_cname');push(records,{owner:owner.value,target:target.value});}
+		// RFC 9460 AliasMode applies only to its own question type. ServiceMode,
+		// additional records and root targets are not aliases to block.
+		if(i<answer&&class_==1&&type==kind&&index([64,65],type)>=0){
+			if(size<3)die('dns_service');
+			if(u16(raw,p)==0){let target=name(raw,p+2);if(target.end>p+size)die('dns_service');if(length(target.value))push(records,{owner:owner.value,target:target.value});}
+		}
 		p+=size;
 	}
 	if(p!=length(raw))die('dns_trailing');
@@ -66,8 +72,11 @@ export function decision(query,response,rules,allowed,device,cname){
 		let changed=false;
 		for(let rr in r.records)if(reachable[rr.owner]&&!reachable[rr.target]){
 			changed=true;reachable[rr.target]=true;
+			if(scope(allowed,rr.target)||device?.enabled&&scope(device.allowed,rr.target))continue;
+			let device_rule=device?.enabled?scope(device.blocked,rr.target):null;
+			if(device_rule)return {blocked:true,kind:'device',rule:device_rule,alias:rr.target};
 			for(let n=rr.target;index(n,'.')>=0;n=substr(n,index(n,'.')+1))
-				if(rules[n]&&!scope(allowed,rr.target)&&!scope(device?.enabled?device.allowed:[],rr.target))return {blocked:true,kind:'cname',rule:n,alias:rr.target};
+				if(rules[n])return {blocked:true,kind:'cname',rule:n,alias:rr.target};
 		}
 		if(!changed)break;
 	}

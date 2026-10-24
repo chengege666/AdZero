@@ -334,6 +334,7 @@
 .az-root #az-live-metrics, .az-root #az-live-verification { margin-bottom: 12px; }
 .az-root .az-live-grid .az-stat { display: block; padding: 16px 14px; min-width: 0; }
 .az-root .az-stat-label { color: var(--az-muted); font-size: 12px; }
+.az-root .az-stat-hint { display: block; margin-top: 5px; color: var(--az-muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 .az-root .az-live-grid .az-number { font-size: clamp(25px,2.8vw,34px); margin: 8px 0 8px; }
 .az-root .az-live-grid .az-number, .az-root .az-live-grid .az-stat-value { display: block; grid-column: auto; grid-row: auto; }
 .az-root .az-stat-accent { background: var(--az-soft); border-color: var(--az-accent); }

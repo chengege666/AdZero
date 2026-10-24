@@ -384,7 +384,7 @@ return view.extend({
 	renderEnhanceRuntime:function(){var d=this.enhanceData||{},r=d.runtime||{},counts=r.counts||{},recovery=r.state==='recovery_required';if(this.enhanceError)return el('div',{'class':'az-enhance-status'},[pill(_('增强状态未更新'),'attention'),el('p',{'class':'az-inline-warning'},_('暂时无法取得新状态。编辑已保留，后台将继续读取。'))]);return el('div',{'class':'az-enhance-status'},[
 		el('div',{'class':'az-enhance-status-line'},[pill(r.state==='active'?_('增强入口运行中'):recovery?_('增强入口退出待确认'):_('增强入口未接入'),r.state==='active'?'positive':recovery?'attention':'neutral'),el('span',{'class':'az-field-hint'},r.state==='active'?(r.plugin==='passwall'?'PassWall':_('路由器 DNS')):_('原生 DNS 路径保留'))]),
 		recovery?el('p',{'class':'az-inline-warning'},_('旧 DNS 会话清理尚未确认，恢复记录已保留。请查看系统日志，不要手动删除记录。')):null,
-		el('div',{'class':'az-enhance-counters','aria-label':_('本次增强入口统计')},[el('span',{},[_('CNAME 拦截'),el('strong',{},number(counts.cname))]),el('span',{},[_('设备附加拦截'),el('strong',{},number(counts.device))])])]);},
+		el('div',{'class':'az-enhance-counters','aria-label':_('本次增强入口统计')},[el('span',{},[_('别名拦截'),el('strong',{},number(counts.cname))]),el('span',{},[_('设备附加拦截'),el('strong',{},number(counts.device))])])]);},
 	renderEnhance:function(){
 		var self=this,d=self.enhanceDraft,editable=!self.busy&&!operationActive(self.currentStatus||{})&&!(self.currentStatus||{}).stale;
 		if(!d)return el('section',{'class':'az-card az-enhance-loading','aria-busy':self.enhanceError?'false':'true',role:self.enhanceError?'alert':'status'},[el('h3',{},self.enhanceError?_('增强设置读取失败'):_('正在读取增强设置…')),el('p',{},self.enhanceError||_('设置读取完成后即可编辑，当前网络继续使用原有配置。')),el('button',{type:'button','class':'az-button',disabled:!self.enhanceError?true:null,click:function(){return self.loadEnhance();}},self.enhanceError?_('重新读取'):_('读取中…'))]);
@@ -396,7 +396,7 @@ return view.extend({
 			el('section',{'class':'az-card az-enhance-entry'},[el('div',{'class':'az-section-heading'},[el('h3',{},_('增强过滤')),el('span',{'class':'az-section-caption'},_('可选功能'))]),el('p',{'class':'az-section-intro'},_('补充检查别名与设备规则，沿用原生上游。')),
 				el('div',{id:'az-enhance-runtime','aria-live':'polite'},[self.renderEnhanceRuntime()]),
 				toggle('enabled',_('增强 DNS 入口'),(self.enhanceData.profile||{}).strict?_('严格模式期间保留此选择，暂不接入'):_('仅接入默认 IPv4 局域网 DNS')),
-				toggle('cname',_('CNAME 别名过滤'),_('检查广告与追踪别名，入口启用后生效')),
+				toggle('cname',_('CNAME 别名过滤'),_('检查 CNAME 与 HTTPS/SVCB AliasMode，入口启用后生效')),
 				self.disclosure('enhance-scope',_('适用范围'),[el('p',{},_('仅接入确认可用的默认 IPv4 LAN DNS 路径。NaiLink、Mihomo、未知 ACL 或切换期间保留原生路径。')),el('p',{},_('继续使用原生代理上游和缓存，不改变节点。独立加密 DNS、IPv6 等未接入路径不受这些附加规则控制。'))])]),
 			]),
 			el('section',{'class':'az-card az-enhance-devices'},[el('div',{'class':'az-section-heading'},[el('div',{},[el('h3',{},_('设备附加规则')),el('p',{'class':'az-section-intro'},_('为固定 IPv4 设备补充拦截或豁免。'))]),el('button',{id:'az-device-add',type:'button','class':'az-button az-button-compact',disabled:!editable||s.devices.length>=32?true:null,click:function(){s.devices.push({ip:'',name:'',enabled:true,allowed:[],blocked:[]});self.paint('az-device-'+(s.devices.length-1)+'-name');}},_('添加设备'))]),
@@ -500,7 +500,7 @@ return view.extend({
 		if(adapter.plugin==='none'&&detected.length===1&&names[detected[0]]){active=names[detected[0]];synced=false;}
 		return el('div',{'class':'az-stats-grid az-live-grid'},[
 			el('section',{'class':'az-card az-stat az-stat-accent'},[el('span',{'class':'az-stat-label'},_('已拦截 DNS 请求')),
-				el('strong',{'class':'az-number'},number(hasCounts?o.blocked:null)),el('p',{},available&&o.active?_('拦截比例 ')+ratio:observationHint(o,s))]),
+				el('strong',{'class':'az-number'},number(hasCounts?o.blocked:null)),el('p',{},available&&o.active?_('DNS请求拦截占比 ')+ratio:observationHint(o,s)),el('small',{'class':'az-stat-hint'},_('已拦截 ÷ 已观察请求，不代表网页广告拦截率。'))]),
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('已观察 DNS 请求')),
 				el('strong',{'class':'az-number'},number(hasCounts?o.queries:null)),el('p',{},o.reset_token?_('自上次清零 · 局域网明文 DNS'):available&&!o.active&&o.queries>0?_('本次开机累计 · 当前统计已暂停'):_('本次开机 · 局域网明文 DNS'))]),
 			el('section',{'class':'az-card az-stat'},[el('span',{'class':'az-stat-label'},_('规则域名')),
@@ -674,7 +674,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.19.1 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.19.2 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -1076,7 +1076,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.19.1' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.19.2' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();

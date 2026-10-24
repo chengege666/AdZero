@@ -25,11 +25,13 @@ export function dns(raw){
 				if(p+size>length(raw))return null;
 				if(cls==1&&((kind==1&&size==4)||(kind==28&&size==16))){
 					let zero=true;for(let j=0;j<size;j++)if(ord(raw,p+j))zero=false;
-					if(zero||(size==4&&substr(raw,p,4)=='\x7f\x00\x00\x01'))blackhole=true;else positive=true;
+					let loopback=size==4&&substr(raw,p,4)=='\x7f\x00\x00\x01';
+					if(size==16&&ord(raw,p+15)==1){loopback=true;for(let j=0;j<15;j++)if(ord(raw,p+j))loopback=false;}
+					if(zero||loopback)blackhole=true;else positive=true;
 				}p+=size;
 			}
 		}
-		return {id:be16(raw,0),name:q.value,qtype,response,positive:response&&rcode==0&&positive,
+		return {id:be16(raw,0),name:q.value,qtype,response,positive:response&&!(flags&0x0200)&&rcode==0&&positive,
 			blocked:response&&!(flags&0x0200)&&(rcode==3||rcode==5||rcode==0&&!positive&&(be16(raw,6)==0||blackhole))};
 	}catch(e){return null;}
 };

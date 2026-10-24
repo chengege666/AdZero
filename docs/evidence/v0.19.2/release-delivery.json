@@ -1,0 +1,36 @@
+{
+  "checks": 6,
+  "cases": [
+    {
+      "target": "24.10.8-x86-ipk",
+      "catalog_ending": "LF",
+      "selection_checksum_backup_restore_install": "passed"
+    },
+    {
+      "target": "24.10.8-x86-ipk",
+      "catalog_ending": "CRLF",
+      "selection_checksum_backup_restore_install": "passed"
+    },
+    {
+      "target": "25.12.5-x86-apk",
+      "catalog_ending": "LF",
+      "selection_checksum_backup_restore_install": "passed"
+    },
+    {
+      "target": "25.12.5-x86-apk",
+      "catalog_ending": "CRLF",
+      "selection_checksum_backup_restore_install": "passed"
+    },
+    {
+      "target": "25.12.5-rockchip-apk",
+      "catalog_ending": "LF",
+      "selection_checksum_backup_restore_install": "passed"
+    },
+    {
+      "target": "25.12.5-rockchip-apk",
+      "catalog_ending": "CRLF",
+      "selection_checksum_backup_restore_install": "passed"
+    }
+  ],
+  "scope": "actual delivered installer, catalog and SDK package bytes; mock PM/service operations in private roots; not a real router installation"
+}

@@ -62,10 +62,17 @@ def main():
  def respond(q):
   p=12
   while q[p]:p+=q[p]+1
-  domain=q[12:p+1];records=[]
+  domain=q[12:p+1];kind=struct.unpack('!H',q[p+1:p+3])[0];records=[]
   if domain==cname('shop.example'):
    target=cname('ads.example');records.append(b'\xc0\x0c'+struct.pack('!HHIH',5,1,60,len(target))+target)
    records.append(target+struct.pack('!HHIH',1,1,60,4)+socket.inet_aton('198.51.100.7'))
+  elif domain==cname('alias-device.example'):
+   target=cname('device.example');records.append(b'\xc0\x0c'+struct.pack('!HHIH',5,1,60,len(target))+target)
+   records.append(target+struct.pack('!HHIH',1,1,60,4)+socket.inet_aton('198.51.100.7'))
+  elif kind in (64,65) and domain in (cname('service.example'),cname('device-service.example'),cname('service-mode.example')):
+   target=cname('device.example' if domain==cname('device-service.example') else 'ads.example')
+   value=struct.pack('!H',1 if domain==cname('service-mode.example') else 0)+target
+   records.append(b'\xc0\x0c'+struct.pack('!HHIH',kind,1,60,len(value))+value)
   else:records.append(b'\xc0\x0c'+struct.pack('!HHIH',1,1,60,4)+socket.inet_aton('198.51.100.8'))
   return q[:2]+struct.pack('!5H',0x8180,1,len(records),0,0)+q[12:p+5]+b''.join(records)
  class UDP(socketserver.BaseRequestHandler):
@@ -133,15 +140,23 @@ def main():
   probe=write('tmp/client.py','')
   # Host Python executes in the separate client network namespace, outside chroot.
   code="""import socket,struct,json,sys
-n,source,tcp,source_port=sys.argv[1:];q=struct.pack('!6H',12,256,1,0,0,0)+b''.join(bytes([len(x)])+x.encode() for x in n.split('.'))+b'\\0'+struct.pack('!HH',1,1)
+n,source,tcp,source_port=sys.argv[1:5];kind=int(sys.argv[5]) if len(sys.argv)>5 else 1;q=struct.pack('!6H',12,256,1,0,0,0)+b''.join(bytes([len(x)])+x.encode() for x in n.split('.'))+b'\\0'+struct.pack('!HH',kind,1)
 with socket.socket(socket.AF_INET,socket.SOCK_STREAM if tcp=='1' else socket.SOCK_DGRAM) as s:
  s.settimeout(2);s.bind((source,int(source_port)));s.connect(('192.168.50.1',53));s.sendall(struct.pack('!H',len(q))+q if tcp=='1' else q)
  r=s.recv(4096)
  if tcp=='1':r=r[2:]
  print(json.dumps(dict(answers=struct.unpack('!H',r[6:8])[0],rcode=r[3]&15)))
 """
-  def query(n,source='192.168.50.2',tcp=False,source_port=0):return json.loads(clientrun(sys.executable,'-c',code,n,source,str(int(tcp)),str(source_port)).stdout)
+  def query(n,source='192.168.50.2',tcp=False,source_port=0,kind=1):return json.loads(clientrun(sys.executable,'-c',code,n,source,str(int(tcp)),str(source_port),str(kind)).stdout)
   for tcp_mode in (False,True):assert query('shop.example',tcp=tcp_mode)['answers']==0
+  for tcp_mode in (False,True):
+   assert query('alias-device.example',tcp=tcp_mode)['answers']==0
+   assert query('alias-device.example','192.168.50.3',tcp=tcp_mode)['answers']==2
+   for kind in (64,65):
+    assert query('service.example',tcp=tcp_mode,kind=kind)['answers']==0
+    assert query('device-service.example',tcp=tcp_mode,kind=kind)['answers']==0
+    assert query('device-service.example','192.168.50.3',tcp=tcp_mode,kind=kind)['answers']==1
+    assert query('service-mode.example',tcp=tcp_mode,kind=kind)['answers']==1
   assert query('device.example')['answers']==0
   assert query('device.example','192.168.50.3')['answers']==1
   assert query('normal.example')['answers']==1
@@ -207,7 +222,7 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM if tcp=='1' else socket.SOC
   service2.terminate();service2.wait(timeout=6);log2.close()
   assert query('device.example',source_port=53014)['answers']==1
   assert source_hash(SOURCE.parents[3])==source_before
-  report=dict(schema=1,source_sha256=source_before,native_context=True,udp_cname=True,tcp_cname=True,device_block=True,other_device_unaffected=True,normal_domain=True,read_only_lock_preserves_entry=True,mutating_lock_withdraws_entry=True,hot_policy_change=True,stale_policy_rejected=True,native_dns_not_restarted=True,owned_table_removed=True,native_path_restored=True,missing_table_stale_tuple_repaired=True,failed_cleanup_retains_intent=True,native_connection_preserved=True,graceful_exit_retires_tuple=True,cleanup_idempotent=True,device_acceptance='not_run')
+  report=dict(schema=1,source_sha256=source_before,native_context=True,udp_cname=True,tcp_cname=True,device_block=True,device_alias_udp_tcp=True,https_svcb_alias_udp_tcp=True,service_mode_preserved=True,other_device_unaffected=True,normal_domain=True,read_only_lock_preserves_entry=True,mutating_lock_withdraws_entry=True,hot_policy_change=True,stale_policy_rejected=True,native_dns_not_restarted=True,owned_table_removed=True,native_path_restored=True,missing_table_stale_tuple_repaired=True,failed_cleanup_retains_intent=True,native_connection_preserved=True,graceful_exit_retires_tuple=True,cleanup_idempotent=True,device_acceptance='not_run')
   (BASE/'enhance-proof.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
  finally:
   for p in reversed(procs):

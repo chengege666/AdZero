@@ -1,0 +1,14 @@
+Package: coreutils-timeout
+Version: 9.7-r1
+Depends: libc, coreutils, librt
+Alternatives: 300:/usr/bin/timeout:/usr/libexec/timeout-coreutils
+License: GPL-3.0-or-later
+Section: utils
+URL: http://www.gnu.org/software/coreutils/
+CPE-ID: cpe:/a:gnu:coreutils
+Architecture: x86_64
+Installed-Size: 51200
+Filename: coreutils-timeout_9.7-r1_x86_64.ipk
+Size: 19665
+SHA256sum: 10e721b261c393e7f30d84012c2a773f02d67adcace9b71c0a9a70312ac849f5
+Description:  Full version of standard GNU timeout utility.

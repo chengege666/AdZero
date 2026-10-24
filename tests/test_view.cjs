@@ -117,7 +117,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.19.1'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.19.2'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -445,6 +445,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   observationFixture={available:true,active:true,queries:100,blocked:18,answered:95,verification:{state:'idle'}};
   await app.refreshObservation();
   check(text(find('az-live-metrics')).includes('18.0%')&&text(find('az-live-metrics')).includes('66,425'),'blocked-request ratio and rule count are distinct');
+  check(text(find('az-live-metrics')).includes('DNS请求拦截占比 18.0%')&&text(find('az-live-metrics')).includes('已拦截 ÷ 已观察请求，不代表网页广告拦截率。'),'ratio explicitly describes observed DNS requests rather than advertising success');
   check(!find('az-test-start').disabled,'live observation enables terminal challenge');
   commands.length=0;await app.startVerification();
   check(app.verificationCommands.includes('nslookup')&&find('az-test-commands'),'challenge shows usable terminal commands');
@@ -588,7 +589,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(enhanceFixture.config.devices[0].ip==='192.168.2.10'&&app.notice.kind==='success','typed save roundtrip keeps device identity');
   enhanceFixture.runtime={state:'active',plugin:'passwall',counts:{cname:2,device:3}};
   await app.loadEnhance(true);
-  check(text(find('az-enhance-runtime')).includes('CNAME 拦截 2')&&text(find('az-enhance-runtime')).includes('设备附加拦截 3'),'enhanced counts are distinct and refresh without replacing the editor');
+  check(text(find('az-enhance-runtime')).includes('别名拦截 2')&&text(find('az-enhance-runtime')).includes('设备附加拦截 3'),'enhanced counts are distinct and refresh without replacing the editor');
   const enhanceEditor=app.enhanceDraft;
   enhanceFixture.runtime={state:'recovery_required',reason:'cleanup_pending'};
   await app.loadEnhance(true);
