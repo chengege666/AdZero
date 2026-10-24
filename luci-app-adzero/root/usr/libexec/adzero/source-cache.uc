@@ -27,6 +27,11 @@ function key(dir,address){
 	let ok=f.write(address)==length(address);ok=f.close()&&ok;
 	let value=ok?hash(path):null;fs.unlink(path);return value;
 }
+// Semantic revisions may contain private subscription URLs. Hash through a
+// short-lived private file, never put the serialized configuration in argv.
+export function fingerprint(value,root){
+	let dir=directory(root);return dir?key(dir,value):null;
+};
 function private_file(path,max){let s=fs.lstat(path);return s?.type=='file'&&s.size>0&&s.size<=max&&!(s.mode&0077)&&s.uid==fs.stat('/proc/self')?.uid;}
 export function load(address,root){
 	try{

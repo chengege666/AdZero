@@ -227,6 +227,7 @@
 }
 .az-root .az-snapshot-hint { font-size: 13px; color: var(--az-muted); margin-bottom: 8px; }
 .az-root .az-source-header { padding: 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.az-root .az-source-header > .az-action-row { flex-wrap: wrap; }
 .az-root .az-source-list { padding: 0 18px; margin-top: 12px; }
 .az-root .az-source-table-heading, .az-root .az-source-row { display: grid; grid-template-columns: minmax(0,1fr) 155px 216px; align-items: center; gap: 14px; }
 .az-root .az-source-table-heading { color: var(--az-muted); font-size: 12px; padding: 10px 0; border-bottom: 1px solid var(--az-line); }
@@ -243,6 +244,11 @@
 .az-root .az-source-confirm > span { margin-right: auto; font-size: 13px; }
 .az-root .az-source-empty { padding: 20px 0; color: var(--az-muted); }
 .az-root .az-source-footnote { font-size: 12px; color: var(--az-muted); margin: 8px 2px 14px; }
+.az-root .az-capacity-summary { display: flex; flex-direction: column; gap: 2px; margin: 0 0 12px; }
+.az-root .az-capacity-summary small { font-size: 11px; color: var(--az-muted); }
+.az-root .az-draft-bar .az-inline-warning { color: var(--az-warning); }
+.az-root .az-draft-bar li { margin: 4px 0; }
+.az-root .az-draft-bar li small { display: block; overflow-wrap: anywhere; color: var(--az-muted); }
 .az-root .az-custom-source { margin-top: 10px; padding: 0; }
 .az-root .az-custom-grid { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 12px; margin-top: 14px; }
 .az-root .az-custom-grid label > span { display: block; font-size: 13px; margin-bottom: 7px; color: var(--az-text); }

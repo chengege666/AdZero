@@ -152,6 +152,8 @@ reload_current() {
 	# No network refresh when the current output is still proven to match
 	# the selected configuration. Adapter.apply independently checks its input.
 	if ! "$SOURCES" cache-current >/dev/null 2>&1 && ! "$SOURCES" cache-live >/dev/null 2>&1; then
+		# Check the candidate while the working resolver is still running.
+		"$SOURCES" preflight || error '容量预检未完成，未执行重新加载。'
 		backend_restart dl || error '重新加载后端失败，恢复记录已保留。'
 	fi
 	ADZERO_ADAPTER_REFRESH=1 "$ADAPTER" apply || error '重新加载代理接入未完成，恢复记录已保留。'
@@ -496,6 +498,10 @@ enable_protection() {
 	"$POLICY" has-allowed && start_method=dl
 	[ ! -f "$STATE_DIR/sources-selected" ] || start_method=dl
 	"$SOURCES" cache-check >/dev/null 2>&1 && start_method=start
+	if [ "$start_method" = dl ] && [ -f "$STATE_DIR/sources-selected" ] && ! "$SOURCES" preflight; then
+		rollback_enable "$previous" && error '规则容量预检未通过，原配置已恢复。'
+		error '规则容量预检与恢复未确认，请保留恢复记录。'
+	fi
 	if ! backend_restart "$start_method"; then
 		rule_failure_hint
 		rollback_enable "$previous" && error '后端启动失败，原配置已恢复。'

@@ -680,7 +680,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.20.2 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.20.3 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -784,12 +784,13 @@ return view.extend({
 		function date(value) { return value ? new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value*1000)) : _('尚无记录'); }
 		return el('div',{'class':'az-rules-page'},[
 			el('section',{'class':'az-card az-source-header'},[
-				el('div',{},[el('div',{'class':'az-source-title'},[el('h3',{},_('我的过滤规则')),pill(items.filter(function(i){return i.enabled;}).length+' / '+items.length+_(' 已启用'))]),el('p',{'class':'az-card-copy'},_('选择规则，改完统一应用。'))]),
+				el('div',{},[el('div',{'class':'az-source-title'},[el('h3',{},_('我的过滤规则')),data?pill(_('已应用 ')+(data.items||[]).filter(function(i){return i.enabled;}).length+' / '+(data.items||[]).length):pill(_('读取中')),self.draftCount()?pill(_('待应用 ')+items.filter(function(i){return i.enabled;}).length+' / '+items.length,'attention'):null]),el('p',{'class':'az-card-copy'},self.draftCount()?_('列表展示待应用选择，当前保护继续使用已应用规则。'):_('选择规则，改完统一应用。'))]),
 				el('div',{'class':'az-action-row'},[
-					el('button',{id:'az-source-reload',type:'button','class':'az-button az-button-primary',disabled:!editable || (!self.draftCount()&&!enabled) ? true:null,click:function(){return self.reloadCurrent();}},[icon('refresh'),_('重新加载')]),
+					el('button',{id:'az-source-reload',type:'button','class':'az-button az-button-primary',title:self.draftCount()?_('请先应用或撤销待应用更改'):null,disabled:!editable || !!self.draftCount() || !enabled ? true:null,click:function(){return self.reloadCurrent();}},[icon('refresh'),_('重载已应用规则')]),
 					el('button',{id:'az-source-refresh',type:'button','class':'az-button az-button-quiet',disabled:!editable || !items.length || !!self.draftCount() ? true:null,click:function(){return self.runSource('source_refresh',[]);}},_('更新订阅')),
 					el('button',{id:'az-source-verify',type:'button','class':'az-button az-button-quiet',disabled:!editable||!items.some(function(i){return i.enabled;})||!!self.draftCount()?true:null,click:function(){return self.runSource('source_verify',[]);}},_('手动校验'))]) ]),
 			self.renderRuleAdvice(items,catalog),
+			self.renderCapacity(data),
 			self.sourcesError ? el('div',{'class':'az-notice az-notice-error',role:'alert'},[el('span',{},self.sourcesError),el('button',{type:'button','class':'az-button az-button-quiet',disabled:self.busy?true:null,click:function(){return self.loadSources();}},_('重新读取'))]) : null,
 			!data ? el('p',{'class':'az-card-copy',role:'status'},_('正在读取规则列表…')) : null,
 			!editable && !self.busy ? el('p',{'class':'az-inline-warning'},s.stale ? _('正在核对状态，请稍候。') : operationActive(s) ? _('后台操作正在进行，完成后可继续调整规则。') : self.sourcesLoading ? _('正在核对规则列表，请稍候。') : (s.adapter||{}).reload_pending ? _('正在确认上一次代理重载，本批规则已保留。请稍候重新检测，勿重复应用。') : s.state==='paused' ? _('请先恢复保护或保持关闭，再调整规则。') : _('当前状态不支持更改规则，请先完成恢复或重新检测。')) : null,
@@ -836,12 +837,24 @@ return view.extend({
 		count+=d.items.filter(function(i){var old=base.find(function(v){return v.id===i.id;});return i._new||!old||JSON.stringify(sourceChoice(i))!==JSON.stringify(sourceChoice(old));}).length;
 		return count+(d.routing_enabled!==d.routing_before?1:0)+(d.dns&&!sameDNS(d.dns,d.dns_before)?1:0);
 	},
+	renderCapacity: function(data){
+		var c=data&&data.capacity,label=_('容量上限：50 万个候选域名。应用前按实际域名去重检查，不相加各列表数量。');
+		if(c&&Number.isInteger(c.known_domains))label=(c.state==='complete'?_('最近完整预检：'):c.state==='over_limit'?_('预检已超限，已知至少 '):_('容量预检不完整，已知 '))+number(c.known_domains)+' / '+number(c.limit||500000)+_(' 个候选域名')+(c.state==='unknown'?_('；部分来源无法计数。'):'');
+		return el('div',{id:'az-rule-capacity','class':'az-capacity-summary '+(c&&c.state!=='complete'?'az-inline-warning':'az-source-footnote')},[el('span',{},label),el('small',{},this.draftCount()?_('当前草稿尚未预检；应用时重新核对。候选数未扣除放行与父域优化。'):_('候选数未扣除放行与父域优化，最终载入数量以运行概览为准。'))]);
+	},
+	draftError: function(){
+		if(this.draftConflict)return _('已应用配置发生真实变化，草稿已保留。请核对差异，撤销旧草稿后按当前配置重新选择；不会自动覆盖。');
+		var d=this.draft,s=this.currentStatus||{},blocked=(s.policy||{}).blocked;
+		if(d&&flags(s).enabled&&Array.isArray(blocked)&&!d.items.some(function(i){return i.enabled;})&&!blocked.length)return _('本次草稿没有启用订阅或手动拦截项。请保留一项规则；暂停全部过滤请使用暂停或保护开关。');
+		return null;
+	},
 	sourceChanged: function(item) {
 		var old=((this.sourcesData||{}).items||[]).find(function(i){return i.id===item.id;});
 		return !!this.draft&&(!old||JSON.stringify(sourceChoice(old))!==JSON.stringify(sourceChoice(item)));
 	},
 	ensureDraft: function() {
 		if(this.draft)return;
+		this.draftConflict=false;
 		var data=this.sourcesData;
 		if(!data||!Array.isArray(data.items)||!/^[a-f0-9]{64}$/.test(data.revision||''))throw new Error(_('规则列表尚未就绪，请重新读取。'));
 		var items=JSON.parse(JSON.stringify(data.items)),routing=(this.currentStatus.policy||{}).routing_enabled===true;
@@ -891,15 +904,21 @@ return view.extend({
 				el('button',{type:'button','class':'az-button az-button-quiet',click:function(){self.editSource=null;self.paint();}},_('取消'))])]);
 	},
 	renderDraft: function(s){
-		var self=this,locked=!!self.busy||s.stale||self.sourcesLoading||!self.canStage();
+		var self=this,problem=self.draftError(),locked=!!self.busy||s.stale||self.sourcesLoading||!self.canStage()||!!problem;
 		return el('section',{'class':'az-draft-bar',role:'region','aria-label':_('待应用更改')},[
-			el('div',{},[el('strong',{},self.draftCount()+_(' 项更改待应用')),el('p',{},_('当前网络仍使用已应用配置。应用时复用已有规则并统一同步；离开页面前请应用或撤销。'))]),
+			el('div',{},[el('strong',{},self.draftCount()+_(' 项更改待应用')),el('p',{},_('当前网络仍使用已应用配置。应用时复用已有规则并统一同步；离开页面前请应用或撤销。')),problem?el('p',{id:'az-draft-error','class':'az-inline-warning',role:'status'},problem):null,self.draftConflict?self.renderDraftConflict():null]),
 			el('div',{'class':'az-action-row'},[
-				el('button',{id:'az-draft-discard',type:'button','class':'az-button az-button-quiet',disabled:self.busy||self.jobUncertain?true:null,click:function(){self.draft=null;self.dnsForm=null;self.editSource=null;self.notice=null;self.paint();}},_('撤销更改')),
-				el('button',{id:'az-draft-apply',type:'button','class':'az-button az-button-primary',disabled:locked?true:null,click:function(){return self.applyDraft();}},_('应用并重新加载'))])]);
+				el('button',{id:'az-draft-discard',type:'button','class':'az-button az-button-quiet',disabled:self.busy||self.jobUncertain?true:null,click:function(){self.draft=null;self.draftConflict=false;self.dnsForm=null;self.editSource=null;self.notice=null;self.paint();}},_('撤销更改')),
+				el('button',{id:'az-draft-apply',type:'button','class':'az-button az-button-primary','aria-describedby':problem?'az-draft-error':null,disabled:locked?true:null,click:function(){return self.applyDraft();}},_('应用并重新加载'))])]);
+	},
+	renderDraftConflict:function(){
+		var d=this.draft,actual=(this.sourcesData||{}).items||[],base=d.base||[],rows=[];
+		base.concat(actual.filter(function(i){return !base.some(function(b){return b.id===i.id;});})).forEach(function(i){var before=base.find(function(b){return b.id===i.id;}),now=actual.find(function(b){return b.id===i.id;}),wanted=d.items.find(function(b){return b.id===i.id;});if(JSON.stringify(before&&sourceChoice(before))!==JSON.stringify(now&&sourceChoice(now)))rows.push(el('li',{},[(now||before).name+_('：当前 ')+(now?(now.enabled?_('启用'):_('停用')):_('已移除'))+_('；草稿 ')+(wanted?(wanted.enabled?_('启用'):_('停用')):_('移除')),el('small',{},_('当前地址：')+(now?now.url:_('无'))),el('small',{},_('草稿地址：')+(wanted?wanted.url:_('无')))]));});
+		return this.disclosure('draft-conflict',_('核对配置差异'),rows.length?[el('ul',{},rows)]:[el('p',{},_('过滤、DNS 或其他受保护设置已变化。旧草稿不能直接覆盖当前配置。'))]);
 	},
 	reloadCurrent: function(){
-		return this.draftCount()?this.applyDraft():this.runAction('reload');
+		if(this.draftCount()){this.notice={kind:'warning',text:_('请先应用或撤销待应用更改；重载按钮只处理已应用规则。')};this.paint();return Promise.resolve();}
+		return this.runAction('reload');
 	},
 	confirmPendingDraft: function(){
 		var d=this.draft,s=this.currentStatus||{},data=this.sourcesData;
@@ -910,6 +929,7 @@ return view.extend({
 	},
 	applyDraft: function(receipt){
 		var self=this;if(!receipt&&(!self.canStage()||!self.draftCount()))return Promise.resolve();
+		if(!receipt&&self.draftError()){self.notice={kind:'warning',text:self.draftError()};self.paint();return Promise.resolve();}
 		var d=self.draft,p=d?{revision:d.revision,items:d.items.map(sourceChoice),routing_before:d.routing_before,routing_enabled:d.routing_enabled,...(d.dns?{dns_before:d.dns_before,dns:d.dns}:{})}:null;
 		var policyError=p&&p.routing_enabled&&self.dnsPolicyError(p.dns);if(!receipt&&policyError){self.notice={kind:'error',text:policyError};self.paint();return Promise.resolve();}
 		self.applyingDraft=p;self.busy='rules';self.notice=null;self.paint();
@@ -919,10 +939,7 @@ return view.extend({
 				var matches=!p||(actual.length===p.items.length&&p.items.every(function(i){return actual.some(function(v){return v.url===i.url&&v.name===i.name&&v.enabled===i.enabled&&(i.format==='unknown'||v.format===i.format);});})&&((self.currentStatus.policy||{}).routing_enabled===p.routing_enabled)&&(!p.dns||sameDNS((self.sourcesData||{}).dns,p.dns)));
 				if(matches){self.draft=null;self.dnsForm=null;if(self.enhanceData&&self.sourcesData.dns)self.enhanceData.profile=JSON.parse(JSON.stringify(self.sourcesData.dns));self.notice={kind:'success',text:_('更改已统一应用。')};}
 				else self.notice={kind:'error',text:_('任务已结束，但配置尚未核对一致。待应用选择已保留。')};
-			}else if(self.draft&&self.sourcesData){
-				// A completed rollback can change metadata while retaining choices.
-				if(JSON.stringify(self.draft.base.map(sourceChoice))===JSON.stringify(self.sourcesData.items.map(sourceChoice))&&(self.currentStatus.policy||{}).routing_enabled===self.draft.routing_before)self.draft.revision=self.sourcesData.revision;
-			}
+			}else if(self.draft&&self.sourceFailureReason==='config_conflict')self.draftConflict=true;
 			self.applyingDraft=null;self.paint();
 		}).catch(function(e){self.busy=null;self.notice={kind:'error',text:_('更改尚未应用，选择已保留。'),detail:String(e.message||e)};self.paint();});
 	},
@@ -933,8 +950,8 @@ return view.extend({
 			.catch(function(e){self.sourcesError=String(e.message || e);}).then(function(){self.sourcesLoading=false;self.paint();});
 	},
 	continueSourceJob: function(reply,kind) {
-		var self=this,failure=null;self.busy='rules';self.notice=null;self.jobProgress=null;self.jobUncertain=false;self.paint();
-		return trackJob(reply,kind||'source',null,self).catch(function(e){failure=String(e.message || e);}).then(function(){return taskStatus(self);}).then(function(s){
+		var self=this,failure=null;self.busy='rules';self.notice=null;self.jobProgress=null;self.jobUncertain=false;self.sourceFailureReason=null;self.paint();
+		return trackJob(reply,kind||'source',null,self).catch(function(e){failure=String(e.message || e);self.sourceFailureReason=e.reason;}).then(function(){return taskStatus(self);}).then(function(s){
 			self.currentStatus=s;self.lastChecked=new Date();self.domainResult=null;self.removeSource=null;
 			var healthy=s.state==='disabled' || s.state==='configured_unverified';
 			self.notice=failure || !healthy ? {kind:'error',text:s.state==='configured_unverified'&&(s.backend||{}).state==='ready'?_('本次规则操作未完成，当前保护仍在运行。'):_('规则未确认应用，已重新读取当前状态。'),detail:failure || _('请先处理恢复记录。')} :
@@ -1087,7 +1104,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.20.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.20.3' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();

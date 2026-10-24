@@ -1,0 +1,20 @@
+{
+  "version": "0.20.3",
+  "source_sha256": "841a45af5fdacd94ffc6ec7383e92b16bffbea0ee9aa311e2fbddf697af4b058",
+  "python_tests": 579,
+  "ui_assertions": 366,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 59,
+  "installer_delivery_cases": 6,
+  "native_components": [
+    "rpc",
+    "openclash",
+    "passwall"
+  ],
+  "browser_qa": "desktop and 360px mobile: explicit applied/draft counts, empty selection guard and disabled reload; simulated data only",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "reported_router_apply_failure": "handoff verified locally: empty draft reason and metadata-only revision conflict; raw user diagnostics are not published",
+  "new_runtime_dependencies": false
+}

@@ -14,7 +14,7 @@ function fallbackE(tag, attrs = {}, children = []) {
   return el;
 }
 const baseline = {
-  policy: {allowed:[],pause:null}, state: 'configured_unverified', managed: true, configured: true, backend_enabled: true,
+  policy: {allowed:[],blocked:[],pause:null}, state: 'configured_unverified', managed: true, configured: true, backend_enabled: true,
   resolver: 'dnsmasq.servers', dns_mode_safe: true, force_dns: 'off', tls_download: 'strict', dnsmasq_port_hint: 'default', client_dns_verified: false,
   backend: { state: 'ready', domains: 66425, errors: 0, warnings: 1 }, adapter: { plugin: 'nailink', stage: 'configured_unverified', domains: 66425 },
   compatibility: { platform: { distribution: 'OpenWrt', version: '25.12.5', cpu: 'aarch64', target: 'rockchip/armv8', declared_arch: 'aarch64_generic', package_arch: 'aarch64', package_manager: 'apk' },

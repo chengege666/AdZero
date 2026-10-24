@@ -70,12 +70,102 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(file.read_bytes(),before)
         self.assertFalse(self.fetches.exists())
 
+    def test_semantic_revision_ignores_committed_statistics_and_formatting(self):
+        self.sources.add();self.sources.run_source('finish');p=self.plan();item=p['items'][0]
+        uci=self.f.env['ADZERO_UCI']
+        for key,value in [('size','101'),('adzero_domains','123'),('adzero_skipped','7'),('adzero_checked','1'),('adzero_updated','2'),('adzero_validation','validated')]:
+            subprocess.run([uci,'set','adblock-fast.'+item['id']+'.'+key+'='+value],check=True)
+        subprocess.run([uci,'commit','adblock-fast'],check=True)
+        config=self.root/'etc/config/adblock-fast';config.write_text('# harmless comment\n'+config.read_text())
+        self.assertEqual(self.sources.data()['revision'],p['revision'])
+        p['items'][0]['name']='Renamed';self.apply(p)
+        self.assertEqual(self.sources.data()['items'][0]['name'],'Renamed')
+
+    def test_pending_statistic_delta_does_not_conflict_or_discard_user_edits(self):
+        self.sources.add();self.sources.run_source('finish');p=self.plan();uci=self.f.env['ADZERO_UCI'];id=p['items'][0]['id']
+        try:
+            subprocess.run([uci,'set','adblock-fast.'+id+'.adzero_checked=1'],check=True)
+            self.assertEqual(self.sources.data()['revision'],p['revision'])
+            p['items'][0]['name']='Changed';self.apply(p)
+        finally:subprocess.run([uci,'revert','adblock-fast'],check=True)
+
+    def test_semantic_revision_retains_all_protected_configuration_changes(self):
+        self.sources.add();self.sources.run_source('finish');uci=self.f.env['ADZERO_UCI'];id=self.plan()['items'][0]['id']
+        for key,value in [('adblock-fast.'+id+'.url','https://changed.example/list'),('adblock-fast.'+id+'.enabled','0'),('adblock-fast.'+id+'.adzero_format','hosts'),('adblock-fast.config.allowed_domain','new.example'),('adblock-fast.config.dns','dnsmasq.addnhosts'),('adzero.main.routing_enabled','1'),('adzero.main.dns_profile','{"domestic":{"servers":["119.29.29.29"]}}')]:
+            with self.subTest(key=key):
+                p=self.plan();context=self.root/'revision-context';context.mkdir(exist_ok=True)
+                for f in context.iterdir():f.unlink()
+                self.f.env['ADZERO_JOB_CONTEXT']=str(context)
+                subprocess.run([uci,'set',key+'='+value],check=True);subprocess.run([uci,'commit',key.split('.')[0]],check=True)
+                path=self.f.write('stale.json',json.dumps(p));self.sources.run_source('plan-check',str(path),ok=False)
+                self.assertEqual((context/'reason').read_text(),'config_conflict')
+
+    def test_empty_ruleset_is_structured_and_rejected_before_any_backend_call(self):
+        self.sources.add();self.sources.run_source('finish');uci=self.f.env['ADZERO_UCI']
+        subprocess.run([uci,'delete','adblock-fast.config.blocked_domain'],check=True);subprocess.run([uci,'commit','adblock-fast'],check=True)
+        self.f.ctl('enable');context=self.job_context();p=self.plan();p['items'][0]['enabled']=False
+        before=(self.root/'etc/config/adblock-fast').read_bytes();backend=self.f.write('bin/no-backend','#!/bin/sh\necho called > '+shlex.quote(str(self.root/'unexpected-backend'))+'\nexit 77\n',True)
+        self.f.env['ADZERO_BACKEND_INIT']=str(backend);self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text(),'empty_ruleset');self.assertFalse((self.root/'unexpected-backend').exists())
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before);self.assertFalse(self.sources.data()['pending'])
+
+    def test_empty_subscriptions_can_be_saved_offline_or_with_manual_blocks(self):
+        self.sources.add();self.sources.run_source('finish');uci=self.f.env['ADZERO_UCI']
+        subprocess.run([uci,'delete','adblock-fast.config.blocked_domain'],check=True);subprocess.run([uci,'commit','adblock-fast'],check=True)
+        p=self.plan();p['items'][0]['enabled']=False;self.apply(p)
+        subprocess.run([uci,'add_list','adblock-fast.config.blocked_domain=manual.example'],check=True);subprocess.run([uci,'commit','adblock-fast'],check=True)
+        self.f.ctl('enable');p=self.plan();p['items']=[];self.apply(p)
+        self.assertEqual(self.f.status()['state'],'configured_unverified')
+
+    def test_unknown_capacity_blocks_live_batch_without_replacing_working_rules(self):
+        config=self.root/'etc/config/adblock-fast';config.write_text(config.read_text()+"\nconfig file_url 'legacy'\n option enabled '1'\n option url 'https://legacy.example/list'\n")
+        self.f.write('unsupported-body','||track.example^$third-party\n')
+        fetch=self.f.write('bin/legacy-fetch','#!/bin/sh\ncase "$1" in *legacy*) cp "$ADZERO_SOURCES_ROOT/unsupported-body" "$2";; *) cp "$ADZERO_SOURCES_ROOT/source-body" "$2";; esac\n',True)
+        self.f.env['ADZERO_SOURCE_FETCH_FIXTURE']=str(fetch);self.f.ctl('enable');context=self.job_context()
+        original=config.read_bytes();p=self.plan();self.add(p)
+        backend=self.f.write('bin/no-live-backend','#!/bin/sh\necho called > '+shlex.quote(str(self.root/'unexpected-stop'))+'\nexit 77\n',True);self.f.env['ADZERO_BACKEND_INIT']=str(backend)
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text(),'source_capacity_unknown');self.assertFalse((self.root/'unexpected-stop').exists());self.assertEqual(config.read_bytes(),original)
+        receipt=json.loads((self.root/'etc/adzero/sources-capacity.json').read_text())
+        self.assertEqual(receipt['state'],'unknown');self.assertEqual(receipt['unknown_sources'],[1]);self.assertGreater(receipt['known_domains'],0)
+        self.assertNotIn('https://',json.dumps(receipt))
+
     def test_download_failure_does_not_commit_any_of_the_selection(self):
         p=self.plan(); self.add(p); self.add(p,'Bad','https://invalid.example/list')
         before=(self.root/'etc/config/adblock-fast').read_bytes()
         self.apply(p,ok=False)
         self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
         self.assertFalse(self.sources.data()['pending'])
+
+    def test_real_external_edit_during_download_is_preserved_before_commit(self):
+        p=self.plan();self.add(p)
+        fetch=self.f.write('bin/racing-fetch','#!/bin/sh\n"$ADZERO_UCI" set adblock-fast.config.external_setting=keep\n"$ADZERO_UCI" commit adblock-fast\ncp "$ADZERO_SOURCES_ROOT/source-body" "$2"\n',True)
+        self.f.env['ADZERO_SOURCE_FETCH_FIXTURE']=str(fetch);context=self.job_context();self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text(),'config_conflict')
+        self.assertIn("option external_setting 'keep'",(self.root/'etc/config/adblock-fast').read_text());self.assertEqual(self.sources.data()['items'],[]);self.assertFalse(self.sources.data()['pending'])
+
+    def test_capacity_receipt_counts_manual_blocks_and_hides_private_inputs(self):
+        p=self.plan();self.add(p,url='https://rules.example/list?token=private-value');self.apply(p)
+        capacity=self.sources.data()['capacity']
+        self.assertEqual(capacity['state'],'complete');self.assertEqual(capacity['known_domains'],3);self.assertTrue(capacity['current'])
+        self.assertNotIn('private-value',json.dumps(capacity));self.assertNotIn('selection',capacity)
+
+    def test_semantic_revision_normalizes_json_key_order_but_not_dns_values(self):
+        uci=self.f.env['ADZERO_UCI']
+        for value in ['{"b":2,"a":{"x":1,"y":2}}','{ "a": {"y":2,"x":1}, "b":2 }']:
+            subprocess.run([uci,'set','adzero.main.dns_enhance='+value],check=True);subprocess.run([uci,'commit','adzero'],check=True)
+            current=self.sources.data()['revision']
+            if 'revision' in locals():self.assertEqual(current,revision)
+            revision=current
+
+    def test_capacity_boundary_includes_manual_block_in_the_union(self):
+        self.sources.body.write_text(''.join('a'+str(n)+'.example\n' for n in range(499999)))
+        p=self.plan();self.add(p);self.apply(p)
+        self.assertEqual(self.sources.data()['capacity']['known_domains'],500000)
+        self.sources.body.write_text(self.sources.body.read_text()+'one-more.example\n')
+        self.f.ctl('enable');context=self.job_context();before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.f.ctl('source-refresh',ok=False)
+        self.assertEqual((context/'reason').read_text(),'source_limit');self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
 
     def test_failed_backend_restores_all_changes(self):
         self.f.ctl('enable'); p=self.plan(); self.add(p)

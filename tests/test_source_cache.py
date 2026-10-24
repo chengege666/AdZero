@@ -244,6 +244,19 @@ class SourceCacheTest(unittest.TestCase):
         self.f.ctl('reload')
         self.assertFalse((self.root/'unexpected-restart').exists())
 
+    def test_reload_preflight_failure_does_not_stop_live_backend(self):
+        self.f.ctl('enable');context=self.root/'reload-context';context.mkdir();self.env['ADZERO_JOB_CONTEXT']=str(context)
+        self.f.write('etc/adzero/backend-cache.json','{}')
+        for p in (self.root/'tmp/adzero-source-cache').glob('*.proof'):p.unlink()
+        self.s.body.write_text('||ads.example^$third-party\n')
+        uci=self.env['ADZERO_UCI'];id=self.s.data()['items'][0]['id']
+        subprocess.run([uci,'delete','adblock-fast.'+id+'.adzero_format'],check=True);subprocess.run([uci,'commit','adblock-fast'],check=True)
+        before=(self.root/'var/run/adblock-fast/dnsmasq.servers').read_bytes()
+        backend=Path(self.env['ADZERO_BACKEND_INIT']);backend.write_text('#!/bin/sh\necho called > "$ADZERO_SOURCES_ROOT/unexpected-restart"\nexit 77\n')
+        self.f.ctl('reload',ok=False)
+        self.assertEqual((context/'reason').read_text(),'source_capacity_unknown')
+        self.assertFalse((self.root/'unexpected-restart').exists());self.assertEqual((self.root/'var/run/adblock-fast/dnsmasq.servers').read_bytes(),before)
+
     def test_unchanged_refresh_preserves_fast_restore_on_the_next_enable(self):
         item=self.s.data()['items'][0]
         for args in (['set',f"adblock-fast.{item['id']}.adzero_updated=1"],['commit','adblock-fast']):

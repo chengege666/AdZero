@@ -216,6 +216,11 @@ esac
             safe=call('job_status',{'job':started['job']})
             assert safe['reason']=='source_limit' and safe['progress']['source']==dict(index=2,total=14),safe
             assert 'private-marker' not in json.dumps(safe),safe
+            for reason,phrase in [('empty_ruleset','未应用、未重载'),('source_capacity_unknown','未知来源按零计算')]:
+                (context/'reason').write_text(reason)
+                reply=call('job_status',{'job':started['job']})
+                assert not reply['ok'] and reply['reason']==reason and phrase in reply['message'],reply
+                assert 'private-marker' not in json.dumps(reply) and 'private-backend' not in json.dumps(reply),reply
             for raw in ('{"index":0,"total":14}','{"index":1,"total":31}','{"index":"1","total":14}','{"index":2,', 'null'):
                 (context/'source').write_text(raw)
                 assert 'source' not in call('job_status',{'job':started['job']})['progress']
@@ -266,7 +271,7 @@ esac
             assert not (base/'tmp/service-was-called').exists(),'observation invoked network lifecycle'
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':66,'controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
+                    'checks':68,'empty_ruleset_and_unknown_capacity_reasons':'passed','controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

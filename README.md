@@ -35,29 +35,29 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-本版修复复用缓存时规则合计预检遗漏的问题，尽量在重载网络前识别超限；细分后端错误，并区分规则任务失败与当前保护状态。详见 [更新说明](docs/RELEASE_0.20.2.md)。
+本版修复空选择提示和统计更新造成的版本误冲突；分开展示已应用与待应用规则，重载只处理已应用配置，并在需要重建前完善容量预检。真正的并发配置修改仍会被拒绝覆盖。详见 [更新说明](docs/RELEASE_0.20.3.md)。
 
-当前为 **v0.20.2 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.20.3 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.20.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.20.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 已有 AdZero，使用升级命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.20.2/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.20.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.20.2) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.20.3) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
 
 ## 日常怎么用
 
 1. **选规则**：在「过滤规则」添加需要的列表，也可以粘贴自己的订阅地址。
 2. **按需改设置**：修改 DNS 或分流开关，选择会进入「待应用」。每组可选单一或并发；严格模式按需启用。在同一入口测试已应用地址，单一模式可启用同组备用切换。
-3. **统一应用**：改完后点击「应用并重新加载」。平时用「重新加载」应用当前配置，用「更新订阅」获取新规则；「手动校验」只检查本地已下载规则。
+3. **统一应用**：改完后点击「应用并重新加载」。有草稿时「重载已应用规则」不可用，先应用或撤销草稿；「更新订阅」获取新规则，「手动校验」只检查本地已下载规则。
 
 「访问控制」集中管理最近拦截和自定义名单；用法及范围见 [统计与访问控制](docs/ACCESS_CONTROL.md)。
 

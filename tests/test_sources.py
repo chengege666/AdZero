@@ -71,6 +71,14 @@ class SourcesTest(unittest.TestCase):
         self.assertFalse(self.data()['items'][0]['enabled'])
         self.run_source('begin','remove',item['id'],item['url']);self.run_source('finish');self.assertEqual(self.data()['items'],[])
 
+    def test_last_source_toggle_and_remove_return_empty_ruleset(self):
+        self.add();self.run_source('finish');uci=self.env['ADZERO_UCI']
+        subprocess.run([uci,'delete','adblock-fast.config.blocked_domain'],check=True);subprocess.run([uci,'set','adblock-fast.config.enabled=1'],check=True);subprocess.run([uci,'commit','adblock-fast'],check=True)
+        item=self.data()['items'][0];context=self.root/'empty-context';context.mkdir();self.env['ADZERO_JOB_CONTEXT']=str(context)
+        for args in [('toggle',item['id'],item['url'],'0'),('remove',item['id'],item['url'])]:
+            self.run_source('begin',*args,ok=False)
+            self.assertEqual((context/'reason').read_text(),'empty_ruleset');self.assertFalse(self.data()['pending'])
+
     def test_invalid_download_does_not_commit_any_changes(self):
         original=(self.root/'etc/config/adblock-fast').read_bytes()
         for raw in ['', '<html>error</html>','@@||allowed.example^\n','ads.example\nexample.com##.ad']:
