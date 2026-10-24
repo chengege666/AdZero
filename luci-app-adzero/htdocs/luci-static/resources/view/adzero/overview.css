@@ -42,8 +42,7 @@
 }
 .az-root .az-brand { gap: 10px; }
 .az-root .az-brand p { color: var(--az-muted); font-size: 12px; margin-top: 1px; }
-.az-root .az-brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; background: var(--az-accent); color: var(--az-on-accent); }
-.az-root .az-brand-mark .az-icon { width: 29px; height: 29px; }
+.az-root .az-brand-mark { display: block; flex: 0 0 auto; width: 44px; height: 44px; object-fit: contain; border: 0; border-radius: 0; background: transparent; }
 .az-root .az-button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--az-line); border-radius: 8px; background: var(--az-card); color: var(--az-text); cursor: pointer; font-size: 13px; font-weight: 550; white-space: nowrap; transition: background-color .16s ease, transform .16s ease; }
 .az-root .az-button:hover:not(:disabled) { background: var(--az-soft); }
 .az-root .az-button:active:not(:disabled) { transform: translateY(1px); }
@@ -170,7 +169,7 @@
   .az-root .az-header { margin-bottom: 14px; gap: 8px; }
   .az-root .az-brand { gap: 9px; }
   .az-root h2 { font-size: 20px; }
-  .az-root .az-brand-mark { width: 42px; height: 42px; border-radius: 12px; }
+  .az-root .az-brand-mark { width: 40px; height: 40px; }
   .az-root .az-button-quiet { padding: 8px; font-size: 12px; gap: 5px; }
   .az-root .az-hero, .az-root .az-progress, .az-root .az-device { padding: 14px; }
   .az-root .az-hero { align-items: flex-start; flex-direction: column; gap: 12px; }
@@ -549,7 +548,6 @@
 .az-root .az-page-heading p { margin-top: 5px; color: var(--az-muted); font-size: 13px; }
 .az-root .az-page-eyebrow { color: var(--az-muted); font-size: 11px; letter-spacing: .06em; flex-shrink: 0; }
 .az-root .az-brand h2 { font-size: 22px; }
-.az-root .az-brand-mark { width: 36px; height: 36px; border-radius: 11px; }
 .az-root .az-brand p { font-size: 11px; }
 .az-root .az-help-link { min-height: 38px; padding: 7px 11px; font-size: 12px; border-radius: 10px; }
 .az-root .az-help-link .az-icon { width: 17px; height: 17px; }

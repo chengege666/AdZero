@@ -129,6 +129,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
         "usr/share/rpcd/acl.d/luci-app-adzero.json",
         "www/luci-static/resources/view/adzero/overview.js",
         "www/luci-static/resources/view/adzero/overview.css",
+        "www/luci-static/resources/view/adzero/logo.png",
         "usr/share/licenses/luci-app-adzero/Phosphor-Icons-LICENSE",
     }
     if set(output) != expected:

@@ -1,0 +1,17 @@
+{
+  "version": "0.20.5",
+  "source_sha256": "4d3b7d0b0ac3fbf4a00448b1ddf7daaf37951b7dc2fe2c0cc5211500af1e7122",
+  "ui_assertions": 372,
+  "targeted_python_tests": 17,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 60,
+  "installer_delivery_cases": 6,
+  "logo_sha256": "14e9596a90b16f160670c4762c3818745bce268cbea007639b43a0a228f5ef9c",
+  "approved_logo_bytes_identical": true,
+  "backend_sources_identical_to": "v0.20.4",
+  "browser_qa": "desktop, 360px iframe and dark appearance; actual production view with simulated data",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "new_runtime_dependencies": false
+}

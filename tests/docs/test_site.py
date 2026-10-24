@@ -33,6 +33,9 @@ class Handbook(unittest.TestCase):
         pages = list(self.output.glob('*.html'))
         self.assertEqual(len(pages), 12)
         self.assertEqual([p.name for p in (self.output / 'assets').iterdir()], ['adzero-logo.png'])
+        approved=(REPO / 'docs/images/adzero-logo.png').read_bytes()
+        self.assertEqual((self.output / 'assets/adzero-logo.png').read_bytes(),approved)
+        self.assertEqual((REPO / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/logo.png').read_bytes(),approved)
         for file in pages:
             body = file.read_text(encoding='utf-8')
             self.assertNotIn('NaiLink 文档', body)

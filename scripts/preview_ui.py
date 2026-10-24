@@ -15,6 +15,7 @@ routes = {
     '/native-dom.js': ROOT / 'artifacts/ui-preview/native-dom.js',
     '/luci-static/resources/view/adzero/overview.js': ROOT / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.js',
     '/luci-static/resources/view/adzero/overview.css': ROOT / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.css',
+    '/luci-static/resources/view/adzero/logo.png': ROOT / 'luci-app-adzero/htdocs/luci-static/resources/view/adzero/logo.png',
 }
 theme = ROOT / 'artifacts/ui-preview/theme'
 if theme.exists():
