@@ -7,13 +7,13 @@
 | `capacity-lib.uc`、`sources.uc`、`source-lib.uc`、`source-cache.uc`、`cache-curl.uc`、`backend.uc`、`adapter-lib.uc`、`rules-cache.uc` | 固定总量不能合理表达大内存设备能力；父域优化前的候选数也可能高估。改为单来源检查、精确去重、原生语义估算与设备分档，下载、导入及最终输出共用边界。保留处理前输入和文件字节保护。 | 已有 24 万＋新增 30 万、重复列表、父域优化、Hosts 不折叠、已知放行、旧档位超限均覆盖；最高档 200 万单源／400 万输出通过原生解析。 |
 | `provider-store.uc`、`adapter.uc` | 内嵌完整大规则使恢复 JSON 反复膨胀。改为小元数据和私有内容摘要快照，核对权限、类型与摘要；保留旧 base64／文本记录读取。 | 大规则更新失败逐字回滚；外部新增条目保留；损坏原始快照拒绝恢复；Nikki 旧记录仍可撤销；成功清理无引用快照。 |
 | `dns-pool-lib.uc`、`dns-relay.uc` | 每次查询重建 TCP／SOCKS 会重复握手；非阻塞读取的 EAGAIN 不应当作连接已断。增加短时传输复用并区分暂不可读与 EOF。 | 组与出口隔离、SOCKS 握手复用、32 次寿命限制、失效重连一次、错误响应不重试；不增 DNS 答案缓存、不改 TTL 或直连回退。 |
-| `watch` | 同步因锁忙或迁移失败时，过早记下新路径导致后续延迟重试。仅在 reconcile 成功后确认稳定路径。 | 两次采样、多代理重叠、一次／多次失败后下个五秒周期重试，成功后不重复迁移。 |
+| `watch`、`ctl` | 同步因锁忙或迁移失败时，过早记下新路径导致后续延迟重试。控制器锁忙返回专用状态；仅在 reconcile 真正成功后确认稳定路径，适配失败退避一分钟。 | 两次采样、多代理重叠、真实控制器锁忙无修改且返回 75；锁忙下一轮五秒重试，实际失败一分钟后再试，成功后不重复迁移。 |
 | `overview.js`、`progress-lib.uc` | 统一总数容易被理解成累计配额，旧“50 万”错误也无法解释设备能力。显示独立单来源和最终上限，区分来源、去重和有效估算及草稿预检状态。 | 374 项界面断言；保留真实配置冲突保护、草稿与已应用区分。 |
 
 ## 验证范围
 
-- [同一源码验证摘要](evidence/v0.21.0/summary.json)：600 项 Python、374 项 UI、5 项文档、68 项 RPC，OpenClash／PassWall 原生阶段；三个官方 SDK，每包 62 项文件与权限，6 项交付检查。
-- [容量测量](evidence/v0.21.0/capacity-scale.json)：真实 OpenWrt ucode，200 万单源约 436 MiB、400 万处理结果约 909 MiB 峰值 RSS；真实 Mihomo 400 万条约 915 MiB，16 项 UDP／TCP、A／AAAA 与正常域名对照。耗时和内存属于此 Linux 开发机，不代表 ARM 路由器或全网延迟。
+- [同一源码验证摘要](evidence/v0.21.0/summary.json)：601 项 Python、374 项 UI、5 项文档、68 项 RPC，OpenClash／PassWall 原生阶段；三个官方 SDK，每包 62 项文件与权限，6 项交付检查。
+- [容量测量](evidence/v0.21.0/capacity-scale.json)：真实 OpenWrt ucode，200 万单源约 435 MiB、400 万处理结果约 910 MiB 峰值 RSS；真实 Mihomo 400 万条约 916 MiB，16 项 UDP／TCP、A／AAAA 与正常域名对照。耗时和内存属于此 Linux 开发机，不代表 ARM 路由器或全网延迟。
 - [DNS 行为回归](evidence/v0.21.0/mihomo-dns.json)：40 组拦截、放行、暂停、恢复、撤销与 Fake-IP 对照。
 - GitHub 继续执行完整 OpenWrt／网络命名空间与三 SDK 自动检查，全部通过后才公开发行包。
 

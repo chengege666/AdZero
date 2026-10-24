@@ -5,17 +5,17 @@ ROOT=Path(__file__).resolve().parents[1]
 SHELL=shlex.split(os.environ.get('ADZERO_TEST_SHELL','/bin/sh'))
 @unittest.skipIf(os.name=='nt','requires POSIX shell')
 class Watch(unittest.TestCase):
- def run_watch(self,failures=()):
+ def run_watch(self,failures=(),fail_code=75,ticks=8):
   with tempfile.TemporaryDirectory() as d:
    home=Path(d);(home/'bin').mkdir();(home/'etc/adzero').mkdir(parents=True)
    def write(name,text):p=home/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text);p.chmod(0o755);return p
    (home/'tick').write_text('0')
    common='#!/usr/bin/env python3\nimport json\nfrom pathlib import Path\nh=Path('+repr(d)+');n=int((h/"tick").read_text())\n'
-   write('bin/uci',common+'print("1" if n<8 else "0")\n')
+   write('bin/uci',common+'print("1" if n<'+str(ticks)+' else "0")\n')
    write('bin/sleep',common+'(h/"tick").write_text(str(n+1))\n')
    write('bin/jsonfilter',common+'import sys\nv=json.load(sys.stdin)["dns"];print(json.dumps(v["active_proxies"]));print(json.dumps(v["uncertain_proxies"]))\n')
-   write('usr/libexec/adzero/probe',common+'paths=[["nailink"],["nailink"],["nailink","passwall"],["nailink"],["passwall"],["passwall"],["passwall"],["passwall"]];print(json.dumps({"dns":{"active_proxies":paths[n],"uncertain_proxies":[]}}))\n')
-   write('usr/libexec/adzero/ctl',common+'with (h/"calls").open("a") as f:f.write(str(n)+"\\n")\nimport sys\nsys.exit(1 if n in '+repr(list(failures))+' else 0)\n')
+   write('usr/libexec/adzero/probe',common+'paths=[["nailink"],["nailink"],["nailink","passwall"],["nailink"],["passwall"]];print(json.dumps({"dns":{"active_proxies":paths[min(n,4)],"uncertain_proxies":[]}}))\n')
+   write('usr/libexec/adzero/ctl',common+'with (h/"calls").open("a") as f:f.write(str(n)+"\\n")\nimport sys\nsys.exit('+str(fail_code)+' if n in '+repr(list(failures))+' else 0)\n')
    write('bin/logger',common+'pass\n')
    text=(ROOT/'luci-app-adzero/root/usr/libexec/adzero/watch').read_text().replace('/usr/libexec/adzero/',d+'/usr/libexec/adzero/').replace('/etc/adzero/',d+'/etc/adzero/')
    script=write('watch',text)
@@ -27,3 +27,5 @@ class Watch(unittest.TestCase):
   self.assertEqual(self.run_watch([5]),['0','1','5','6'])
  def test_repeated_failure_does_not_acknowledge_or_duplicate_a_finished_switch(self):
   self.assertEqual(self.run_watch([5,6]),['0','1','5','6','7'])
+ def test_actual_failure_waits_a_minute_without_marking_the_path_complete(self):
+  self.assertEqual(self.run_watch([5],fail_code=1,ticks=20),['0','1','5','17'])

@@ -6,9 +6,9 @@
   "package_arch_observed": "aarch64_generic",
   "package_format": "apk",
   "sdk_archive_sha256_supplied": "59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba",
-  "source_sha256": "2deeb291259e2c2957c0a676f17fd7c5a288e79c139840d78ccc647909ea9ecb",
+  "source_sha256": "0828081417a274d4cb3c211ebc95ed8941ffdabd0215175798ba8a77c50f62db",
   "package": "luci-app-adzero-0.21.0-r1.apk",
-  "sha256": "cc1f4b85885f06c1c0f88e193d0c8ff100d8aa10b75cc274194c4ab988352757",
+  "sha256": "5c5993e3cefb5b0f8e5bb95d30e7132a2265dc1537201ee733234fdfbbd509fc",
   "sdk_build": "passed",
   "device_acceptance": "not_run"
 }

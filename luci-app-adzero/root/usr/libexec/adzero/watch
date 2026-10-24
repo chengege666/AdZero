@@ -2,6 +2,7 @@
 # Reconcile rule updates and switching proxy plugins, including after reboot.
 # ctl serializes mutations. Unchanged content does not restart a proxy.
 ticks=12
+retry_ticks=0
 previous_path= stable_path=
 while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
 	# Require two matching samples before migrating. A temporary overlap must
@@ -11,20 +12,24 @@ while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
 	if [ -n "$current_path" ] && [ "$current_path" = "$previous_path" ] && [ "$current_path" != "$stable_path" ]; then
 		path_changed=1
 	fi
+	[ "$current_path" = "$previous_path" ] || retry_ticks=0
 	previous_path=$current_path
 	guard_waiting=
 	[ ! -f /etc/adzero/dns-guard.json ] || guard_waiting=$(jsonfilter -i /etc/adzero/dns-guard.json -e '@.state' 2>/dev/null)
-	if [ -n "$path_changed" ] || [ -e /etc/adzero/pause.json ] || { [ -s /etc/adzero/temporary-allow.json ] && /usr/libexec/adzero/policy temporary-due; } || [ "$ticks" -ge 12 ] || [ "$guard_waiting" = held ] || [ "$guard_waiting" = error ]; then
-		if ADZERO_LOCK_WAIT_SECONDS=0 /usr/libexec/adzero/ctl reconcile >/dev/null; then
-			# A busy lock or failed migration is not an acknowledged path. Keep
-			# the two-sample candidate pending and retry on the next five-second
-			# tick, instead of leaving the new proxy unsynchronized for a minute.
+	if [ "$retry_ticks" -eq 0 ] && { [ -n "$path_changed" ] || [ -e /etc/adzero/pause.json ] || { [ -s /etc/adzero/temporary-allow.json ] && /usr/libexec/adzero/policy temporary-due; } || [ "$ticks" -ge 12 ] || [ "$guard_waiting" = held ] || [ "$guard_waiting" = error ]; }; then
+		result=0
+		ADZERO_LOCK_WAIT_SECONDS=0 /usr/libexec/adzero/ctl reconcile >/dev/null || result=$?
+		if [ "$result" -eq 0 ]; then
 			[ -z "$path_changed" ] || stable_path=$current_path
-		else
+		elif [ "$result" -ne 75 ]; then
+			# Contention retries next tick. A real failure stays unacknowledged
+			# but waits a minute, so failed proxy restarts cannot form a hot loop.
+			retry_ticks=12
 			[ "$ticks" -lt 12 ] || logger -t adzero 'DNS synchronization/resume failed; check AdZero recovery state'
 		fi
 		[ "$ticks" -lt 12 ] || ticks=0
 	fi
 	sleep 5
 	ticks=$((ticks+1))
+	[ "$retry_ticks" -eq 0 ] || retry_ticks=$((retry_ticks-1))
 done

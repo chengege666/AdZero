@@ -1,7 +1,7 @@
 {
   "version": "0.21.0",
-  "source_sha256": "2deeb291259e2c2957c0a676f17fd7c5a288e79c139840d78ccc647909ea9ecb",
-  "python_tests": 600,
+  "source_sha256": "0828081417a274d4cb3c211ebc95ed8941ffdabd0215175798ba8a77c50f62db",
+  "python_tests": 601,
   "ui_assertions": 374,
   "docs_tests": 5,
   "sdk_targets": 3,
@@ -10,7 +10,8 @@
   "native_components": [
     "rpc",
     "openclash",
-    "passwall"
+    "passwall",
+    "nailink_gateway"
   ],
   "browser_qa": "state-only change: regression assertions; existing visual layout retained",
   "router_modified": false,

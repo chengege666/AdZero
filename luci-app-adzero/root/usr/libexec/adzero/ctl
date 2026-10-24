@@ -856,7 +856,10 @@ case "$1" in
 	resume) acquire_lock resume; resume_protection ;;
 	routing-on|routing-off) acquire_lock "$1"; if [ "$1" = routing-on ]; then change_routing 1; else change_routing 0; fi ;;
 	reconcile)
-		if acquire_lock reconcile && [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ]; then
+		# A skipped lock is temporary contention, not a completed handoff.
+		# Keep scheduled retries silent while giving the watcher a real receipt.
+		acquire_lock reconcile || exit 75
+		if [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ]; then
 			expire_allow || exit 1
 			if [ -e "$STATE_DIR/pause.json" ]; then
 				if "$POLICY" pause-due; then resume_protection; fi

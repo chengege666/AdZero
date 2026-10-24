@@ -6,9 +6,9 @@
   "package_arch_observed": "x86_64",
   "package_format": "ipk",
   "sdk_archive_sha256_supplied": "ac4a0405d2eea821b06f93c14ba13ffa90ad0457648903df7dde02570027ab21",
-  "source_sha256": "2deeb291259e2c2957c0a676f17fd7c5a288e79c139840d78ccc647909ea9ecb",
+  "source_sha256": "0828081417a274d4cb3c211ebc95ed8941ffdabd0215175798ba8a77c50f62db",
   "package": "luci-app-adzero_0.21.0-r1_all.ipk",
-  "sha256": "e8dd2062903c8b3259d34a45455629784cb9e07f74ff4bcbd1ab63819a06d60c",
+  "sha256": "32377a4dff618c02f5936a8e71c5bc56101a01ea2b93cd84920ddde09d2aebab",
   "sdk_build": "passed",
   "device_acceptance": "not_run"
 }

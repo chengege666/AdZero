@@ -1,30 +1,30 @@
 {
-  "archive": "/tmp/tmpnikr09cw/adzero-0.21.0-install.tar.gz",
-  "sha256": "0b6a7a61098af07407459f25471e6d0eb3de82515591bbc6cea0d62a6edbbfce",
+  "archive": "/tmp/tmp4fgdmbdv/adzero-0.21.0-install.tar.gz",
+  "sha256": "b819ddd8f8d9fa93169aa1b2401573f0c2380ec94c0ddc248355e911e242eaf8",
   "rows": 3,
   "source_sha256": "current"
 }
 {
-  "archive": "/tmp/tmpmwot_p8m/adzero-0.21.0-install.tar.gz",
-  "sha256": "77e49ecdb1d3e72778c21716b951dac67183884d64c3b8844eb402aaba49e7b3",
+  "archive": "/tmp/tmp9ijzmtcp/adzero-0.21.0-install.tar.gz",
+  "sha256": "fe77b3487a0dfed5130f38df0baf4c98237ae82e25ac018f0c4b0c3aa4a07ce2",
   "rows": 1,
   "source_sha256": "current"
 }
 {
-  "archive": "/tmp/tmprhfgpdk3/adzero-0.21.0-install.tar.gz",
-  "sha256": "2d105c053e64a20e30638540d07a778b1dcbe09f809aebd57ceb404e21ba1bd9",
+  "archive": "/tmp/tmpxjhqggqk/adzero-0.21.0-install.tar.gz",
+  "sha256": "8d894c2e7be73e7d700189697cb72c0063f38c994012b36bf5436b45ea8f13d0",
   "rows": 1,
   "source_sha256": "current"
 }
 {
-  "archive": "/tmp/tmpn0as7vfv/adzero-0.21.0-install.tar.gz",
-  "sha256": "af8dfbaa74b26e74f69b66a013da872b0673430fd8ad8bea782d7e220b4d44a3",
+  "archive": "/tmp/tmpmehyolad/adzero-0.21.0-install.tar.gz",
+  "sha256": "7f782e9bccbac30804b07e8936868334c5e861163e2b34cac5d9413f15aa867c",
   "rows": 1,
   "source_sha256": "current"
 }
 {
-  "archive": "/tmp/tmp_iomvi6v/adzero-0.21.0-install.tar.gz",
-  "sha256": "bfb948c0429c9a4c175a9fcd75f1ef07bf1aa7a89a62dfab368f25629aab66f5",
+  "archive": "/tmp/tmp9zu3m8vx/adzero-0.21.0-install.tar.gz",
+  "sha256": "a544b224705abf4b8c5458369525d79dffb5aff4961e82c702cd433d24f79249",
   "rows": 1,
   "source_sha256": "current"
 }
@@ -133,7 +133,7 @@ test_actual_download_error_can_show_public_default_url (test_ctl.AdZeroTest.test
 test_allow_list_alone_does_not_replace_default_blocklist (test_ctl.AdZeroTest.test_allow_list_alone_does_not_replace_default_blocklist) ... ok
 test_backend_download_size_does_not_orphan_owned_default_rule (test_ctl.AdZeroTest.test_backend_download_size_does_not_orphan_owned_default_rule) ... ok
 test_background_reconcile_after_disable_is_a_quiet_noop (test_ctl.AdZeroTest.test_background_reconcile_after_disable_is_a_quiet_noop) ... ok
-test_background_reconcile_skips_contended_lock_without_error (test_ctl.AdZeroTest.test_background_reconcile_skips_contended_lock_without_error) ... ok
+test_background_reconcile_reports_busy_without_waiting_or_mutation (test_ctl.AdZeroTest.test_background_reconcile_reports_busy_without_waiting_or_mutation) ... ok
 test_busy_lock_timeout_does_not_modify_or_remove_legacy_lock (test_ctl.AdZeroTest.test_busy_lock_timeout_does_not_modify_or_remove_legacy_lock) ... ok
 test_changed_default_rule_is_preserved_when_disabling (test_ctl.AdZeroTest.test_changed_default_rule_is_preserved_when_disabling) ... ok
 test_combined_insecure_and_indirect_curl_flags_are_rejected (test_ctl.AdZeroTest.test_combined_insecure_and_indirect_curl_flags_are_rejected) ... ok
@@ -621,6 +621,7 @@ test_uncommitted_external_uci_is_not_committed_or_discarded (test_sources.Source
 test_unsupported_semantics_are_not_discarded_as_underscore_records (test_sources.SourcesTest.test_unsupported_semantics_are_not_discarded_as_underscore_records) ... ok
 test_due_exception_restores_without_browser_and_without_download_refetch (test_temporary_controls.TemporaryTest.test_due_exception_restores_without_browser_and_without_download_refetch) ... ok
 test_failed_exception_rolls_back_timer_and_list (test_temporary_controls.TemporaryTest.test_failed_exception_rolls_back_timer_and_list) ... ok
+test_actual_failure_waits_a_minute_without_marking_the_path_complete (test_watch.Watch.test_actual_failure_waits_a_minute_without_marking_the_path_complete) ... ok
 test_busy_lock_keeps_the_stable_switch_pending_until_next_tick (test_watch.Watch.test_busy_lock_keeps_the_stable_switch_pending_until_next_tick) ... ok
 test_repeated_failure_does_not_acknowledge_or_duplicate_a_finished_switch (test_watch.Watch.test_repeated_failure_does_not_acknowledge_or_duplicate_a_finished_switch) ... ok
 test_stable_switch_reconciles_early_but_overlap_does_not_bounce (test_watch.Watch.test_stable_switch_reconciles_early_but_overlap_does_not_bounce) ... ok
@@ -634,6 +635,6 @@ test_object_tags_cannot_instantiate_ruby_objects (test_yaml_reader.YAMLReaderTes
 test_yaml_specific_escapes_are_decoded_before_json_encoding (test_yaml_reader.YAMLReaderTest.test_yaml_specific_escapes_are_decoded_before_json_encoding) ... ok
 
 ----------------------------------------------------------------------
-Ran 600 tests in 476.969s
+Ran 601 tests in 498.297s
 
 OK

@@ -695,12 +695,13 @@ exit 0
         self.assertEqual(list(self.lock.iterdir()), [])
         self.assertFalse(self.log.exists())
 
-    def test_background_reconcile_skips_contended_lock_without_error(self):
+    def test_background_reconcile_reports_busy_without_waiting_or_mutation(self):
         self.lock.mkdir()
         owner = self.lock / "owner"
         owner.write_text("999999999 refresh\n")
         before = self.config()
-        result = self.run_ctl("reconcile")
+        result = self.run_ctl("reconcile", success=False)
+        self.assertEqual(result.returncode,75)
         self.assertEqual(result.stderr, "")
         self.assertEqual(self.config(), before)
         self.assertEqual(owner.read_text(), "999999999 refresh\n")

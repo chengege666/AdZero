@@ -1,14 +1,14 @@
 {
   "runtime": "pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot",
-  "source_sha256": "2deeb291259e2c2957c0a676f17fd7c5a288e79c139840d78ccc647909ea9ecb",
+  "source_sha256": "0828081417a274d4cb3c211ebc95ed8941ffdabd0215175798ba8a77c50f62db",
   "checks": 68,
   "empty_ruleset_and_unknown_capacity_reasons": "passed",
   "controls_private_batch_and_write_acl": "passed",
   "stats_reset_unavailable_rejected": "passed",
   "observation_snapshot_seconds": [
     0.0026,
-    0.0021,
-    0.002
+    0.0023,
+    0.0037
   ],
   "observation_no_network_lifecycle": "passed",
   "unavailable_verification_rejected": "passed",
@@ -29,9 +29,9 @@
     "rule_bytes": 5365750,
     "journal_bytes": 7154533,
     "rpcd_seconds": [
-      0.1724,
-      0.1662,
-      0.1645
+      0.1706,
+      0.1756,
+      0.1768
     ],
     "unchanged_files": true,
     "missing_output_and_stopped_resolver": "rejected",

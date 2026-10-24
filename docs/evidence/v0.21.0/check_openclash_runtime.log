@@ -1,5 +1,5 @@
 {
-  "source_sha256": "2deeb291259e2c2957c0a676f17fd7c5a288e79c139840d78ccc647909ea9ecb",
+  "source_sha256": "0828081417a274d4cb3c211ebc95ed8941ffdabd0215175798ba8a77c50f62db",
   "native_init_commit": "e553e82e01c697aefbe1555261a503f425e00ccd",
   "native_init_blob": "7bc7e7568c74c197668ddf6372c7013de2baf152",
   "core": "v1.19.32",
@@ -18,7 +18,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.128
+      "seconds": 0.132
     },
     {
       "mode": "redir-host",
@@ -27,7 +27,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.128
+      "seconds": 0.132
     },
     {
       "mode": "redir-host",
@@ -36,7 +36,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.128
+      "seconds": 0.132
     },
     {
       "mode": "redir-host",
@@ -45,7 +45,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.128
+      "seconds": 0.132
     },
     {
       "mode": "redir-host",
@@ -54,7 +54,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "redir-host",
@@ -63,7 +63,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "redir-host",
@@ -72,7 +72,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "redir-host",
@@ -81,7 +81,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "redir-host",
@@ -90,7 +90,7 @@
       "qtype": 1,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.034
     },
     {
       "mode": "redir-host",
@@ -99,7 +99,7 @@
       "qtype": 28,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.034
     },
     {
       "mode": "redir-host",
@@ -108,7 +108,7 @@
       "qtype": 1,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.034
     },
     {
       "mode": "redir-host",
@@ -117,7 +117,7 @@
       "qtype": 28,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.034
     },
     {
       "mode": "fake-ip",
@@ -126,7 +126,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.119
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -135,7 +135,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.119
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -144,7 +144,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.119
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -153,7 +153,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.119
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -162,7 +162,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -171,7 +171,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -180,7 +180,7 @@
       "qtype": 1,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -189,7 +189,7 @@
       "qtype": 28,
       "blocked": true,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.122
+      "seconds": 0.131
     },
     {
       "mode": "fake-ip",
@@ -198,7 +198,7 @@
       "qtype": 1,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.033
     },
     {
       "mode": "fake-ip",
@@ -207,7 +207,7 @@
       "qtype": 28,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.033
     },
     {
       "mode": "fake-ip",
@@ -216,7 +216,7 @@
       "qtype": 1,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.033
     },
     {
       "mode": "fake-ip",
@@ -225,7 +225,7 @@
       "qtype": 28,
       "blocked": false,
       "added_and_removed_rule_queries": true,
-      "seconds": 0.031
+      "seconds": 0.033
     }
   ],
   "scope": "Native rc.common + extracted OpenClash quick-start/hook stages + real Mihomo DNS; no firewall or router test"

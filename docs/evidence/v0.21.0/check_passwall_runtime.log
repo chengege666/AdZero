@@ -30,7 +30,7 @@
       "directives": [
         "address=/.doubleclick.net/",
         "address=/.ads.example/",
-        "server=/.doubleclick.net/127.0.0.1#37085"
+        "server=/.doubleclick.net/127.0.0.1#53419"
       ],
       "queries": {
         "doubleclick.net": {
@@ -52,7 +52,7 @@
       "directives": [
         "address=/.doubleclick.net/",
         "address=/.ads.example/",
-        "server=/.doubleclick.net/127.0.0.1#37085"
+        "server=/.doubleclick.net/127.0.0.1#53419"
       ],
       "queries": {
         "doubleclick.net": {
@@ -74,7 +74,7 @@
       "directives": [
         "address=/.ads.example/",
         "address=/.doubleclick.net/",
-        "server=/.sub.doubleclick.net/127.0.0.1#37085"
+        "server=/.sub.doubleclick.net/127.0.0.1#53419"
       ],
       "queries": {
         "doubleclick.net": {
