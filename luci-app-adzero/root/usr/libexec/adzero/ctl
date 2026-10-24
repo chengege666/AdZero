@@ -54,7 +54,13 @@ progress() {
 public_failure() {
 	[ -n "$ADZERO_JOB_CONTEXT" ] && [ -d "$ADZERO_JOB_CONTEXT" ] || return 0
 	[ ! -e "$ADZERO_JOB_CONTEXT/reason" ] || return 0
-	case "$1" in lock_busy|backend) printf '%s' "$1" > "$ADZERO_JOB_CONTEXT/reason" ;; esac
+	case "$1" in lock_busy|backend|source_limit|source_download|backend_memory|backend_dns|backend_processing|backend_files) printf '%s' "$1" > "$ADZERO_JOB_CONTEXT/reason" ;; esac
+}
+backend_failure() {
+	# Only a fixed token from the read-only checker, never raw service errors.
+	backend_hint=$("$BACKEND_CHECK" failure 2>/dev/null) || backend_hint=backend
+	case "$backend_hint" in source_limit|source_download|backend_memory|backend_dns|backend_processing|backend_files) ;; *) backend_hint=backend ;; esac
+	public_failure "$backend_hint"
 }
 get_uci() {
 	"$UCI_BIN" -q get "$1" 2>/dev/null || :
@@ -125,7 +131,7 @@ backend_restart() {
 	progress processing
 	# Clear and confirm old state first: an old statusSuccess and rule file
 	# must not disguise an invocation that failed before producing new state.
-	backend_stop || { public_failure backend; return 1; }
+	backend_stop || { backend_failure; return 1; }
 	[ "$(get_uci adblock-fast.config.enabled)" = 1 ] || return 0
 	progress processing
 	backend_rc=0
@@ -133,7 +139,7 @@ backend_restart() {
 	# Unsupported/custom curl invocations transparently retain real curl.
 	PATH="$(dirname "$SOURCES")/cache-curl:$PATH" ADZERO_SOURCE_REPLAY=1 \
 		"$BACKEND_INIT" "${1:-start}" || backend_rc=$?
-	case "$backend_rc" in 0|1) backend_confirm ready || { public_failure backend; return 1; } ;; *) public_failure backend; return 1 ;; esac
+	case "$backend_rc" in 0|1) backend_confirm ready || { backend_failure; return 1; } ;; *) backend_failure; return 1 ;; esac
 	# Optional optimization only. Missing/corrupt proof falls back to download.
 	if [ "${1:-start}" = start ]; then "$SOURCES" cache-save preserve >/dev/null 2>&1 || :
 	else "$SOURCES" cache-save >/dev/null 2>&1 || :; fi

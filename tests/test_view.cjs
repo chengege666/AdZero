@@ -117,7 +117,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.20.1'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.20.2'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -764,6 +764,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   rpcStale=true;jobSteps=[{ok:false,pending:false,reason:'source_format',message:'下载内容未通过规则格式校验。',progress:{source:{index:2,total:2}}}];
   await app.applyDraft();
   check(app.draft&&text(root).includes('第 2 / 2 个启用订阅'),'source failure retains draft and identifies its position without publishing private URLs');
+  check(text(root).includes('当前保护仍在运行'),'failed rule action is distinguished from a stopped healthy protection backend');
   reset({state:'configured_unverified'});await app.openRules();
   await app.stageSource('source_add',['','First','https://first.example/list','domains']);
   const editButton=nodes(root,n=>n.tag==='button'&&String(n.attrs['aria-label']||'').startsWith('编辑规则 '))[0];

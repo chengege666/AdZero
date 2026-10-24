@@ -680,7 +680,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.20.1 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.20.2 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -937,7 +937,7 @@ return view.extend({
 		return trackJob(reply,kind||'source',null,self).catch(function(e){failure=String(e.message || e);}).then(function(){return taskStatus(self);}).then(function(s){
 			self.currentStatus=s;self.lastChecked=new Date();self.domainResult=null;self.removeSource=null;
 			var healthy=s.state==='disabled' || s.state==='configured_unverified';
-			self.notice=failure || !healthy ? {kind:'error',text:_('规则未确认应用，已重新读取当前状态。'),detail:failure || _('请先处理恢复记录。')} :
+			self.notice=failure || !healthy ? {kind:'error',text:s.state==='configured_unverified'&&(s.backend||{}).state==='ready'?_('本次规则操作未完成，当前保护仍在运行。'):_('规则未确认应用，已重新读取当前状态。'),detail:failure || _('请先处理恢复记录。')} :
 				{kind:'success',text:s.state==='disabled'?_('规则选择已保存，开启保护后应用。'):_('规则已应用并同步到当前接入。')};
 		}).catch(function(e){self.currentStatus={state:'error',error:String(e)};self.notice={kind:'error',text:_('规则任务结果暂时无法确认，请重新检测。')};})
 			.then(function(){finishJob(self);return self.loadSources();}).then(function(){
@@ -1087,7 +1087,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.20.1' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.20.2' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();

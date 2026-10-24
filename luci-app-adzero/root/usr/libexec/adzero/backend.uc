@@ -16,7 +16,12 @@ const outputs = {
 	'unbound.adb_list': '/var/lib/unbound/adb_list.adblock-fast'
 };
 let result = {state:'unknown', reason:'unavailable', status:'unknown', domains:0, rules_checked:false,
-	errors:0, warnings:0, download_errors:0, resolver_running:false};
+	errors:0, warnings:0, download_errors:0, error_codes:[], resolver_running:false};
+const known_errors=['errorDownloadingList','errorDownloadingConfigUpdate','errorDownloadingDnsmasqConfig',
+	'errorTooLittleRam','errorSharedMemory','errorDNSReload','errorFailDNSReload','errorParsingList',
+	'errorDetectingFileType','errorDataFileFormatting','errorSorting','errorOptimization',
+	'errorNoOutputFile','errorOutputFileCreate','errorOutputDirCreate','errorCreatingDirectory',
+	'errorCopyingDataFile','errorMovingDataFile','errorConfigValidationFail','errorNothingToDo'];
 try {
 	let uci = cursor(root + '/etc/config');
 	let mode = uci.get('adblock-fast', 'config', 'dns');
@@ -41,7 +46,10 @@ try {
 	let errors = data?.errors, warnings = data?.warnings;
 	if (type(errors) == 'array') {
 		result.errors = length(errors);
-		for (let e in errors) if (index(['errorDownloadingList', 'errorDownloadingConfigUpdate', 'errorDownloadingDnsmasqConfig'], e.code) >= 0) result.download_errors++;
+		for (let e in errors){
+			if(index(known_errors,e.code)>=0&&index(result.error_codes,e.code)<0)push(result.error_codes,e.code);
+			if(index(['errorDownloadingList', 'errorDownloadingConfigUpdate', 'errorDownloadingDnsmasqConfig'],e.code)>=0)result.download_errors++;
+		}
 	}
 	if (type(warnings) == 'array') result.warnings = length(warnings);
 	let instances = services[split(mode, '.')[0]]?.instances;
@@ -53,12 +61,12 @@ try {
 	else if (uci.get('adblock-fast', 'config', 'enabled') == '1' && data?.status == 'statusSuccess' &&
 		type(errors) == 'array' && !length(errors) && data.dns == mode && data.outputFile == output &&
 		data.force_dns_active === false && int(data.entries) > 0 && file?.size > 0 && result.resolver_running) {
+		if(int(data.entries)>500000)die('domain_limit');
 		// A page read needs live service/output metadata, not another complete
 		// import of up to 500k rules. Keep the expensive content validation for
 		// ready (mutation preconditions and post-start checks). Never imply that
 		// inspect verified the rule contents or the client's DNS path.
 		if (action == 'inspect') {
-			if (int(data.entries) > 500000) die('invalid_output_or_state');
 			result.domains = int(data.entries);
 		} else {
 			result.domains = length(rulecache.load(root + output, mode, root));
@@ -72,8 +80,20 @@ try {
 } catch (e) {
 	// Only enumerated diagnostics leave this process, no UCI, service commands,
 	// file contents or upstream subscription URLs (which may contain secrets).
-	let reasons = ['unsupported_resolver', 'ubus_unavailable', 'invalid_service_data', 'oversized_output'];
-	result.reason = index(reasons, e.message) >= 0 ? e.message : 'invalid_output_or_state';
+	let reasons = ['unsupported_resolver', 'ubus_unavailable', 'invalid_service_data', 'oversized_output','domain_limit'];
+	let invalid_rules=['Unexpected dnsmasq.servers record','Unexpected hosts record','Unexpected Unbound record',
+		'Invalid processed domain','Invalid domain label','Empty processed blocklist','Overlapping allow exceptions require a dedicated adapter policy'];
+	result.reason = e.message=='Processed blocklist exceeds domain limit'?'domain_limit':index(invalid_rules,e.message)>=0?'processed_rules_invalid':index(reasons, e.message) >= 0 ? e.message : 'invalid_output_or_state';
+}
+if(action=='failure'){
+	let has=codes=>length(filter(result.error_codes,c=>index(codes,c)>=0))>0,reason='backend';
+	if(index(['domain_limit','oversized_output'],result.reason)>=0)reason='source_limit';
+	else if(result.download_errors)reason='source_download';
+	else if(has(['errorTooLittleRam','errorSharedMemory']))reason='backend_memory';
+	else if(has(['errorDNSReload','errorFailDNSReload'])||result.reason=='resolver_not_running')reason='backend_dns';
+	else if(result.reason=='processed_rules_invalid'||has(['errorParsingList','errorDetectingFileType','errorDataFileFormatting','errorSorting','errorOptimization']))reason='backend_processing';
+	else if(has(['errorNoOutputFile','errorOutputFileCreate','errorOutputDirCreate','errorCreatingDirectory','errorCopyingDataFile','errorMovingDataFile']))reason='backend_files';
+	print(reason+'\n');exit(0);
 }
 print(sprintf('%J\n', result));
 if (action == 'status') exit(0);

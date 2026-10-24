@@ -24,6 +24,10 @@ export const messages={
 	openclash_core:'OpenClash 的 Mihomo 内核不存在或未通过配置检查，请检查原生内核与配置。',
 	openclash_confirmation:'未收到 OpenClash 配置生成回执，请检查原生启动日志；本次开启未完成。',
 	backend:'过滤后端未能完成规则处理或 DNS 重载，请检查后端状态。',
+	backend_memory:'过滤后端报告内存或共享内存不足。请减少启用的列表，保留一份主列表并按需补充。',
+	backend_dns:'过滤后端未能完成 DNS 重载或未确认解析服务运行。请保留失败任务日志，不要反复重启代理。',
+	backend_processing:'规则解析、排序、输出格式或处理结果校验未通过。请核对订阅格式及任务日志中的固定错误代码。',
+	backend_files:'过滤后端未能创建或更新规则输出文件。请核对空间、目录和权限，保留原配置及恢复记录。',
 	interrupted:'后台任务已停止且没有完成回执，请重新检测；有恢复提示时先关闭并恢复。'
 };
 function write(name,value){

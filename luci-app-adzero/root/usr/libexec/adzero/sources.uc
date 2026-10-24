@@ -115,15 +115,40 @@ function download(address,kind,fresh,manual) {
 		fs.unlink(path);return result?{...result,bytes:length(raw),reused}:null;
 	} catch(e) { fs.unlink(path);die(e); }
 }
+// Only verified local snapshots participate here. Never re-download unchanged
+// subscriptions just to count them, and never add per-list summary counts:
+// overlap must remain valid even when the sum of individual counts is large.
+function capacity_names(s,kind,checked){
+	if(type(checked?.names)=='array')return checked.names;
+	let snapshot=snapshots.load(s.url,root);if(!snapshot)return null;
+	let parsed=snapshots.parsed(snapshot,kind);if(parsed)return parsed.names;
+	// A corrupt/missing optional parsed cache may still have a digest-verified
+	// raw snapshot. Re-parse locally; unsupported legacy formats remain native.
+	try{
+		let raw=fs.readfile(snapshot.path),value=kind=='auto'?lib.detect(raw):lib.inspect(raw,kind);
+		return value?.names??null;
+	}catch(e){return null;}
+}
 function validate_sources(only,fresh,manual) {
 	let union={}, count=0,enabled=filter(selected(),s=>s.enabled!='0'),position=0;
 	for (let s in enabled) {
 		position++;
-		if(only && (type(only)=='array' ? index(only,s['.name'])<0 : s['.name']!=only))continue;
-		progress.source(position,length(enabled));
+		let checking=!only||(type(only)=='array'?index(only,s['.name'])>=0:s['.name']==only);
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
 		let checked;
-		try{checked=download(s.url,kind,fresh,manual);}catch(e){progress.failure(progress.source_reason(e.message)??'source_check');die(e);}
+		if(checking){
+			progress.source(position,length(enabled));
+			try{checked=download(s.url,kind,fresh,manual);}catch(e){progress.failure(progress.source_reason(e.message)??'source_check');die(e);}
+		}
+		let names=capacity_names(s,kind,checked);
+		if(names){
+			progress.source(position,length(enabled));
+			for(let name in names){
+				union[name]=true;
+				if(length(union)>500000){progress.failure('source_limit');die('所选规则合计超过 50 万个域名，请减少列表。');}
+			}
+		}
+		if(!checking)continue;
 		if(!uci.set('adblock-fast',s['.name'],'adzero_checked',''+time()))die('无法保存规则检查时间。');
 		// The backend uses this size to schedule downloads. Without it, a new
 		// source triggers another HEAD request despite already being downloaded.
@@ -134,9 +159,7 @@ function validate_sources(only,fresh,manual) {
 			if(!uci.set('adblock-fast',s['.name'],'adzero_validation','backend_only')||!uci.set('adblock-fast',s['.name'],'adzero_updated',''+time()))die('无法保存规则检查记录。');
 			continue;
 		}
-		let names=checked.names??[];
-		for (let name in names) union[name]=true;
-		if (length(union) > 500000) {progress.failure('source_limit');die('所选规则合计超过 50 万个域名，请减少列表。');}
+		names=names??[];
 		let updated=checked.reused&&s.adzero_updated?s.adzero_updated:''+time();
 		if (!uci.set('adblock-fast',s['.name'],'adzero_domains',''+(checked.domains??length(names))) || !uci.set('adblock-fast',s['.name'],'adzero_skipped',''+checked.skipped) || !uci.set('adblock-fast',s['.name'],'adzero_updated',updated)) die('无法保存规则校验结果。');
 		if(!uci.set('adblock-fast',s['.name'],'adzero_validation','validated')||(kind=='auto'&&!uci.set('adblock-fast',s['.name'],'adzero_detected_format',checked.format)))die('无法保存规则格式记录。');

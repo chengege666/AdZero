@@ -32,7 +32,8 @@ export function domains(raw, mode) {
 		values[line] = true;
 	}
 	let result = sort(keys(values));
-	if (!length(result) || length(result) > 500000) die('Empty or oversized processed blocklist');
+	if(!length(result))die('Empty processed blocklist');
+	if(length(result)>500000)die('Processed blocklist exceeds domain limit');
 	for (let allow in allowed) {
 		let parent = allow;
 		while (index(parent, '.') >= 0) {

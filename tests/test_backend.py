@@ -38,7 +38,7 @@ class BackendStateTest(unittest.TestCase):
                                 text=True, capture_output=True, timeout=15)
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         self.assertEqual(self.config.read_bytes(), before)
-        return json.loads(result.stdout)
+        return result.stdout.strip() if action=='failure' else json.loads(result.stdout)
 
     def test_success_with_recommended_warnings_is_ready(self):
         result = self.check()
@@ -103,6 +103,48 @@ class BackendStateTest(unittest.TestCase):
         self.assertEqual(result['download_errors'], 1)
         self.assertNotIn('secret', json.dumps(result))
         self.check('download-error')
+
+    def test_only_known_error_codes_are_public(self):
+        self.data['errors']=[{'code':'errorTooLittleRam','info':'https://private.example/?token=secret'},
+                             {'code':'private-token-secret','info':'password'},
+                             {'code':'errorTooLittleRam','info':'duplicate'}]
+        result=self.check(success=False)
+        self.assertEqual(result['error_codes'],['errorTooLittleRam'])
+        self.assertNotIn('secret',json.dumps(result))
+        self.assertEqual(self.check('failure'),'backend_memory')
+
+    def test_failure_tokens_distinguish_processing_dns_files_and_downloads(self):
+        for code,expected in [('errorParsingList','backend_processing'),('errorSorting','backend_processing'),
+                              ('errorDNSReload','backend_dns'),('errorFailDNSReload','backend_dns'),
+                              ('errorOutputFileCreate','backend_files'),('errorDownloadingList','source_download')]:
+            with self.subTest(code=code):
+                self.data['errors']=[{'code':code,'info':'private'}]
+                self.assertEqual(self.check('failure'),expected)
+
+    def test_domain_capacity_has_a_specific_readiness_and_failure_reason(self):
+        self.data['entries']=500001
+        self.assertEqual(self.check(success=False)['reason'],'domain_limit')
+        self.assertEqual(self.check('inspect',success=False)['reason'],'domain_limit')
+        self.assertEqual(self.check('failure'),'source_limit')
+
+    def test_oversized_output_has_a_specific_failure_reason(self):
+        with self.output.open('wb') as f:f.truncate(25000001)
+        self.assertEqual(self.check(success=False)['reason'],'oversized_output')
+        self.assertEqual(self.check('failure'),'source_limit')
+
+    def test_resolver_down_and_unknown_failures_are_not_reported_as_capacity(self):
+        self.service['dnsmasq']['instances']['cfg1']['running']=False
+        self.assertEqual(self.check('failure'),'backend_dns')
+        self.service['dnsmasq']['instances']['cfg1']['running']=True
+        self.data['errors']=[{'code':'unknown-private-code','info':'token'}]
+        self.assertEqual(self.check('failure'),'backend')
+
+    def test_processed_rule_validation_is_distinguished_from_lifecycle_failure(self):
+        self.output.write_text('server=/ads.example/\n<html>private-token</html>\n')
+        result=self.check(success=False)
+        self.assertEqual(result['reason'],'processed_rules_invalid')
+        self.assertNotIn('private-token',json.dumps(result))
+        self.assertEqual(self.check('failure'),'backend_processing')
 
     def test_missing_or_malformed_output_rejects_success(self):
         for raw in ('', '<html>not a rule list</html>\n'):

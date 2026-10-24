@@ -1,0 +1,20 @@
+{
+  "version": "0.20.2",
+  "source_sha256": "1fae8571ef9500edb809ea37d8c785c3086ee3e7cfedfc6f73ce378b42303877",
+  "python_tests": 567,
+  "ui_assertions": 348,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 59,
+  "installer_delivery_cases": 6,
+  "native_components": [
+    "rpc",
+    "openclash",
+    "passwall"
+  ],
+  "browser_qa": "no layout change; healthy protection notice after failed rule task covered in UI regression",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "reported_router_apply_failure": "current OpenClash backend ready with 246924 domains; original failing task receipt pending",
+  "new_runtime_dependencies": false
+}

@@ -218,3 +218,73 @@ class BatchTest(unittest.TestCase):
         self.apply(p,ok=False)
         self.assertEqual((context/'reason').read_text().strip(),'source_check')
         self.assertEqual((self.root/'tmp/adzero-source-check').read_text(),'existing')
+
+    def capacity_sources(self,overlap=False):
+        self.sources.body.write_text(''.join('a'+str(n)+'.example\n' for n in range(300001)))
+        self.sources.add(name='First',url='https://rules.example/first');self.sources.run_source('finish')
+        first=self.sources.data()['items'][0]
+        self.sources.run_source('begin','toggle',first['id'],first['url'],'0');self.sources.run_source('finish')
+        self.sources.body.write_text(''.join(('a' if overlap else 'b')+str(n)+'.example\n' for n in range(200001)))
+        self.sources.add(name='Second',url='https://rules.example/second');self.sources.run_source('finish')
+        second=self.sources.data()['items'][1]
+        self.sources.run_source('begin','toggle',second['id'],second['url'],'0');self.sources.run_source('finish')
+        self.sources.run_source('begin','toggle',first['id'],first['url'],'1');self.sources.run_source('finish')
+        self.f.ctl('enable')
+        original=self.f.env['ADZERO_BACKEND_INIT'];calls=self.root/'backend-capacity-calls'
+        wrapper=self.f.write('bin/capacity-backend','#!/bin/sh\necho "$1" >> '+shlex.quote(str(calls))+'\nexec '+shlex.quote(original)+' "$@"\n',True)
+        self.f.env['ADZERO_BACKEND_INIT']=str(wrapper)
+        return first,second,calls
+
+    def test_cached_combined_capacity_rejected_before_backend_stop(self):
+        first,second,calls=self.capacity_sources();context=self.job_context()
+        p=self.plan();p['items'][1]['enabled']=True
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_limit')
+        self.assertFalse(calls.exists(),'preflight must leave the working backend running')
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+
+    def test_cached_overlapping_capacity_does_not_sum_individual_counts(self):
+        first,second,calls=self.capacity_sources(overlap=True)
+        p=self.plan();p['items'][1]['enabled']=True
+        self.apply(p)
+        self.assertTrue(self.sources.data()['items'][1]['enabled'])
+
+    def test_new_download_and_unchanged_cache_share_one_capacity_guard(self):
+        first,second,calls=self.capacity_sources();context=self.job_context()
+        p=self.plan();p['items'][1].update(enabled=True,url='https://rules.example/new-download')
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_limit')
+        self.assertFalse(calls.exists())
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+
+    def test_capacity_uses_verified_raw_snapshot_if_parsed_cache_is_corrupt(self):
+        first,second,calls=self.capacity_sources();context=self.job_context()
+        for path in (self.root/'tmp/adzero-source-cache').glob('*.parsed'):path.write_text('{broken')
+        prior=len(self.fetches.read_text().splitlines())
+        p=self.plan();p['items'][1]['enabled']=True
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'source_limit')
+        self.assertFalse(calls.exists())
+        self.assertEqual(len(self.fetches.read_text().splitlines()),prior,'raw snapshot fallback is offline')
+
+    def test_backend_failure_reason_survives_successful_restore(self):
+        self.f.ctl('enable');context=self.job_context();p=self.plan();self.add(p)
+        original=self.f.env['ADZERO_BACKEND_INIT'];flag=self.f.write('memory-failure-once','1')
+        wrapper=self.f.write('bin/failing-backend','#!/usr/bin/env python3\n'+
+            'import os,sys,json\nfrom pathlib import Path\n'+
+            'root=Path(os.environ["ADZERO_POLICY_ROOT"])\n'+
+            'flag=Path('+repr(str(flag))+')\n'+
+            'if sys.argv[1]!="stop" and flag.exists():\n'+
+            ' flag.unlink();state=json.loads((root/"service.json").read_text())\n'+
+            ' state["adblock-fast"]={"data":{"status":"statusFail","errors":[{"code":"errorTooLittleRam","info":"private-token"}]}}\n'+
+            ' (root/"service.json").write_text(json.dumps(state));sys.exit(2)\n'+
+            'os.execv('+repr(original)+',['+repr(original)+',*sys.argv[1:]])\n',True)
+        self.f.env['ADZERO_BACKEND_INIT']=str(wrapper)
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.apply(p,ok=False)
+        self.assertEqual((context/'reason').read_text().strip(),'backend_memory')
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+        self.assertEqual(self.f.status()['state'],'configured_unverified')
+        self.assertNotIn('private-token',''.join(x.read_text() for x in context.iterdir()))
