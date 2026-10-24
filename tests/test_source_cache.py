@@ -257,6 +257,61 @@ class SourceCacheTest(unittest.TestCase):
         self.assertEqual((context/'reason').read_text(),'source_capacity_unknown')
         self.assertFalse((self.root/'unexpected-restart').exists());self.assertEqual((self.root/'var/run/adblock-fast/dnsmasq.servers').read_bytes(),before)
 
+    def unproven_legacy_selection(self):
+        self.s.add(url='https://second.example/list');self.s.run_source('finish')
+        self.f.ctl('enable')
+        uci=self.env['ADZERO_UCI'];id=self.s.data()['items'][0]['id']
+        subprocess.run([uci,'delete','adblock-fast.'+id+'.adzero_format'],check=True)
+        subprocess.run([uci,'commit','adblock-fast'],check=True)
+        self.f.write('etc/adzero/backend-cache.json','{}')
+        for p in (self.root/'tmp/adzero-source-cache').glob('*.proof'):p.unlink()
+        self.s.body.write_text('||ads.example^$third-party\n')
+        Path(self.env['ADZERO_SOURCE_FETCH_FIXTURE']).write_text('#!/bin/sh\ncase "$1" in *second.example*) printf "second-ads.example\\n" > "$2";; *) cp "$ADZERO_SOURCES_ROOT/source-body" "$2";; esac\n')
+        context=self.root/'candidate-context';context.mkdir();self.env['ADZERO_JOB_CONTEXT']=str(context)
+        backend=Path(self.env['ADZERO_BACKEND_INIT'])
+        backend.write_text('#!/bin/sh\necho called >> "$ADZERO_SOURCES_ROOT/unexpected-restart"\nexit 77\n')
+        return context
+
+    def assert_candidate_failure_preserves_network(self, context, before):
+        self.assertFalse((self.root/'unexpected-restart').exists(),'capacity failure must precede backend stop and rollback reload')
+        self.assertEqual((context/'reason').read_text(),'source_capacity_unknown')
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+        self.assertFalse((self.root/'etc/adzero/sources-pending.json').exists())
+
+    def test_rename_with_unproven_output_prechecks_before_commit_or_stop(self):
+        context=self.unproven_legacy_selection();listing=self.s.data()
+        items=[{k:i[k] for k in ('id','name','url','format','enabled')} for i in listing['items']]
+        items[0]['name']='Renamed list'
+        plan=self.f.write('rename-plan.json',json.dumps({'revision':listing['revision'],'items':items,'routing_before':False,'routing_enabled':False}))
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.f.ctl('settings-apply',str(plan),ok=False)
+        self.assert_candidate_failure_preserves_network(context,before)
+
+    def test_remove_with_unproven_output_prechecks_remaining_sources_before_stop(self):
+        context=self.unproven_legacy_selection();item=self.s.data()['items'][1]
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.f.ctl('source-remove',item['id'],item['url'],ok=False)
+        self.assert_candidate_failure_preserves_network(context,before)
+
+    def test_disable_with_unproven_output_prechecks_remaining_sources_before_stop(self):
+        context=self.unproven_legacy_selection();item=self.s.data()['items'][1]
+        before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.f.ctl('source-toggle',item['id'],item['url'],'0',ok=False)
+        self.assert_candidate_failure_preserves_network(context,before)
+
+    def test_old_cache_metadata_remains_restorable_without_claiming_new_inputs(self):
+        self.f.ctl('enable');cache=self.root/'etc/adzero/backend-cache.json'
+        state=json.loads(cache.read_text());effective=state['effective']
+        for row in state['config']:
+            if row['type']=='file_url':row['values'].update(adzero_domains='2',adzero_updated='123',adzero_validation='validated')
+        cache.write_text(json.dumps(state))
+        self.s.run_source('cache-current')
+        self.f.ctl('disable');self.s.body.write_text('unapplied.example\n')
+        self.s.run_source('begin','refresh');self.s.run_source('rollback');self.s.run_source('discard');self.f.ctl('enable')
+        self.assertEqual((self.root/'last-start-method').read_text(),'start')
+        self.assertEqual(json.loads(cache.read_text())['effective'],effective)
+        self.s.run_source('cache-live',ok=False)
+
     def test_unchanged_refresh_preserves_fast_restore_on_the_next_enable(self):
         item=self.s.data()['items'][0]
         for args in (['set',f"adblock-fast.{item['id']}.adzero_updated=1"],['commit','adblock-fast']):

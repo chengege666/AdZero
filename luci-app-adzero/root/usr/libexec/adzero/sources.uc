@@ -24,6 +24,19 @@ function atomic(path,text,mode) {
 function statistic(type,key,value){
 	return type=='file_url'&&((index(['size','adzero_domains','adzero_skipped','adzero_updated','adzero_checked'],key)>=0&&match(''+value,/^[0-9]+$/))||key=='adzero_validation'&&index(['validated','backend_only','unchecked'],value)>=0);
 }
+function normalized_model(rows){
+	// Schema 1 journals and schema 2 caches from older releases contain these
+	// generated counters. Ignore only the same recognized values as live UCI;
+	// retain all actual options and identities when checking for outside edits.
+	if(type(rows)!='array')return null;
+	let result=[];
+	for(let row in rows){
+		if(type(row)!='object'||type(row.type)!='string'||type(row.values)!='object'||row.id!=null&&type(row.id)!='string')return null;
+		let values={};for(let key in sort(keys(row.values)))if(!statistic(row.type,key,row.values[key]))values[key]=row.values[key];
+		push(result,{id:row.id,type:row.type,values});
+	}return result;
+}
+function same_model(a,b){let left=normalized_model(a),right=normalized_model(b);return left!=null&&right!=null&&same(left,right);}
 function model() {
 	let result=[];
 	uci.foreach('adblock-fast',null,s => {
@@ -173,7 +186,7 @@ function validate_sources(only,fresh,manual,strict) {
 	include(map(type(manual_blocks)=='array'?manual_blocks:[manual_blocks],name=>hostname(name)));
 	for (let s in enabled) {
 		position++;
-		let checking=!only||(type(only)=='array'?index(only,s['.name'])>=0:s['.name']==only);
+		let checking=only==null||(type(only)=='array'?index(only,s['.name'])>=0:s['.name']==only);
 		let builtin=filter(lib.catalog,c=>c.url == s.url)[0],kind=s.adzero_format ?? builtin?.format ?? 'auto';
 		let checked;
 		if(checking){
@@ -210,6 +223,24 @@ function validate_sources(only,fresh,manual,strict) {
 	progress.source(null);
 	return count;
 }
+function filtering_model(entries){
+	let rows=normalized_model(entries);if(rows==null)return null;
+	return map(filter(rows,s=>s.type!='file_url'||s.values.enabled!='0'),s=>{
+		let values={};
+		for(let k in keys(s.values))if(s.type!='file_url'||k!='name'&&k!='size'&&substr(k,0,7)!='adzero_')values[k]=s.values[k];
+		return {id:s.type=='file_url'?null:s.id,type:s.type,values};
+	});
+}
+function cache_path(){
+	let mode=uci.get('adblock-fast','config','dns');
+	return index(['dnsmasq.servers','dnsmasq.addnhosts'],mode)>=0?root+'/var/run/adblock-fast/'+mode:null;
+}
+function reusable_output(prior){
+	let state=null,path=cache_path();try{state=read(dir+'/backend-cache.json');}catch(e){}
+	if(!path||state?.schema!=2||!match(state.sha256??'',/^[a-f0-9]{64}$/))return false;
+	let current=filtering_model(model());
+	return same(current,filtering_model(prior))&&same(current,filtering_model(state.config))&&checksum(path)==state.sha256;
+}
 function begin(action,args) {
 	if (read(journal)) die('上次规则变更尚未恢复，请先关闭并恢复。');
 	clean_uci();
@@ -244,13 +275,12 @@ function begin(action,args) {
 		}
 	} else if (action != 'refresh') die('未知规则变更。');
 	require_rules(selected());
-	// Removing a source cannot increase the union. Do not re-download every
-	// unchanged list for prevalidation; the backend still rebuilds the result.
-	// An add/enable checks the changed subscription only. The final processed
-	// union is still strictly verified (including its size cap) before apply.
-	// Explicit refresh rechecks every source; removal cannot enlarge the union.
-	if(!removing)validate_sources(action=='refresh'?null:id,action=='refresh',false,uci.get('adblock-fast','config','enabled')=='1');
-	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode & 0777,action,prechecked:!removing};
+	// A removal cannot enlarge the same proven inputs. If live output cannot
+	// be reused, the rebuild may fetch different remaining bytes: precheck
+	// them before committing intent or stopping the working backend.
+	let checked=!removing||uci.get('adblock-fast','config','enabled')=='1'&&!reusable_output(prior);
+	if(checked)validate_sources(removing?[]:action=='refresh'?null:id,action=='refresh',false,uci.get('adblock-fast','config','enabled')=='1');
+	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode & 0777,action,prechecked:checked};
 	guard_revision(expected);
 	atomic(journal,sprintf('%J',pending));
 	if (!uci.commit('adblock-fast')) die('规则保存失败，恢复记录已保留。');
@@ -295,8 +325,9 @@ function begin_batch(path){
 		if(old&&(old.url!=item.url||old_kind!=item.format))for(let key in ['adzero_domains','adzero_skipped','adzero_updated','adzero_checked','adzero_validation','adzero_detected_format'])uci.delete('adblock-fast',id,key);
 	}
 	require_rules(selected());
-	if(length(checks))validate_sources(checks,false,false,uci.get('adblock-fast','config','enabled')=='1');
-	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode&0777,action:'batch',prechecked:length(checks)>0};
+	let checked=length(checks)>0||p.rules_changed&&uci.get('adblock-fast','config','enabled')=='1'&&!reusable_output(prior);
+	if(checked)validate_sources(checks,false,false,uci.get('adblock-fast','config','enabled')=='1');
+	let pending={schema:1,before,prior,after:model(),mode:fs.stat(config)?.mode&0777,action:'batch',prechecked:checked};
 	if(p.routing_before!=p.routing_enabled)pending.routing={before:uci.get('adzero','main','routing_enabled'),after:p.routing_enabled?'1':'0'};
 	if(p.dns_changed)pending.dns={before:uci.get('adzero','main','dns_profile'),after:sprintf('%J',p.dns)};
 	guard_revision(p.revision);
@@ -308,7 +339,7 @@ function begin_batch(path){
 function rollback() {
 	let pending=read(journal);if (!pending) return;
 	clean_uci();
-	if (pending.schema != 1 || type(pending.before) != 'string' || (!same(model(),pending.after) && !same(model(),pending.prior))) die('配置出现并发变化，已保留规则恢复记录。');
+	if (pending.schema != 1 || type(pending.before) != 'string' || (!same_model(model(),pending.after) && !same_model(model(),pending.prior))) die('配置出现并发变化，已保留规则恢复记录。');
 	if(pending.dns){
 		if(length(uci.changes('adzero')?.adzero??[]))die('DNS 有外部未保存修改，恢复记录已保留。');
 		let p=pending.dns,current=uci.get('adzero','main','dns_profile');
@@ -324,17 +355,6 @@ function rollback() {
 		if(!ok||!uci.commit('adzero'))die('分流选择恢复失败。');
 	}
 	atomic(config,pending.before,pending.mode ?? 0600);
-}
-function cache_path(){
-	let mode=uci.get('adblock-fast','config','dns');
-	return index(['dnsmasq.servers','dnsmasq.addnhosts'],mode)>=0?root+'/var/run/adblock-fast/'+mode:null;
-}
-function filtering_model(entries){
-	return map(filter(entries,s=>s.type!='file_url'||s.values.enabled!='0'),s=>{
-		let values={};
-		for(let k in keys(s.values))if(s.type!='file_url'||k!='name'&&k!='size'&&substr(k,0,7)!='adzero_')values[k]=s.values[k];
-		return {id:s.type=='file_url'?null:s.id,type:s.type,values};
-	});
 }
 function effective_model(){
 	let result=filtering_model(model());
@@ -393,14 +413,14 @@ function cache_check(live){
 	let state=read(dir+'/backend-cache.json'),path=cache_path();
 	if(!path||state?.schema!=2||!match(state.sha256??'',/^[a-f0-9]{64}$/))return false;
 	if(live&&live!='current'){let effective=effective_model();if(!effective||!same_effective(effective,state.effective))return false;}
-	else if(!same(model(),state.config))return false;
+	else if(!same_model(model(),state.config))return false;
 	// Upstream moves the processed file to .cache on stop. Hash the exact
 	// cache that start will restore; never trust config flags or timestamps.
 	return checksum(path+(live?'':'.cache'))==state.sha256;
 }
 function stamp_verified_metadata(before){
 	let state=read(dir+'/backend-cache.json'),path=cache_path();
-	if(!path||state?.schema!=2||!same(before,state.config))return;
+	if(!path||state?.schema!=2||!same_model(before,state.config))return;
 	if((checksum(path)??checksum(path+'.cache'))!=state.sha256)return;
 	// A manual check changes counters only. Preserve the actual applied inputs,
 	// including snapshots from before any failed/unapplied refresh.
@@ -424,7 +444,7 @@ try {
 	else if (action == 'rollback') rollback();
 	else if (action == 'confirm') {
 		let p=read(journal);clean_uci();
-		if(p && (p.schema!=1 || !same(model(),p.after) || p.routing && uci.get('adzero','main','routing_enabled')!=p.routing.after || p.dns && uci.get('adzero','main','dns_profile')!=p.dns.after))
+		if(p && (p.schema!=1 || !same_model(model(),p.after) || p.routing && uci.get('adzero','main','routing_enabled')!=p.routing.after || p.dns && uci.get('adzero','main','dns_profile')!=p.dns.after))
 			die('规则在等待重载期间发生变化，恢复记录已保留。');
 	}
 	else if (action == 'finish') {

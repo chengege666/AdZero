@@ -100,6 +100,28 @@ class SourcesTest(unittest.TestCase):
         before=p.read_bytes();self.run_source('rollback',ok=False);self.assertEqual(p.read_bytes(),before)
         self.assertTrue(self.data()['pending'])
 
+    def test_previous_version_statistic_journal_can_confirm_and_restore(self):
+        self.add();self.run_source('finish')
+        before=(self.root/'etc/config/adblock-fast').read_bytes();item=self.data()['items'][0]
+        self.run_source('begin','toggle',item['id'],item['url'],'0')
+        journal=self.root/'etc/adzero/sources-pending.json';state=json.loads(journal.read_text())
+        for rows in (state['prior'],state['after']):
+            for row in rows:
+                if row['type']=='file_url':
+                    row['values'].update(adzero_domains='2',adzero_updated='123',adzero_validation='validated')
+                    row['values']=dict(sorted(row['values'].items()))
+        journal.write_text(json.dumps(state))
+        self.run_source('confirm');self.run_source('rollback')
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+
+    def test_legacy_journal_real_option_change_still_blocks_recovery(self):
+        self.add();journal=self.root/'etc/adzero/sources-pending.json';state=json.loads(journal.read_text())
+        for row in state['after']:
+            if row['type']=='file_url':row['values']['custom_option']='foreign'
+        journal.write_text(json.dumps(state));before=(self.root/'etc/config/adblock-fast').read_bytes()
+        self.run_source('confirm',ok=False);self.run_source('rollback',ok=False)
+        self.assertEqual((self.root/'etc/config/adblock-fast').read_bytes(),before)
+
     def test_catalog_entry_uses_fixed_url_and_records_validation(self):
         self.run_source('begin','add','hagezi-light','ignored','https://wrong.example/','hosts');self.run_source('finish')
         self.assertEqual(self.data()['items'][0]['catalog_id'],'hagezi-light')

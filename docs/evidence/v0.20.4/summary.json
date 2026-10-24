@@ -1,0 +1,20 @@
+{
+  "version": "0.20.4",
+  "source_sha256": "fa44de0cab76f520ea349a866e5cee130f332cc74233910bc6913d8ae720dff9",
+  "python_tests": 585,
+  "ui_assertions": 369,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 59,
+  "installer_delivery_cases": 6,
+  "native_components": [
+    "rpc",
+    "openclash",
+    "passwall"
+  ],
+  "browser_qa": "state-only change: regression assertions; existing visual layout retained",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "audit_findings": "three audit regressions reproduced locally; no new router diagnosis",
+  "new_runtime_dependencies": false
+}

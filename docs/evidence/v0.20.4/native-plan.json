@@ -1,0 +1,21 @@
+{
+  "source_sha256": "fa44de0cab76f520ea349a866e5cee130f332cc74233910bc6913d8ae720dff9",
+  "results": [
+    {
+      "name": "full",
+      "exit_code": 0
+    },
+    {
+      "name": "check_rpc",
+      "exit_code": 0
+    },
+    {
+      "name": "check_openclash_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_passwall_runtime",
+      "exit_code": 0
+    }
+  ]
+}

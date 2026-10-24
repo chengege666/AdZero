@@ -117,7 +117,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.20.3'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.20.4'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -798,6 +798,13 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset({state:'configured_unverified'});await app.openRules();await app.stageSource('source_add',['','DNS conflict','https://dnsconflict.example/list','domains']);const dnsConflictRevision=app.draft.revision;rpcStale=true;
   jobSteps=[()=>{ruleData.revision='f'.repeat(64);return {ok:false,pending:false,reason:'config_conflict',message:'DNS 已变化。'};}];await app.applyDraft();
   check(app.draftConflict&&app.draft.revision===dnsConflictRevision&&text(root).includes('其他受保护设置已变化'),'non-list semantic changes remain conflicts even when visible source choices are identical');
+  ruleData.items=app.draft.items.map(i=>({...i,id:i.id||'externally-added'}));app.sourcesData=structuredClone(ruleData);
+  app.confirmPendingDraft();
+  check(app.draftConflict&&app.draft&&app.notice.kind==='error','matching visible rows cannot erase a confirmed semantic conflict');
+  app.draftConflict=false;app.sourceFailureReason=null;app.currentStatus.operation={active:true,locked:true,action:'reconcile'};
+  app.confirmPendingDraft();check(!!app.draft,'matching rows cannot confirm an in-flight background operation');
+  app.currentStatus.operation={active:false,locked:false};app.busy='rules';app.confirmPendingDraft();
+  check(!!app.draft,'matching rows cannot clear a draft while its apply job is still being tracked');
   reset();ruleData.capacity={state:'unknown',known_domains:123,unknown_sources:[1],total:2,limit:500000,current:false};await app.openRules();
   check(text(find('az-rule-capacity')).includes('不完整')&&text(find('az-rule-capacity')).includes('123 / 500,000'),'unknown source capacity is a partial known count rather than a fake zero or complete proof');
   await app.stageSource('source_add',['','Capacity draft','https://capacity.example/list','domains']);check(text(find('az-rule-capacity')).includes('当前草稿尚未预检'),'a previous receipt never pretends to count the current browser draft');
