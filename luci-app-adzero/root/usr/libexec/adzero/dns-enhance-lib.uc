@@ -14,12 +14,16 @@ export function name(s,start){
 };
 export function message(raw){
 	if(type(raw)!='string'||length(raw)<12||length(raw)>65535||u16(raw,4)!=1)die('dns_message');
-	let q=name(raw,12),end=q.end+4,flags=u16(raw,2),kind=u16(raw,q.end),cls=u16(raw,q.end+2),records=[],p=end;
+	let q=name(raw,12),end=q.end+4,flags=u16(raw,2),kind=u16(raw,q.end),cls=u16(raw,q.end+2),records=[],p=end,api_safe=true;
 	if(flags&0x7800||cls!=1||!q.value)die('dns_question');
 	let answer=u16(raw,6),count=answer+u16(raw,8)+u16(raw,10);if(count>512)die('dns_records');
 	for(let i=0;i<count;i++){
 		let owner=name(raw,p);p=owner.end;let type=u16(raw,p),class_=u16(raw,p+2),size=u16(raw,p+8);p+=10;
 		if(p+size>length(raw))die('dns_record');
+		// Mihomo's JSON resolver API cannot reproduce client subnet/signature
+		// context. Never use a different DNS view as evidence for blocking it.
+		if(type==250||type==24)api_safe=false;
+		if(type==41)for(let opt=p;opt<p+size;){let code=u16(raw,opt),n=u16(raw,opt+2);opt+=4;if(opt+n>p+size)die('dns_edns');if(code==8)api_safe=false;opt+=n;}
 		if(i<answer&&class_==1&&type==5){let target=name(raw,p);if(target.end!=p+size)die('dns_cname');push(records,{owner:owner.value,target:target.value});}
 		// RFC 9460 AliasMode applies only to its own question type. ServiceMode,
 		// additional records and root targets are not aliases to block.
@@ -30,7 +34,7 @@ export function message(raw){
 		p+=size;
 	}
 	if(p!=length(raw))die('dns_trailing');
-	return {id:u16(raw,0),name:q.value,kind,flags,end,response:!!(flags&0x8000),records};
+	return {id:u16(raw,0),name:q.value,kind,flags,end,response:!!(flags&0x8000),records,api_safe};
 };
 export function reply(query,rcode){
 	let q=message(query),flags=0x8080|(q.flags&0x0110)|(rcode??0);

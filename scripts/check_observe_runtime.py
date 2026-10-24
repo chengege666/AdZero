@@ -25,6 +25,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tests'))
 from test_observe import dns
 from check_openwrt_runtime import SHA256
+from prepare_dns_socket import install as install_socket, prepare as prepare_socket
 
 EXTRAS={
     'libpcap1_1.10.5-r2_x86_64.ipk':'51c6bc3cc46fa1cd964a3fe7c2cdb283aced09c888bd6e61cc8d0ff0070649a2',
@@ -50,6 +51,7 @@ def prepare_extras(download):
 def main():
     if os.geteuid()!=0:raise SystemExit('Run as root in Linux/WSL')
     if '--inside' not in sys.argv:
+        prepare_socket(ROOT,None)
         prepare_extras(download=True)
         return subprocess.call(['unshare','--net','--mount','--propagation','private',sys.executable,__file__,'--inside'])
     subprocess.run(['ip','link','set','lo','up'],check=True)
@@ -59,6 +61,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='adzero-observe-') as temp:
         base=Path(temp)
         with tarfile.open(archive) as tar:tar.extractall(base,filter='fully_trusted')
+        install_socket(ROOT,base)
         for cache in prepare_extras(download=False):
             with tarfile.open(cache) as outer:
                 member=next(m for m in outer.getmembers() if m.name.endswith('data.tar.gz'))

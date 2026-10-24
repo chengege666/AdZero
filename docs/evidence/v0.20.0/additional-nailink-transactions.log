@@ -1,0 +1,9 @@
+/home/slobys/.cache/adzero/validation-0.14.0.ulg9uja6/tests/test_controls.py:40: SyntaxWarning: invalid escape sequence '\.'
+  backend = self.write('bin/service', '''#!/usr/bin/env python3
+test_nailink_alias_can_be_disabled_without_removing_global_filter (test_routing.RoutingAdapterTest.test_nailink_alias_can_be_disabled_without_removing_global_filter) ... ok
+test_nailink_alias_does_not_require_automatic_split_or_a_proxy_fallback (test_routing.RoutingAdapterTest.test_nailink_alias_does_not_require_automatic_split_or_a_proxy_fallback) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 1.996s
+
+OK

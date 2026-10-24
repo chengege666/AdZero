@@ -18,6 +18,7 @@ import uuid as uuidlib
 
 from check_openwrt_runtime import ROOT, SHA256
 from build_sdk import source_hash
+from prepare_dns_socket import install as install_socket
 
 
 def large_status_check(base, run, ctl):
@@ -91,6 +92,7 @@ def main():
         base = Path(tmp)
         with tarfile.open(archive) as tar:
             tar.extractall(base, filter='fully_trusted')  # verified official archive
+        install_socket(ROOT,base)
         for path in ('var/run/ubus','tmp','dev','etc/adzero'):
             (base/path).mkdir(parents=True,exist_ok=True)
         os.mknod(base/'dev/null',0o666 | 0o20000,os.makedev(1,3))

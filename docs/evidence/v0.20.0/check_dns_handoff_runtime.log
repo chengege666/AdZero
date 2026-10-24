@@ -1,0 +1,154 @@
+{
+  "old_path_before_redirect": "203.0.113.66",
+  "same_socket_after_redirect": "203.0.113.66",
+  "fresh_socket_after_redirect": "198.51.100.42",
+  "same_socket_after_production_handoff": "198.51.100.42",
+  "correct_dns_flow_preserved": true,
+  "unrelated_udp_flow_preserved": true,
+  "tcp_dns_passed": 3,
+  "dnsmasq_uid": "453",
+  "handoff": {
+    "schema": 1,
+    "state": "ready",
+    "reason": null,
+    "repaired": 1,
+    "last_repair": 1792834303,
+    "updated": 840
+  },
+  "fixture": {
+    "rootfs": "https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-25.12.5-x86-64-rootfs.tar.gz",
+    "rootfs_sha256": "2dae4250b1b742062ed5787adcdc9dd6d26c7f69f94ced46548eb512d5957e8a",
+    "passwall_tag": "26.10.4-1",
+    "source_sha256": {
+      "app.sh": "77b7e67d4bf1d4283a762b4d0d45c5e937de81c929fd54bb9beccbf0b0bb4b0a",
+      "helper_dnsmasq.lua": "2535bcb57598baed82c7de9392b47200fa42cbcb408030823c9355d683bbd5c6",
+      "nftables.sh": "617b2720301ea5e2b76a792d8e391aa0c1088e4fb2c2e4dea89e82857cf2a1e7",
+      "utils.sh": "b4b64c8f1d8eb06b616e21e5c1c5c2d9994b9b0fb4a06798011c04d9deffcf9c"
+    },
+    "root": "/home/slobys/.cache/adzero/dns-handoff-0.15.4/root",
+    "tools": [
+      "etc/apk",
+      "lib/apk",
+      "etc/init.d/dnsmasq",
+      "lib/upgrade/keep.d/dnsmasq",
+      "usr/share/dnsmasq",
+      "usr/lib/dnsmasq",
+      "usr/bin/apk",
+      "usr/sbin/nft",
+      "usr/sbin/dnsmasq"
+    ]
+  },
+  "production_sha256": {
+    "dns-handoff": "a4f4426e5a6c98ada7246ab6a1c8ad63a7df9bdb5ae88b3fbfbe6d42cc81bd32",
+    "dns-handoff.uc": "e9491ee92278a9834ff615f638aa9d7c3bca74f7a0c6da934770d05ffa7be7f5",
+    "dns-handoff-lib.uc": "14820d3d852eede9b6e83043992e26693b4e3e58321d4bd2b5c3dd08c9b5ca0e"
+  },
+  "scope": "official OpenWrt 25.12.5 userspace and real kernel NAT, two disposable network namespaces; native inventory and LAN ubus are fixtures; no router or host firewall changes",
+  "native_tools": {
+    "dnsmasq": {
+      "sha256": "80f3c8ba28681a32929e03e75c477b42493471e943290bc3b5a0e4ffe9c3df7a",
+      "version": "Dnsmasq version 2.93  Copyright (c) 2000-2026 Simon Kelley"
+    },
+    "conntrack": {
+      "sha256": "daa11849fc0b0a0eb44bdcc11cbb5e2b50f5906f76abf382488aacdbf9eb5560",
+      "version": "conntrack v1.4.8 (conntrack-tools)"
+    },
+    "nft": {
+      "sha256": "4e61e7400f3b104dc582b1a20c302b71b65baed9afdf3f4e0222d68a42d85b18",
+      "version": "nftables v1.1.6 (Commodore Bullmoose #7)"
+    }
+  },
+  "same_tuple_correct_replacement_preserved": true,
+  "bind_dynamic": true,
+  "concurrent_tcp_worker": true,
+  "first_disabled_later_enabled_skipped": true,
+  "first_enabled_extra_empty_accepted": true,
+  "passwall_configuration_unchanged": true,
+  "fixture_packages": [
+    {
+      "name": "libnetfilter-cthelper0-1.0.0-r2.apk",
+      "bytes": 4865,
+      "sha256": "f1120ae56d1a753dc4918170b1e1c47d236982a7da08cb634c8ff6a1e01a5561"
+    },
+    {
+      "name": "libnetfilter-cttimeout1-1.0.0-r2.apk",
+      "bytes": 4697,
+      "sha256": "efd7fbfd3a58e1d765fbff8a0e54950aced1ad937fb373bc2a41bc6749d82680"
+    },
+    {
+      "name": "jansson4-2.14.1-r1.apk",
+      "bytes": 47351,
+      "sha256": "a660c034b76a67534b45957375d4dc3f499353075a2e75f4f928fd53549a51e7"
+    },
+    {
+      "name": "libubox20260213-2026.06.19~7dd12784-r1.apk",
+      "bytes": 29627,
+      "sha256": "43f1fa4ac8c674a5f7cb4df793f9b92d1ed3d207fe012872cd2d0966aa55beb8"
+    },
+    {
+      "name": "dnsmasq-full-2.93-r1.apk",
+      "bytes": 214876,
+      "sha256": "1d1a95d56ddf521d7f83df7ce487201f9e22f932dd9fba75eb173c539054d92a"
+    },
+    {
+      "name": "libnfnetlink0-1.0.2-r1.apk",
+      "bytes": 11121,
+      "sha256": "4520b43d6336a91cafe38e0753da44d204aa616cc7372c84439feb6478be6f3d"
+    },
+    {
+      "name": "libnetfilter-queue1-1.0.5-r4.apk",
+      "bytes": 11167,
+      "sha256": "ffeff14bff79380314ad14474aaba0692c66ce9ea735199f5a1f28fcfb1a79f2"
+    },
+    {
+      "name": "nftables-json-1.1.6-r2.apk",
+      "bytes": 328086,
+      "sha256": "dc4dcf3b1577e7929ae2a0e9c62a9ddda90e7a69d8bf23eb14fe7417d613bb3f"
+    },
+    {
+      "name": "libubus20251202-2026.06.28~24864e78-r2.apk",
+      "bytes": 12207,
+      "sha256": "c4030c9462c6755b47f831581d1bab8a13fa2480afa4ed67badba2223b725fac"
+    },
+    {
+      "name": "libnftnl11-1.3.1-r1.apk",
+      "bytes": 63774,
+      "sha256": "698ce141395be09db008ddcd2a520a2d07c5062b5c13371430a64fc87c0e7454"
+    },
+    {
+      "name": "libgmp10-6.3.0-r2.apk",
+      "bytes": 217807,
+      "sha256": "424af0523d50608b8ba0ac9fb8411451f1ba73e4e3b8a76bcffdafb78feb6eae"
+    },
+    {
+      "name": "libgcc1-14.3.0-r5.apk",
+      "bytes": 53293,
+      "sha256": "e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01"
+    },
+    {
+      "name": "libc-1.2.5-r5.apk",
+      "bytes": 287101,
+      "sha256": "5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197"
+    },
+    {
+      "name": "libmnl0-1.0.5-r1.apk",
+      "bytes": 7995,
+      "sha256": "971eb9cffd0f85f0b2efb285cc1e2aeaef53c57d4f91fc0c8465e347592d5411"
+    },
+    {
+      "name": "conntrack-1.4.8-r1.apk",
+      "bytes": 26457,
+      "sha256": "6ab33e1fec1016f5b9b06c7ff70c7a78bea629cc1935c004947a1a5e56fa24a2"
+    },
+    {
+      "name": "libnettle8-3.10.2-r1.apk",
+      "bytes": 340675,
+      "sha256": "cc08604a5839f5ec59094e0ad1492195d9a5a8b555bc941e55908b8014d40a39"
+    },
+    {
+      "name": "libnetfilter-conntrack3-1.1.0-r1.apk",
+      "bytes": 39520,
+      "sha256": "d2e6866ff4230202319c4e99610b1e8790c55516e5ccf35a8faa59feb7106a2d"
+    }
+  ]
+}

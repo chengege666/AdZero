@@ -62,6 +62,14 @@ function context(){
 	if(dns.profile(decode(cursor().get('adzero','main','dns_profile')??'null')).strict)return null;
 	if(cursor().get('adblock-fast','config','dns')!='dnsmasq.servers')return null;
 	let adapted=adapter_state();if(!adapted.present||adapted.stage!='configured_unverified')return null;
+	if(index(['nailink','openclash'],adapted.plugin)>=0){
+		let probe=decode(command([base+'/probe']));
+		if(sprintf('%J',probe?.dns?.active_proxies)!=sprintf('%J',[adapted.plugin])||length(probe?.dns?.uncertain_proxies??[]))return null;
+		let native=decode(command([base+'/adapter','alias-context']));
+		if(!native||!handoff.lan_valid(native.lan))return null;
+		for(let tcp in [false,true])if(!io.exchange(native.upstream_address??native.lan.address,native.port,lib.question('health.adzero.invalid'),tcp,0))return null;
+		return {...native,updated:io.now()};
+	}
 	let c=decode(command([base+'/dns-handoff','context']));
 	if(c&&adapted.plugin=='passwall'&&handoff.lan_valid(c.lan))return {...c,plugin:'passwall',updated:io.now()};
 	let probe=decode(command([base+'/probe'])),proxies=probe?.dns?.active_proxies;
@@ -97,7 +105,8 @@ function switch_plan(group,expected,next){
 	atomic(dir+'/switch-plan.json',payload);print(dir+'/switch-plan.json\n');
 }
 try{
-	if(action=='status'){print(sprintf('%J\n',{config:settings(),dns_failover:failover_settings().failover,profile:dns.profile(decode(cursor().get('adzero','main','dns_profile')??'null')),runtime:published(),tests:decode(read(dir+'/tests.json')),health:decode(read(dir+'/health.json'))}));}
+	if(action=='invalidate'){atomic(dir+'/context.json',{updated:io.now()});}
+	else if(action=='status'){print(sprintf('%J\n',{config:settings(),dns_failover:failover_settings().failover,profile:dns.profile(decode(cursor().get('adzero','main','dns_profile')??'null')),runtime:published(),tests:decode(read(dir+'/tests.json')),health:decode(read(dir+'/health.json'))}));}
 	else if(action=='cleanup'){cleanup();atomic(dir+'/status.json',{state:'inactive',reason:'stopped',updated:io.now()});}
 	else if(action=='save'){
 		let p=decode(read(shift(ARGV),50000)),before=lib.config(p?.before),after=lib.config(p?.after),c=cursor();
@@ -128,7 +137,7 @@ try{
 					if(!server)server=relay(c,s,rules,allowed,d=>{counts[d.kind]++;});else server.configure(s,rules,allowed);
 					key=fingerprint;lease=c;install(c);
 				}
-				atomic(dir+'/status.json',{state:server?'active':'waiting',reason:server?null:s.enabled?'unsupported_or_changing_path':'disabled',updated:now,counts,plugin:lease?.plugin??null});
+				atomic(dir+'/status.json',{state:server?'active':'waiting',reason:server?null:s.enabled?'unsupported_or_changing_path':'disabled',updated:now,counts,plugin:server?lease?.plugin:null,inspection:server?.inspection()??null});
 			}
 			if(server)server.step(100);else io.wait(500);
 		}

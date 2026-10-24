@@ -1,0 +1,32 @@
+{
+  "version": "0.20.0",
+  "source_sha256": "8f11c30d0e37247ed0abf974badeed870fbd01963a16bcd79d35a5cc8b62e86e",
+  "python_tests": 550,
+  "full_suite_tests": 548,
+  "additional_transaction_tests": 2,
+  "ui_assertions": 344,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 59,
+  "installer_delivery_cases": 6,
+  "mihomo_cases": 168,
+  "nft_cases": 22,
+  "dae_parser_cases": 8,
+  "native_components": [
+    "check_rpc",
+    "check_observe_runtime",
+    "check_passwall_runtime",
+    "check_openclash_runtime",
+    "check_nailink_gateway",
+    "check_dns_guard_runtime",
+    "check_routing_core",
+    "check_routing_dae",
+    "check_dns_handoff_runtime",
+    "check_dns_enhance_runtime"
+  ],
+  "browser_qa": "desktop and 360px native alias status and degraded notice; simulated RPC",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "strict_scope": "managed default IPv4 LAN DNS; IPv6 DNS and 853 blocked; domestic bootstrap exception; device DoH policy required",
+  "new_runtime_dependencies": false
+}

@@ -8,6 +8,7 @@ import os,tarfile,io,hashlib,json,subprocess,tempfile,shutil,sys,socket,struct,t
 
 import urllib.request
 from check_openwrt_runtime import ROOT, SHA256, URL
+from prepare_dns_socket import install as install_socket, prepare as prepare_socket
 sys.path.insert(0,str(ROOT/'tests'))
 from test_observe import dns
 
@@ -17,6 +18,7 @@ def main():
  deps={'lua_5.1.5-r11_x86_64.ipk':'164795e16b225d71e776a5aa584f6b3af239a0012724da63de58dd808f6a3165','liblua5.1.5_5.1.5-r11_x86_64.ipk':'53875655f43c24dc00fe3f94a1a9e15294be48b80ee32d9fd5d6cddc65b01a70','coreutils-timeout_9.7-r1_x86_64.ipk':'10e721b261c393e7f30d84012c2a773f02d67adcace9b71c0a9a70312ac849f5'}
  if '--inside' not in sys.argv:
   if os.geteuid()!=0:raise SystemExit('Run in Linux/WSL as root')
+  prepare_socket(ROOT,None)
   # Fetch before unshare, so cold CI caches work without a network inside it.
   def fetch(path,url,digest):
    path.parent.mkdir(parents=True,exist_ok=True)
@@ -38,6 +40,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='adzero-passwall-native-') as tmp:
   base=Path(tmp)
   with tarfile.open(archive) as t:t.extractall(base,filter='fully_trusted')
+  install_socket(ROOT,base)
   for name,digest in deps.items():
    p=ROOT/'artifacts/runtime/passwall-extras'/name;assert hashlib.sha256(p.read_bytes()).hexdigest()==digest
    with tarfile.open(p) as outer:

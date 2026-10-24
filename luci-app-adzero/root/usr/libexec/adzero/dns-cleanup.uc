@@ -1,6 +1,5 @@
 'use strict';
 import { lan_valid } from './dns-handoff-lib.uc';
-const table='adzero_dns_enhance',marker='AdZero DNS enhance v1';
 function decode(result){
 	if(result?.code!=0)die('无法核对 DNS 增强防火墙状态，恢复记录已保留。');
 	try{let value=json(result.output);if(type(value?.nftables)=='array')return value;}catch(e){}
@@ -8,7 +7,8 @@ function decode(result){
 }
 // The executor reports exit status and combined output. No broad conntrack
 // flush: a private intent record binds cleanup to our exact LAN destination.
-export function release(prior,execute){
+export function release(prior,execute,native){
+	let table=native?'adzero_dns_native':'adzero_dns_enhance',marker=native?'AdZero native DNS bridge v1':'AdZero DNS enhance v1',port=native?'5355':'5354';
 	if(prior!=null&&!lan_valid(prior.lan))die('DNS 增强恢复记录无效，未清理连接。');
 	let tables=decode(execute(['nft','-j','list','tables']));
 	if(length(filter(tables.nftables,e=>e.table?.family=='inet'&&e.table.name==table))){
@@ -23,7 +23,7 @@ export function release(prior,execute){
 	if(prior==null)return;
 	for(let protocol in ['udp','tcp']){
 		let result=execute(['conntrack','-D','-f','ipv4','-p',protocol,'--orig-dst',prior.lan.address,'--dport','53',
-			'--reply-src',prior.lan.address,'--reply-port-src','5354','--zone','0']);
+			'--reply-src',prior.lan.address,'--reply-port-src',port,'--zone','0']);
 		// conntrack returns 1 for an empty selection. Other failures, including
 		// permissions/missing tools, must not be reported as completed cleanup.
 		if(result?.code!=0&&!(result?.code==1&&match(trim(result.output??''),/^conntrack v[^\r\n:]+: 0 flow entries have been deleted[.]$/)))

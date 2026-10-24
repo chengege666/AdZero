@@ -3,11 +3,15 @@
 import * as fs from 'fs';
 import { cursor } from 'uci';
 import { connect } from 'ubus';
+import * as net from 'socket';
 import * as lib from './adapter-lib.uc';
 import * as route from './routing-lib.uc';
 import * as progress from './progress-lib.uc';
 import * as rulecache from './rules-cache.uc';
 import * as proxy from './proxy-state.uc';
+import * as native from './dns-native-lib.uc';
+import { lan_valid } from './dns-handoff-lib.uc';
+import { config as enhance_config } from './dns-enhance-lib.uc';
 
 const root = getenv('ADZERO_ADAPTER_ROOT') ?? '';
 const state_dir = root + '/etc/adzero';
@@ -105,6 +109,17 @@ function tracked(path, content, kind, mode) {
 	changed = true;
 }
 function same(a, b) { return sprintf('%J', a) == sprintf('%J', b); }
+function alias_wanted(){return enhance_config(json(uci.get('adzero','main','dns_enhance')??'null')).enabled&&!dns_profile.strict;}
+function alias_lan(){
+	let info=json(capture(['ubus','call','network.interface.lan','status'])),addresses=info?.['ipv4-address'];
+	if(length(addresses??[])!=1)die('native_lan');let lan={device:info.l3_device,address:addresses[0].address,mask:addresses[0].mask};
+	if(!lan_valid(lan))die('native_lan');return lan;
+}
+function native_bridge(operation,context){
+	let path=state_dir+'/native-operation.json';atomic(path,sprintf('%J',context));
+	try{capture([root+'/usr/libexec/adzero/dns-native',operation,path]);fs.unlink(path);}catch(e){fs.unlink(path);die(e);}
+}
+function retire_alias(){if(journal?.alias_retire){native_bridge('cleanup',journal.alias_retire);delete journal.alias_retire;save();}}
 function native_dns_state(){
 	return journal?.runtime_supported?native_runtime[journal.plugin](journal.runtime_samples,journal.dns_engine):{state:'unknown',reason:'runtime_unavailable'};
 }
@@ -319,16 +334,46 @@ function update_dns(id, text) {
 	graphql('query($raw:String!){parsedDns(raw:$raw){string}}', {raw:text});
 	graphql('mutation($id:ID!,$dns:String!){updateDns(id:$id,dns:$dns){id}}', {id, dns:text});
 }
-function selected_traffic() {
+function selected_traffic(require_proxy) {
 	let data=graphql('{routings(selected:true){id routing{string fallback{... on Plaintext{val}}}} groups{name}}');
 	if(length(data.routings??[])!=1)die('需要唯一选中的 NaiLink 流量路由。');
 	let current=data.routings[0],target=current.routing?.fallback?.val;
-	if(index(map(data.groups??[],g=>g.name),target)<0)die('无法确认 NaiLink 默认代理策略，请检查当前路由。');
+	if((require_proxy??split_enabled)&&index(map(data.groups??[],g=>g.name),target)<0)die('无法确认 NaiLink 默认代理策略，请检查当前路由。');
 	return {id:current.id,text:current.routing.string,target};
 }
 function update_traffic(id,text) {
 	graphql('query($raw:String!){parsedRouting(raw:$raw){string}}',{raw:text});
 	graphql('mutation($id:ID!,$routing:String!){updateRouting(id:$id,routing:$routing){id}}',{id,routing:text});
+}
+function apply_alias(plugin){
+	if(plugin!='nailink')return;
+	let dns=selected_dns(),traffic=null,next_dns=native.strip_dns(dns.dns.string,journal.alias),next=null,plan=null;
+	if(journal.alias){traffic=selected_traffic();next=native.strip_routing(traffic.text,journal.alias);}
+	if(alias_wanted()){
+		// Validate both native profiles before changing either of them. Old
+		// cores/listeners remain usable when this optional capability is absent.
+		try{
+			let lan=alias_lan();traffic??=selected_traffic();next??=traffic.text;
+			if(!journal.alias)for(let kind in [net.SOCK_DGRAM,net.SOCK_STREAM]){
+				let s=net.create(net.AF_INET,kind);if(!s)die('native_socket');let ok=s.bind({address:lan.address,port:5355});s.close();if(!ok)die('native_port_busy');
+			}
+			let candidate=native.nai_dns(next_dns,lan),routing=native.nai_routing(next,lan);
+			graphql('query($raw:String!){parsedDns(raw:$raw){string}}',{raw:candidate});
+			graphql('query($raw:String!){parsedRouting(raw:$raw){string}}',{raw:routing});
+			plan={plugin:'nailink',port:5355,lan};next_dns=candidate;next=routing;delete journal.alias_unavailable;
+		}catch(e){journal.alias_unavailable='native_listener_or_routing_unavailable';}
+	}
+	if(traffic&&journal.traffic&&(traffic.id!=journal.traffic.id||traffic.text!=journal.traffic.after))die('NaiLink 流量路由已被外部修改。');
+	if(journal.alias&&!same(journal.alias,plan))journal.alias_retire=journal.alias;
+	journal.alias=plan;
+	if(traffic){journal.traffic??={id:traffic.id,before:traffic.text,after:traffic.text};journal.traffic.previous_after=traffic.text;journal.traffic.after=next;}
+	journal.dns.previous_after=dns.dns.string;journal.dns.after=next_dns;save();
+	// Install a persistent native fallback BEFORE eBPF releases LAN DNS.
+	// A dead enhancement process then leaves the same native resolver usable.
+	if(journal.alias_retire&&plan)retire_alias();
+	if(plan)native_bridge('install',plan);
+	if(dns.dns.string!=next_dns){update_dns(dns.id,next_dns);changed=true;}
+	if(traffic&&traffic.text!=next){update_traffic(traffic.id,next);changed=true;}
 }
 function nailink_identity() {
 	let bus = connect();
@@ -719,12 +764,14 @@ function restore() {
 	if (journal.dns) {
 		let current = selected_dns();
 		if (current.id != journal.dns.id) die('NaiLink selected profile changed; recovery required');
-		if(journal.split && current.dns.string!=journal.dns.after && current.dns.string!=journal.dns.before)die('NaiLink DNS 已修改，分流恢复记录保留。');
-		let restored = current.dns.string == journal.dns.after ? journal.dns.before : lib.strip_block(current.dns.string);
+		if((journal.split||journal.alias) && current.dns.string!=journal.dns.after && current.dns.string!=journal.dns.before&&current.dns.string!=journal.dns.previous_after)die('NaiLink DNS 已修改，分流恢复记录保留。');
+		let restored = current.dns.string == journal.dns.after||current.dns.string==journal.dns.previous_after ? journal.dns.before : lib.strip_block(current.dns.string);
 		if (current.dns.string != restored) update_dns(current.id, restored);
 	}
-	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=journal.traffic.before)die('NaiLink 流量路由已修改，恢复记录保留。');if(current.text!=journal.traffic.before)update_traffic(current.id,journal.traffic.before);}
+	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=journal.traffic.before&&current.text!=journal.traffic.previous_after)die('NaiLink 流量路由已修改，恢复记录保留。');if(current.text!=journal.traffic.before)update_traffic(current.id,journal.traffic.before);}
 	restart(journal.plugin);
+	if(journal.alias)native_bridge('cleanup',journal.alias);
+	retire_alias();
 	for (let file in journal.files) if (file.kind == 'owned') {
 		let current = fs.readfile(file.path);
 		if (current != null && b64enc(current) != file.after && b64enc(current) != file.previous_after) die('Provider edited externally; journal retained');
@@ -761,11 +808,13 @@ function rollback_update(previous) {
 	}
 	if (journal.dns) {
 		let current = selected_dns(), value = old.dns?.after ?? journal.dns.before;
-		if (current.id != journal.dns.id || (current.dns.string != journal.dns.after && current.dns.string != value)) die('Concurrent NaiLink DNS change prevents rollback');
+		if (current.id != journal.dns.id || (current.dns.string != journal.dns.after && current.dns.string != value&&current.dns.string!=journal.dns.previous_after)) die('Concurrent NaiLink DNS change prevents rollback');
 		if (current.dns.string != value) update_dns(current.id, value);
 	}
-	if(journal.traffic){let current=selected_traffic(),value=old.traffic?.after??journal.traffic.before;if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=value)die('Concurrent routing change prevents rollback');if(current.text!=value)update_traffic(current.id,value);}
+	if(journal.traffic){let current=selected_traffic(),value=old.traffic?.after??journal.traffic.before;if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=value&&current.text!=journal.traffic.previous_after)die('Concurrent routing change prevents rollback');if(current.text!=value)update_traffic(current.id,value);}
 	restart(journal.plugin);
+	if(journal.alias&&!old.alias)native_bridge('cleanup',journal.alias);
+	if(old.alias)native_bridge('install',old.alias);
 	atomic(journal_path, previous);
 	fs.unlink(state_dir + '/adapter.previous.json');
 	journal = old;
@@ -782,12 +831,13 @@ function routing_check(wanted) {
 		return 'passwall';
 	}
 	if(plugin!='nailink'||journal?.plugin!='nailink'||journal.stage!='configured_unverified')return 'full';
+	if(journal.alias||alias_wanted())return 'full';
 	let dns=selected_dns();
 	if(dns.id!=journal.dns?.id||dns.dns.string!=journal.dns.after)die('NaiLink DNS profile changed externally');
 	// Check syntax and selected target before any restore, download or reload.
 	if(wanted=='1'){
 		route.dae_dns(lib.dae_dns(journal.dns.before),dns_profile);
-		let traffic=selected_traffic();
+		let traffic=selected_traffic(true);
 		if(journal.traffic&&(traffic.id!=journal.traffic.id||traffic.text!=journal.traffic.after))die('NaiLink 流量路由已被外部修改。');
 		route.dae_routing(journal.traffic?.before??traffic.text,traffic.target,dns_profile);
 	}
@@ -842,6 +892,9 @@ function reconfigure_nailink(with_rules) {
 	try{
 		progress.stage('adapting');
 		if(with_rules){let list=rules();tracked(root+'/etc/daed/adzero-geosite.dat',lib.geosite(list),'owned',0644);journal.count=length(list);}
+		// Retire a bridge only after the old native route is restored/reloaded.
+		// Full apply composes the same transaction for alias-mode changes.
+		if(journal.alias||alias_wanted())die('NaiLink 别名入口变化需要统一应用。');
 		let dns=selected_dns(),after=lib.dae_dns(journal.dns.before),traffic=null,next=null;
 		if(split_enabled){
 			country_files('nailink');prepare_pool('nailink');after=route.dae_dns(after,dns_profile);traffic=selected_traffic();
@@ -1011,6 +1064,12 @@ try {
 	else if(action=='reconfigure-passwall')reconfigure_passwall();
 	else if(action=='reconfigure-passwall-rules')reconfigure_passwall(true);
 	else if (action == 'check') { print(active_plugin() + '\n'); }
+	else if(action=='alias-context'){
+		if(journal?.stage!='configured_unverified'||!alias_wanted())exit(1);
+		if(journal.plugin=='nailink'&&journal.alias)print(sprintf('%J',journal.alias));
+		else if(journal.plugin=='openclash')print(sprintf('%J',native.mihomo(yaml(root+openclash_paths().generated,'openclash'),alias_lan())));
+		else exit(1);
+	}
 	else if (action == 'hook-openclash') {
 		let path = shift(ARGV);
 		openclash_error='target';
@@ -1043,6 +1102,8 @@ try {
 		let plugin = active_plugin(), signature=rules_signature(plugin);
 		let runtime=native_runtime[plugin]&&journal?.plugin==plugin?native_dns_state():null;
 		if(unchanged(plugin,signature)&&!(native_runtime[plugin]&&!journal.runtime_samples)){
+			if(journal.alias)native_bridge('install',journal.alias);
+			retire_alias();
 			if(runtime)record_dns_runtime(runtime);
 			if(!native_needs_reload(runtime)||((journal.runtime_retry_after??0)>time()||(journal.runtime_retries??0)>=3)&&getenv('ADZERO_ADAPTER_REFRESH')!='1'){
 				finish_guard(plugin);fs.unlink(state_dir+'/adapter.previous.json');exit(0);
@@ -1061,6 +1122,7 @@ try {
 			if(split_enabled)journal.split??={mode:plugin=='none'?'direct':'proxy',traffic_verified:false};
 			apply_plugin(plugin, list);
 			apply_split(plugin);
+			apply_alias(plugin);
 			if(dns_profile.strict)guard('pin',[plugin,strict_target(plugin)]);
 			if(native_runtime[plugin]){
 				let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
@@ -1075,6 +1137,7 @@ try {
 			if(changed||getenv('ADZERO_ADAPTER_REFRESH')=='1')delete journal.runtime_retries;
 			journal.count = length(list); journal.stage = 'restarting'; journal.generation = time(); save();
 			restart(plugin);
+			retire_alias();
 			journal.stage = 'configured_unverified';
 			signature_after=rules_signature(plugin);
 			if(signature&&signature_after&&signature.sha256==signature_after.sha256&&signature.mode==signature_after.mode)journal.rules_source=signature_after;else delete journal.rules_source;

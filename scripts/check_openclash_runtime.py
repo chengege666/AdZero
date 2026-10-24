@@ -24,6 +24,7 @@ import time
 import urllib.request
 
 from build_sdk import source_hash
+from prepare_dns_socket import install as install_socket, prepare as prepare_socket
 from check_openwrt_runtime import ROOT, URL, SHA256
 from check_dns_core import VERSION, SHA256 as CORE_SHA256, URL as CORE_URL, query
 
@@ -42,6 +43,7 @@ def main():
     cache=ROOT/'artifacts/runtime/openclash-extras'
     if '--inside' not in sys.argv:
         if os.geteuid()!=0:raise SystemExit('Run in Linux/WSL as root')
+        prepare_socket(ROOT,None)
         fetch(ROOT/'artifacts/runtime/openwrt-24.10.8-x86-64-rootfs.tar.gz',URL,SHA256)
         raw=fetch(cache/'native-init',f'https://raw.githubusercontent.com/vernesong/OpenClash/{REF}/luci-app-openclash/root/etc/init.d/openclash')
         assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='7bc7e7568c74c197668ddf6372c7013de2baf152'
@@ -78,6 +80,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='adzero-openclash-native-') as tmp:
         base=Path(tmp)
         with tarfile.open(ROOT/'artifacts/runtime/openwrt-24.10.8-x86-64-rootfs.tar.gz') as tar:tar.extractall(base,filter='fully_trusted')
+        install_socket(ROOT,base)
         packages=json.loads((cache/'packages.json').read_text())
         for row in packages:
             raw=fetch(cache/row['Filename'],row['prefix']+row['Filename'],row['SHA256sum'])

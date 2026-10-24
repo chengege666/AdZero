@@ -221,8 +221,11 @@ with socket.socket(socket.AF_INET,socket.SOCK_STREAM if tcp=='1' else socket.SOC
   assert query('device.example',source_port=53014)['answers']==0
   service2.terminate();service2.wait(timeout=6);log2.close()
   assert query('device.example',source_port=53014)['answers']==1
+  from dns_native_runtime_cases import check as check_native
+  native_results=check_native(BASE,ROOT,SOURCE,run,write,query,clientrun,code,udp.server_address[1],procs)
   assert source_hash(SOURCE.parents[3])==source_before
   report=dict(schema=1,source_sha256=source_before,native_context=True,udp_cname=True,tcp_cname=True,device_block=True,device_alias_udp_tcp=True,https_svcb_alias_udp_tcp=True,service_mode_preserved=True,other_device_unaffected=True,normal_domain=True,read_only_lock_preserves_entry=True,mutating_lock_withdraws_entry=True,hot_policy_change=True,stale_policy_rejected=True,native_dns_not_restarted=True,owned_table_removed=True,native_path_restored=True,missing_table_stale_tuple_repaired=True,failed_cleanup_retains_intent=True,native_connection_preserved=True,graceful_exit_retires_tuple=True,cleanup_idempotent=True,device_acceptance='not_run')
+  report['native_alias']=native_results
   (BASE/'enhance-proof.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
  finally:
   for p in reversed(procs):

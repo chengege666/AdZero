@@ -226,7 +226,7 @@ elif 'routings(' in q:out={'routings':[data['traffic']],'groups':[{'name':'proxy
 elif 'dnss(' in q:out={'dnss':[data['dns']]}
 elif 'updateDns' in q:data['dns']['dns']['string']=v['dns'];data['modified']=True;data['writes']=data.get('writes',0)+1;out={'updateDns':{'id':'dns'}}
 elif 'updateRouting' in q:
- flag=p.parent/'fail-route-once'
+ flag=p.parent/('fail-alias-route-once' if 'ADZERO ALIAS BRIDGE' in v['routing'] else 'fail-route-once')
  if flag.exists():flag.unlink();sys.exit(1)
  data['traffic']['routing']['string']=v['routing'];out={'updateRouting':{'id':'route'}}
 elif 'run(dry:false)' in q:
@@ -245,6 +245,52 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         result=self.run_adapter('apply',success=False)
         self.assertIn('no second mutation submitted',result.stderr)
         return p
+
+    def alias_fixture(self):
+        p=self.nailink_fixture()
+        cfg=self.root/'etc/config/adzero';cfg.write_text(cfg.read_text()+" option dns_enhance '{\"enabled\":true,\"cname\":true}'\n")
+        ubus=self.write('bin/ubus',"#!/bin/sh\necho '{\"l3_device\":\"br-lan\",\"ipv4-address\":[{\"address\":\"127.0.0.2\",\"mask\":24}]}'\n");ubus.chmod(0o755)
+        self.env['PATH']=str(self.root/'bin')+':'+self.env['PATH']
+        helper=self.write('usr/libexec/adzero/dns-native','#!/bin/sh\necho "$1" >> '+shlex.quote(str(self.root/'native-calls'))+'\n[ "$1" != cleanup ] || [ ! -e '+shlex.quote(str(self.root/'fail-cleanup'))+' ]\n');helper.chmod(0o755)
+        return p
+
+    def test_nailink_alias_transaction_is_idempotent_and_restores_both_profiles(self):
+        p=self.alias_fixture();before=json.loads(p.read_text());self.run_adapter('apply')
+        after=json.loads(p.read_text());self.assertIn('tcp+udp://127.0.0.2:5355',after['dns']['dns']['string']);self.assertIn('dport(53) -> must_direct',after['traffic']['routing']['string'])
+        self.run_adapter('apply');self.assertEqual(json.loads(p.read_text())['runs'],after['runs'])
+        self.run_adapter('remove');restored=json.loads(p.read_text())
+        self.assertEqual(restored['dns'],before['dns']);self.assertEqual(restored['traffic'],before['traffic'])
+        self.assertEqual((self.root/'native-calls').read_text().splitlines(),['install','install','cleanup'])
+
+    def test_nailink_alias_failed_routing_rolls_back_bridge_and_dns(self):
+        p=self.alias_fixture();before=json.loads(p.read_text());self.write('fail-alias-route-once','1');self.run_adapter('apply',success=False)
+        restored=json.loads(p.read_text());self.assertEqual(restored['dns'],before['dns']);self.assertEqual(restored['traffic'],before['traffic'])
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+        self.assertEqual((self.root/'native-calls').read_text().splitlines(),['install','cleanup'])
+
+    def test_nailink_alias_cleanup_failure_retains_recovery_intent(self):
+        p=self.alias_fixture();self.run_adapter('apply');self.write('fail-cleanup','1');self.run_adapter('remove',success=False)
+        self.assertTrue(json.loads((self.root/'etc/adzero/adapter.json').read_text())['alias'])
+        (self.root/'fail-cleanup').unlink();self.run_adapter('remove');self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+
+    def test_nailink_existing_dns_bind_is_preserved_and_optional_bridge_skipped(self):
+        p=self.alias_fixture();data=json.loads(p.read_text());data['dns']['dns']['string']='bind: "tcp+udp://127.0.0.1:5353"\n'+data['dns']['dns']['string'];p.write_text(json.dumps(data));self.run_adapter('apply')
+        self.assertIn('127.0.0.1:5353',json.loads(p.read_text())['dns']['dns']['string'])
+        journal=json.loads((self.root/'etc/adzero/adapter.json').read_text());self.assertIsNone(journal['alias']);self.assertEqual(journal['alias_unavailable'],'native_listener_or_routing_unavailable')
+        self.assertFalse((self.root/'native-calls').exists())
+
+    def test_nailink_alias_can_be_disabled_without_removing_global_filter(self):
+        p=self.alias_fixture();self.run_adapter('apply')
+        cfg=self.root/'etc/config/adzero';cfg.write_text(cfg.read_text().replace('"enabled":true','"enabled":false'))
+        self.run_adapter('apply');data=json.loads(p.read_text());self.assertNotIn('5355',data['dns']['dns']['string']);self.assertNotIn('ALIAS BRIDGE',data['traffic']['routing']['string']);self.assertIn('adzero-geosite.dat',data['dns']['dns']['string'])
+        self.assertIsNone(json.loads((self.root/'etc/adzero/adapter.json').read_text())['alias'])
+        self.assertEqual((self.root/'native-calls').read_text().splitlines(),['install','cleanup'])
+
+    def test_nailink_alias_does_not_require_automatic_split_or_a_proxy_fallback(self):
+        p=self.alias_fixture();cfg=self.root/'etc/config/adzero';cfg.write_text(cfg.read_text().replace("option routing_enabled '1'","option routing_enabled '0'"))
+        data=json.loads(p.read_text());data['traffic']['routing'].update(string='fallback: direct\n',fallback=dict(val='direct'));p.write_text(json.dumps(data));before=json.loads(p.read_text())
+        self.run_adapter('apply');self.assertIn('ALIAS BRIDGE',json.loads(p.read_text())['traffic']['routing']['string'])
+        self.run_adapter('remove');after=json.loads(p.read_text());self.assertEqual(after['traffic'],before['traffic']);self.assertEqual(after['dns'],before['dns'])
 
     def test_handoff_from_stopped_nailink_to_passwall_keeps_old_core_stopped(self):
         for routing in (True,False):

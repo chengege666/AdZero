@@ -816,6 +816,7 @@ case "$1" in
 	enhance-save) acquire_lock enhance-save;
 		"$(dirname "$0")/dns-enhance" save "$2" || error '增强设置未保存。'
 		if [ "$(get_uci adzero.main.enabled)" = 1 ] && [ -x /etc/init.d/adzero ]; then
+			"$ADAPTER" apply || error '增强设置已保存，但原生接入未确认；请检查恢复记录。'
 			/etc/init.d/adzero reload || error '设置已保存，但增强实例未确认启动。'
 		fi ;;
 	dns-test) "$(dirname "$0")/dns-enhance" test ;;

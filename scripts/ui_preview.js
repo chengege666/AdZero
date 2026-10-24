@@ -108,6 +108,11 @@ document.getElementById('scenario').addEventListener('change', ev => {
   if (ev.target.value === 'multi') { state.state = 'disabled'; state.compatibility.dns.active_proxy_count = 2; }
   if (ev.target.value === 'recovery') state.state = 'inconsistent';
   if (ev.target.value === 'error') { state.state = 'error'; state.error = '模拟：连接暂时中断'; }
+  if(['nailink-alias','openclash-alias','alias-degraded'].includes(ev.target.value)){
+    const plugin=ev.target.value==='nailink-alias'?'nailink':'openclash';state.adapter.plugin=plugin;
+    enhanceFixture.config.enabled=true;enhanceFixture.runtime={state:'active',plugin,counts:{cname:12,device:3},inspection:{checked:85,failed:ev.target.value==='alias-degraded'?2:0,degraded:ev.target.value==='alias-degraded'}};
+    app.enhanceData=null;app.enhanceDraft=null;
+  }
   mount();
 });
 document.getElementById('appearance').addEventListener('change', ev => { document.documentElement.dataset.theme = ev.target.value; });

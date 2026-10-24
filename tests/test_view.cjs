@@ -117,7 +117,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.19.2'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.20.0'), 'current CSS version prevents stale layout after upgrade');
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');
@@ -581,7 +581,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(text(app.renderControlList()).includes('临时放行'),'temporary exceptions are distinguished from permanent choices');
   await find('az-tab-enhance').events.click();
   check(app.enhanceOpen&&!app.controlsOpen&&!app.rulesOpen,'enhancements have a separate menu');
-  check(text(root).includes('仅接入确认可用')&&text(root).includes('不能撤销全局规则'),'unsupported paths and device exception scope are explicit');
+  check(text(root).includes('支持确认可用')&&text(root).includes('不能撤销全局规则'),'unsupported paths and device exception scope are explicit');
   await find('az-device-add').events.click();
   check(!!find('az-device-0-ip')&&!!find('az-device-0-blocked'),'device policy provides identity and real rule editor');
   app.enhanceDraft.after.devices[0]={ip:'192.168.2.10',name:'TV',enabled:true,allowed:[],blocked:['ads.example']};
@@ -591,6 +591,14 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   await app.loadEnhance(true);
   check(text(find('az-enhance-runtime')).includes('别名拦截 2')&&text(find('az-enhance-runtime')).includes('设备附加拦截 3'),'enhanced counts are distinct and refresh without replacing the editor');
   const enhanceEditor=app.enhanceDraft;
+  for(const plugin of ['nailink','openclash']){
+    enhanceFixture.runtime={state:'active',plugin,counts:{cname:2,device:3},inspection:{checked:5,failed:0,degraded:false}};
+    await app.loadEnhance(true);
+    check(text(find('az-enhance-runtime')).includes(plugin==='nailink'?'NaiLink':'OpenClash'),'native enhancement names the current proxy');
+  }
+  enhanceFixture.runtime.inspection.degraded=true;
+  await app.loadEnhance(true);
+  check(text(find('az-enhance-runtime')).includes('部分别名核对未完成')&&text(find('az-enhance-runtime')).includes('原生应答'),'resolver inspection failures preserve native networking and remain visible');
   enhanceFixture.runtime={state:'recovery_required',reason:'cleanup_pending'};
   await app.loadEnhance(true);
   check(text(find('az-enhance-runtime')).includes('退出待确认')&&text(find('az-enhance-runtime')).includes('不要手动删除记录'),'incomplete DNS retirement is visible instead of a harmless inactive badge');
@@ -638,7 +646,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   delete global.window;
   reset({state:'configured_unverified'});await find('az-tab-enhance').events.click();
   check(!find('az-detail-enhance-scope').open&&!find('az-dns-test')&&!text(root).includes('上游与备用'),'enhancement page retains filtering only, with no duplicate upstream card');
-  check(text(find('az-detail-enhance-scope')).includes('NaiLink、Mihomo')&&text(find('az-detail-device-scope')).includes('不能撤销全局规则'),'collapsed guidance retains the actual compatibility and exception limits');
+  check(text(find('az-detail-enhance-scope')).includes('NaiLink 原生监听')&&text(find('az-detail-enhance-scope')).includes('OpenClash TUN')&&text(find('az-detail-device-scope')).includes('不能撤销全局规则'),'collapsed guidance retains the actual compatibility and exception limits');
   find('az-detail-enhance-scope').events.toggle({target:{open:true}});app.paint();
   check(find('az-detail-enhance-scope').open,'help expansion survives status repaint');
   await app.openDNS();

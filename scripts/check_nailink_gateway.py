@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from concurrent.futures import ThreadPoolExecutor
 
 from build_sdk import source_hash
+from prepare_dns_socket import install as install_socket
 from check_openwrt_runtime import ROOT, SHA256 as ROOTFS_SHA256
 
 PACKAGE_SHA256 = '666dc4d2313a9954ae8be5ae023f5cbe99a12240de80d2d4ce0afc8f977d9d5b'
@@ -74,6 +75,7 @@ def main(package=None):
         base = Path(temporary)
         with tarfile.open(rootfs) as archive:
             archive.extractall(base, filter='fully_trusted')
+        install_socket(ROOT,base)
 
         def put(name, data, mode=0o644):
             target = base / name
@@ -193,6 +195,14 @@ def main(package=None):
                 with sqlite3.connect(base/'etc/daed/wing.db') as db:
                     assert db.execute('select version from dns where name=?',('version-barrier',)).fetchone()[0]==version+1
                 checks.append('real NaiLink API increments DNS profile version for identical text; no database writes by AdZero')
+                alias_dns='bind: "tcp+udp://192.168.50.1:5355"\n'+dns_text
+                query('query($raw:String!){parsedDns(raw:$raw){string}}',{'raw':alias_dns})
+                query('query($raw:String!){parsedRouting(raw:$raw){string}}',{'raw':'sip(192.168.50.1/24) && dip(192.168.50.1) && dport(53) -> must_direct\nfallback: direct'})
+                query('mutation($id:ID!,$dns:String!){updateDns(id:$id,dns:$dns){id}}',{'id':created,'dns':alias_dns})
+                stored=query('{dnss{id dns{string}}}')['dnss']
+                assert next(row for row in stored if row['id']==created)['dns']['string']==alias_dns
+                query('mutation($id:ID!,$dns:String!){updateDns(id:$id,dns:$dns){id}}',{'id':created,'dns':dns_text})
+                checks.append('native alias listener and narrow must_direct syntax accepted; DNS API roundtrip preserves bind without starting the core')
                 before = snapshot()
                 original = config.read_bytes()
                 put('etc/daed/luci-session.json', json.dumps({'username': 'luci', 'secret': 'intentionally-stale-test-key'}), 0o600)

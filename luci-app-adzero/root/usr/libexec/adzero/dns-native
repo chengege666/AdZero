@@ -1,0 +1,2 @@
+#!/bin/sh
+exec ucode -S "$(dirname "$0")/dns-native.uc" -- "$@"

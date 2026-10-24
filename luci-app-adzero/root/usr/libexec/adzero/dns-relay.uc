@@ -1,12 +1,15 @@
 'use strict';
 import * as net from 'socket';
 import * as wire from './dns-enhance-lib.uc';
+import * as http from './dns-alias-http.uc';
 import { now } from './dns-io.uc';
 import { same_lan } from './dns-handoff-lib.uc';
 // One outstanding request per TCP stream; bounded clients, queries and buffers.
 export function relay(context,settings,rules,allowed,count){
 	let address=context.lan.address,port=context.listen_port??5354,udp=null,tcp=null,clients=[],requests=[];
-	function close(){for(let r in requests)r.socket?.close();requests=[];for(let c in clients){c.upstream?.close();c.socket.close();}clients=[];udp?.close();tcp?.close();}
+	let inspection={checked:0,failed:0};
+	function unverified(){inspection.failed++;inspection.last_failure=now();}
+	function close(){for(let r in requests){r.socket?.close();r.lookup?.close();}requests=[];for(let c in clients){c.upstream?.close();c.socket.close();}clients=[];udp?.close();tcp?.close();}
 	try{
 		udp=net.create(net.AF_INET,net.SOCK_DGRAM|net.SOCK_NONBLOCK);tcp=net.create(net.AF_INET,net.SOCK_STREAM|net.SOCK_NONBLOCK);
 		if(!udp||!tcp||!udp.bind({address,port})||!tcp.bind({address,port})||!tcp.listen(64))die('dns_bind');
@@ -46,14 +49,20 @@ export function relay(context,settings,rules,allowed,count){
 			let reused=client?.upstream;
 			if(reused&&(now()-client.upstream_started>=30||client.upstream_uses>=32)){reused.close();reused=null;client.upstream=null;}
 			if(reused){client.upstream=null;let events=net.poll(0,[reused,net.POLLIN])??[];if(length(filter(events,e=>e[1]!=0))){reused.close();reused=null;}}
-			r.reused=!!reused;connect(r,reused);push(requests,r);
+			r.reused=!!reused;connect(r,reused);
+			if(settings.cname&&context.inspector){try{r.lookup=http.lookup(context,raw);if(!q.api_safe)unverified();}catch(e){unverified();}}
+			push(requests,r);
 		}catch(e){r.socket?.close();if(client){client.dead=true;}else try{deliver(r,wire.reply(raw,2));}catch(ignore){}}
 	}
 	function finish(r,raw,keep){
 		try{
 			let q=wire.message(r.query),response=wire.message(raw);
 			if(!response.response||response.id!=q.id||response.name!=q.name||response.kind!=q.kind)die('dns_mismatch');
-			let d=wire.decision(r.query,raw,rules,allowed,device(r.peer.address),settings.cname);
+			// Keep native bytes (including Fake-IP and DNSSEC) for clean replies.
+			// The supplemental API uses that core's real resolver and cache.
+			r.native=raw;r.keep=keep;r.stage='inspection';
+			if(r.lookup)return;
+			let d=wire.decision(r.query,r.alias??raw,rules,allowed,device(r.peer.address),settings.cname);
 			if(d.blocked){count(d);raw=wire.reply(r.query,0);}deliver(r,raw);
 			if(r.client&&keep&&!r.client.dead){r.client.upstream=r.socket;r.client.upstream_started=r.opened;r.client.upstream_uses=(r.reused?r.client.upstream_uses:0)+1;r.socket=null;}
 		}catch(e){deliver(r,wire.reply(r.query,2));}
@@ -63,13 +72,22 @@ export function relay(context,settings,rules,allowed,count){
 		let watches=[[udp,net.POLLIN,'udp'],[tcp,net.POLLIN,'tcp']];
 		for(let c in clients)push(watches,[c.socket,length(c.output)?net.POLLOUT:c.waiting?0:net.POLLIN,'client',c]);
 		for(let c in clients)if(c.upstream)push(watches,[c.upstream,net.POLLIN,'idle',c]);
-		for(let r in requests)push(watches,[r.socket,r.stage=='read'?net.POLLIN:net.POLLOUT,'request',r]);
+		for(let r in requests){
+			if(r.stage!='inspection')push(watches,[r.socket,r.stage=='read'?net.POLLIN:net.POLLOUT,'request',r]);
+			if(r.lookup)push(watches,[r.lookup.socket,r.lookup.events(),'alias',r]);
+		}
 		for(let ev in net.poll(timeout??100,...watches)??[]){
 			let s=ev[0],flags=ev[1],kind=ev[2],v=ev[3];
 			if(!flags)continue; // ucode poll includes quiet descriptors with flags=0.
 			if(kind=='udp'){let peer={},raw=s.recv(65535,net.MSG_DONTWAIT,peer);if(raw)begin(raw,peer,null);}
 			else if(kind=='tcp'){let peer={},socket=s.accept(peer,net.SOCK_NONBLOCK);if(socket){if(length(clients)>=64)socket.close();else push(clients,{socket,peer,buffer:'',output:'',at:now(),waiting:false,upstream:null});}}
 			else if(kind=='idle'){if(v.upstream==s){s.close();v.upstream=null;}}
+			else if(kind=='alias'){
+				if(v.dead)continue;
+				try{let result=v.lookup.step(flags);if(result!=null){v.alias=result;inspection.checked++;v.lookup.close();v.lookup=null;}}
+				catch(e){unverified();v.lookup.close();v.lookup=null;}
+				if(!v.lookup&&v.native)finish(v,v.native,v.keep);
+			}
 			else if(kind=='client'){
 				if(flags&net.POLLOUT){let n=s.send(v.output,net.MSG_DONTWAIT|net.MSG_NOSIGNAL);if(n>0){v.output=substr(v.output,n);v.at=now();}else if(n!=null)v.dead=true;}
 				if(flags&net.POLLIN){let part=s.recv(65537-length(v.buffer),net.MSG_DONTWAIT);if(!length(part))v.dead=true;else{v.buffer+=part;v.at=now();}}
@@ -90,11 +108,12 @@ export function relay(context,settings,rules,allowed,count){
 			}
 		}
 		for(let c in clients)if(!c.dead&&!c.waiting&&!length(c.output)&&length(c.buffer)>=2){let size=wire.u16(c.buffer,0);if(size<12)c.dead=true;else if(length(c.buffer)>=size+2){let raw=substr(c.buffer,2,size);c.buffer=substr(c.buffer,size+2);begin(raw,c.peer,c);}}
+		for(let r in requests)if(!r.dead&&r.lookup&&now()-r.at>1.5){unverified();r.lookup.close();r.lookup=null;if(r.native)finish(r,r.native,r.keep);}
 		for(let r in requests)if(!r.dead&&(now()-r.at>3||r.client?.dead)){if(!r.client?.dead)deliver(r,wire.reply(r.query,2));r.dead=true;}
-		for(let r in requests)if(r.dead)r.socket?.close();requests=filter(requests,r=>!r.dead);
+		for(let r in requests)if(r.dead){r.socket?.close();r.lookup?.close();}requests=filter(requests,r=>!r.dead);
 		for(let c in clients)if(c.dead||now()-c.at>10){c.dead=true;c.upstream?.close();c.socket.close();}clients=filter(clients,c=>!c.dead);
 	}
-	return {step,close,configure:(s,r,a)=>{
+	return {step,close,inspection:()=>({...inspection,degraded:inspection.failed>0&&now()-inspection.last_failure<30}),configure:(s,r,a)=>{
 		// A persistent native TCP worker must not keep a superseded rule
 		// generation alive after native DNS reloads its data in place.
 		if(r!==rules)for(let c in clients){c.upstream?.close();c.upstream=null;}

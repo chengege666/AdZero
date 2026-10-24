@@ -1,0 +1,5 @@
+{
+  "status": "passed",
+  "checks": 168,
+  "scope": "production compiler and real core; isolated namespace, local DNS/SOCKS/HTTP fixtures; no router, LAN, TUN or eBPF validation"
+}

@@ -16,4 +16,10 @@ def prepare(root,runtime):
         archive=outer.extractfile(next(m for m in outer if m.name.lstrip('./')=='data.tar.gz')).read()
     with tarfile.open(fileobj=io.BytesIO(archive)) as inner:
         module=next(m for m in inner if m.name.lstrip('./')=='usr/lib/ucode/socket.so')
-        (Path(runtime)/'socket.so').write_bytes(inner.extractfile(module).read())
+        if runtime is not None:
+            Path(runtime).mkdir(parents=True,exist_ok=True)
+            (Path(runtime)/'socket.so').write_bytes(inner.extractfile(module).read())
+
+def install(root,chroot):
+    """Include the declared package dependency in disposable rootfs checks."""
+    prepare(root,Path(chroot)/'usr/lib/ucode')

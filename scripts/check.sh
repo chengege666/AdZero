@@ -14,6 +14,7 @@ sh -n luci-app-adzero/root/usr/libexec/adzero/watch
 sh -n luci-app-adzero/root/usr/libexec/adzero/observe
 sh -n luci-app-adzero/root/usr/libexec/adzero/dns-handoff
 sh -n luci-app-adzero/root/usr/libexec/adzero/dns-enhance
+sh -n luci-app-adzero/root/usr/libexec/adzero/dns-native
 sh -n luci-app-adzero/root/usr/libexec/adzero/dns-guard
 sh -n luci-app-adzero/root/etc/init.d/adzero-dns
 sh -n luci-app-adzero/root/usr/libexec/adzero/policy

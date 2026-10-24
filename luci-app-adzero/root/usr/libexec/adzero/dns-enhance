@@ -2,6 +2,8 @@
 umask 077
 base=$(dirname "$0")
 if [ "$1" = run ]; then
+	# A previous proxy's still-fresh lease must never be reused on restart.
+	ucode -S "$base/dns-enhance.uc" -- invalidate || exit 1
 	ucode -S "$base/dns-enhance.uc" -- context-loop & context_pid=$!
 	ucode -S "$base/dns-enhance.uc" -- serve & relay_pid=$!
 	cleanup() {

@@ -44,7 +44,7 @@ def list_tar(content):
 class IpkPackagingTest(unittest.TestCase):
     def test_ar_structure_and_control(self):
         package, version = build_ipk.build_bytes()
-        self.assertEqual(version, "0.19.2-r1")
+        self.assertEqual(version, "0.20.0-r1")
         members = parse_ar(package)
         self.assertEqual(set(members), {"debian-binary", "control.tar.gz", "data.tar.gz"})
         self.assertEqual(members["debian-binary"], b"2.0\n")
@@ -52,7 +52,7 @@ class IpkPackagingTest(unittest.TestCase):
         self.assertEqual(set(control), {"control", "conffiles", "postinst", "prerm"})
         body = control["control"][1].decode()
         self.assertIn("Package: luci-app-adzero\n", body)
-        self.assertIn("Version: 0.19.2-r1\n", body)
+        self.assertIn("Version: 0.20.0-r1\n", body)
         self.assertIn("Architecture: all\n", body)
         self.assertIn("Depends: luci-base, adblock-fast, curl, rpcd-mod-file, rpcd-mod-ucode, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus, ucode-mod-uloop, ucode-mod-socket, tcpdump-mini, conntrack, coreutils-timeout\n", body)
         self.assertEqual(control["conffiles"][1], b"/etc/config/adzero\n")
@@ -78,6 +78,10 @@ class IpkPackagingTest(unittest.TestCase):
         "usr/libexec/adzero/dns-enhance-lib.uc",
         "usr/libexec/adzero/dns-io.uc",
         "usr/libexec/adzero/dns-relay.uc",
+        "usr/libexec/adzero/dns-native",
+        "usr/libexec/adzero/dns-native.uc",
+        "usr/libexec/adzero/dns-native-lib.uc",
+        "usr/libexec/adzero/dns-alias-http.uc",
         "usr/libexec/adzero/dns-cleanup.uc",
         "usr/libexec/adzero/provenance.uc",
             "usr/libexec/adzero/dns-handoff.uc",
@@ -125,7 +129,7 @@ class IpkPackagingTest(unittest.TestCase):
         self.assertEqual(installed["usr/libexec/adzero/ctl"][0].mode & 0o777, 0o755)
         self.assertEqual(installed["usr/libexec/adzero/probe"][0].mode & 0o777, 0o755)
         for name, (member, data) in installed.items():
-            if name not in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "etc/init.d/adzero", "etc/init.d/adzero-dns", "usr/libexec/adzero/dns-guard"}:
+            if name not in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/dns-native", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "etc/init.d/adzero", "etc/init.d/adzero-dns", "usr/libexec/adzero/dns-guard"}:
                 self.assertEqual(member.mode & 0o777, 0o644)
             self.assertTrue(data)
 
