@@ -98,6 +98,14 @@ def main():
   write('etc/config/passwall',"config global\n option enabled '1'\n option dns_redirect '1'\n")
   write('etc/adzero/managed','1');(ROOT/'etc/adzero/pause.json').unlink(missing_ok=True)
   write('etc/adzero/adapter.json',json.dumps(dict(schema=1,plugin='passwall',stage='configured_unverified',files=[],count=2)),0o600)
+  # Read the real effective preference, including explicit legacy override.
+  legacy="config adzero 'main'\n option enabled '1'\n option dns_enhance '{\"failover\":true}'\n"
+  write('etc/config/adzero',legacy)
+  assert json.loads(run('/usr/libexec/adzero/dns-enhance','status').stdout)['dns_failover'] is True
+  unified=dict(domestic=dict(servers=['223.5.5.5'],active='223.5.5.5'),foreign=dict(servers=['1.1.1.1'],active='1.1.1.1'),failover=False)
+  write('etc/config/adzero',legacy+" option dns_profile '"+json.dumps(unified)+"'\n")
+  assert json.loads(run('/usr/libexec/adzero/dns-enhance','status').stdout)['dns_failover'] is False
+  write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n")
   write('var/run/adblock-fast/dnsmasq.servers','server=/ads.example/\nserver=/other.example/\n')
   write('usr/libexec/adzero/probe',"#!/bin/sh\necho '{\"dns\":{\"active_proxies\":[\"passwall\"],\"uncertain_proxies\":[]}}'\n",0o755)
   write('usr/sbin/ubus',"#!/bin/sh\necho '{\"l3_device\":\"br-lan\",\"ipv4-address\":[{\"address\":\"192.168.50.1\",\"mask\":24}]}'\n",0o755)

@@ -84,6 +84,32 @@ class DNSSettingsTest(unittest.TestCase):
         self.assertIn("dns_mode 'xray'",(self.root/'etc/config/passwall').read_text())
         self.assertEqual(f.status()['state'],'configured_unverified')
 
+    def test_passwall_unsupported_parallel_preflight_is_read_only_and_actionable(self):
+        count=routing.RoutingControllerTest.passwall(self);f=self.fixture;f.ctl('enable');f.ctl('routing-on')
+        watched=[self.root/n for n in ['etc/config/adzero','etc/config/passwall','etc/adzero/adapter.json']]
+        before={str(p):p.read_bytes() for p in watched};restarts=count.read_bytes()
+        context=self.root/'job-context';context.mkdir();f.env['ADZERO_JOB_CONTEXT']=str(context)
+        p=json.loads(json.dumps(CUSTOM));p['foreign']['mode']='parallel'
+        failed=f.ctl('settings-apply',str(self.plan(p)),ok=False)
+        self.assertIn('未修改配置',failed.stderr);self.assertEqual((context/'reason').read_text(),'dns_passwall_mode')
+        self.assertEqual(before,{str(p):p.read_bytes() for p in watched});self.assertEqual(restarts,count.read_bytes())
+        self.assertFalse((self.root/'etc/adzero/sources-pending.json').exists())
+
+    def test_unified_failover_toggle_does_not_reload_working_nailink(self):
+        f=self.fixture;api=self.nailink();f.ctl('enable');f.ctl('routing-on');before=json.loads(api.read_text())
+        p=json.loads(f.ctl('sources-list').stdout)['dns'];p['failover']=True
+        f.ctl('settings-apply',str(self.plan(p)));data=json.loads(f.ctl('sources-list').stdout)
+        self.assertTrue(data['dns']['failover']);self.assertTrue(data['dns_failover'])
+        self.assertEqual(json.loads(api.read_text())['runs'],before['runs'])
+        f.ctl('reconcile');self.assertEqual(json.loads(api.read_text())['runs'],before['runs'])
+
+    def test_unified_false_overrides_legacy_automatic_backup(self):
+        f=self.fixture
+        with (self.root/'etc/config/adzero').open('a') as out:out.write("\n option dns_enhance '{\"failover\":true}'\n")
+        data=json.loads(f.ctl('sources-list').stdout);self.assertTrue(data['dns_failover'])
+        p=data['dns'];p['failover']=False;f.ctl('settings-apply',str(self.plan(p)))
+        self.assertFalse(json.loads(f.ctl('sources-list').stdout)['dns_failover'])
+
     def test_parallel_pool_bind_failure_keeps_working_nailink_configuration(self):
         f=self.fixture;api=self.nailink();f.ctl('enable');f.ctl('routing-on')
         before=json.loads(api.read_text());p=json.loads(json.dumps(CUSTOM));p['domestic']['mode']='parallel'

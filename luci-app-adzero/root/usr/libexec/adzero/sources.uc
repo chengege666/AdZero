@@ -65,7 +65,7 @@ function list() {
 			checked:s.adzero_checked?int(s.adzero_checked):s.adzero_updated?int(s.adzero_updated):null});
 	}
 	let legacy;try{legacy=json(uci.get('adzero','main','dns_enhance')??'null');}catch(e){}
-	return {catalog:lib.catalog,items,revision:checksum(config),dns:dns_profile(),dns_test_proxy_port:legacy?.proxy_port??0,pending:!!read(journal),last:read(dir+'/sources-last.json')};
+	return {catalog:lib.catalog,items,revision:checksum(config),dns:dns_profile(),dns_failover:dns_profile().failover??legacy?.failover??false,dns_test_proxy_port:legacy?.proxy_port??0,pending:!!read(journal),last:read(dir+'/sources-last.json')};
 }
 function download(address,kind,fresh,manual) {
 	lib.url(address);if(kind!='auto')lib.format(kind);

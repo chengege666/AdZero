@@ -1,5 +1,5 @@
 <h2 id="defaults">默认地址与路径</h2>
-<p>在「运行概览 → DNS 与分流」统一设置两组地址、查询策略、严格模式和本机 SOCKS5 端口。「DNS 增强」测试同一份保存配置，通过“管理 DNS 与分流”回到这里。</p>
+<p>在「运行概览 → DNS 与分流」统一设置两组地址、查询策略、严格模式和本机 SOCKS5 端口。上游测试与自动备用也集中在这里，增强页只保留过滤功能。</p>
 <table><thead><tr><th>分组</th><th>默认当前地址</th><th>默认备选</th></tr></thead><tbody><tr><td>国内</td><td>223.5.5.5</td><td>119.29.29.29</td></tr><tr><td>国外</td><td>1.1.1.1</td><td>8.8.8.8</td></tr></tbody></table>
 <p>支持有效 IPv4/IPv6 数字地址与标准 53 端口，不接受 DoH/DoT 网址、域名或任意端口。两组实际参与查询的地址不可重叠。普通 TCP DNS 本身不加密，代理传输与节点出口的加密范围取决于所用协议。</p>
 <h2 id="edit">修改与应用</h2>
@@ -16,5 +16,21 @@
 <ul><li>接管默认 IPv4 LAN 的 UDP/TCP 53，阻断该 LAN 的 IPv6 DNS 与 TCP/UDP 853；其他 IPv6 数据继续保留。</li><li>国内生效 DNS 组保留为代理节点引导解析例外。这不是零外发承诺；其他进程显式查询这些例外地址也不在“国外组不直连”保证内。</li><li>浏览器／应用内置 DoH 经 HTTPS 443，需在设备侧关闭或统一管理。此版不解密 HTTPS，不阻断全部 443，也不声称覆盖任意 DoH、其他 VLAN、VPN 或绕过本路由器的流量。</li><li>PassWall 严格模式要求默认 DNS 接管与本机代理开启，没有启用的自定义 ACL。SSR Plus+ 暂不支持。</li><li>严格模式期间不接入可选 CNAME／设备增强入口，也不提供临时暂停。关闭并恢复仍可使用；恢复冲突保留记录，不覆盖手动设置。</li></ul>
 <p>关闭严格模式后按记录交还 DNS 和防火墙；OpenClash 原生 DNS 快照交接单独核对，避免保留旧代理端口。不要手删恢复记录、防火墙或操作锁。</p>
 <h2 id="speed">怎样判断解析速度</h2>
-<p>先看概览当前路径的正常 DNS 应答耗时，再用<a href="enhancements.html#probe">上游测试</a>比较同组地址。第一次查询和命中缓存的耗时不同，不要只看一次测试就换地址。</p>
+<p>先看概览当前路径的正常 DNS 应答耗时，再用<a href="#testing">上游测试</a>比较同组地址。第一次查询和命中缓存的耗时不同，不要只看一次测试就换地址。</p>
 <p>DNS 返回了地址或 NOERROR，不等于地址可靠、代理出口正确或网页可访问。怀疑污染时需对照可信路径；切换后坏缓存与旧连接问题见<a href="troubleshooting.html#dns">解析异常</a>。</p>
+
+<h2 id="recipes">兼顾速度和稳定性的起始设置</h2>
+<p>国内先填 223.5.5.5、119.29.29.29；国外先填 1.1.1.1、8.8.8.8。每组两个即可，实际快慢以网络与节点测试为准。先应用普通策略并验收，再单独打开严格模式。</p>
+<table><thead><tr><th>当前代理</th><th>起始查询策略</th><th>严格模式和 SOCKS5</th></tr></thead><tbody><tr><td>NaiLink</td><td>国内、国外均并发</td><td>无本机 SOCKS 服务时留空端口，严格关闭；普通并发仍可使用</td></tr><tr><td>PassWall：Xray / sing-box DNS</td><td>国内并发，国外单一 + 备用</td><td>保留引擎；国外并发不能仅填端口解决。严格需原生接管、本机代理、无自定义 ACL</td></tr><tr><td>PassWall：原生 TCP DNS</td><td>两组并发</td><td>国外并发或严格模式必须有当前代理的无认证本机 SOCKS 端口</td></tr><tr><td>OpenClash</td><td>两组并发，保留节点和 Fake-IP</td><td>严格可在基础测试后开启；并发和严格本身无需 SOCKS，仅国外测试使用</td></tr></tbody></table>
+<h2 id="ports">在哪里查看 SOCKS5 端口</h2>
+<p>OpenClash：「插件设置 → 流量控制」的 SOCKS5／混合端口。PassWall：「基本设置／SOCKS 配置」的本机监听，不同版本字段有所不同。NaiLink 的远端 SOCKS 节点不是本机监听；如果当前版本未提供本地 SOCKS 服务，不能凭空填写一个端口来启用严格模式。</p>
+<pre><code># 只读；缺失的字段会留空
+uci -q get 'passwall.@global[0].node_socks_port'
+uci -q get 'passwall.@global[0].tcp_node_socks_port'
+uci -q get openclash.config.socks_port
+uci -q get openclash.config.mixed_port
+netstat -lnt</code></pre>
+<p>必须确认候选端口在路由器本机监听、支持无认证 SOCKS5 且属于当前代理，再填到 AdZero。不需要对 WAN 开放；1070 只是示例，DNS 53、网页管理、HTTP-only 和透明代理端口都不能代替。</p>
+<h2 id="testing">测试、备用和失败提示</h2>
+<p>在同一编辑器展开「测试已应用的 DNS」。国内使用 UDP；国外通过明确配置的本机 SOCKS5 TCP，留空时跳过。修改先应用再测试，不把旧结果套到新设置。自动备用仅用于单一模式，开关随 DNS 草稿统一应用；并发组无需轮换备用。</p>
+<p>当前代理引擎不支持、缺少 SOCKS5 或 SOCKS 路径不可用时，预检会拒绝应用并保留原配置。具体原因直接显示在界面；不把“上一项操作失败”当成保护已关闭。已有待应用选择可以修改后重新保存，不要反复重启或手删恢复记录。</p>

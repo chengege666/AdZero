@@ -606,7 +606,6 @@ apply_settings() {
 		[ "$(get_uci adzero.main.enabled)" = 0 ] && [ "$(get_uci adblock-fast.config.enabled)" = 0 ] || error '后端正由其他服务管理。'
 		[ ! -e "$FORCE_BACKUP" ] && [ ! -e "$TLS_BACKUP" ] || error '存在未完成恢复记录。'
 	fi
-	guard_was_present=0; [ ! -f "$STATE_DIR/dns-guard.json" ] || guard_was_present=1
 	settings_file=$1
 	settings_plan=$("$SOURCES" plan-check "$settings_file") || error '待应用配置检查失败。'
 	case "$settings_plan" in [01]' '[01]' '[01]' '[01]) ;; *) error '批量应用计划无效。' ;; esac
@@ -614,6 +613,9 @@ apply_settings() {
 	set -- $settings_plan
 	rules_changed=$1; routing_changed=$2; wanted=$3; dns_changed=$4
 	if [ "$rules_changed$routing_changed$dns_changed" = 000 ]; then printf 'no pending changes\n'; return 0; fi
+	if [ "$active" = 1 ] && [ "$dns_changed" = 1 ]; then
+		"$ADAPTER" dns-check "$settings_file" || error 'DNS 组合预检未通过，未修改配置或重载网络。'
+	fi
 	if [ "$rules_changed$dns_changed" = 00 ]; then
 		if [ "$active" = 1 ]; then change_routing "$wanted"
 		else "$POLICY" routing-begin "$wanted" && "$POLICY" routing-save && "$POLICY" routing-finish || error '分流选择保存失败。'; fi
@@ -635,7 +637,7 @@ apply_settings() {
 		fi
 		if [ "$applied" = 1 ]; then
 			"$SOURCES" finish || error '更改已应用，但完成记录未能清理。'
-			if [ "$active" = 1 ] && [ "$dns_changed" = 1 ] && { strict_dns_selected || [ "$guard_was_present" = 1 ]; }; then
+			if [ "$active" = 1 ] && [ "$dns_changed" = 1 ]; then
 				[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero reload || error 'DNS 已应用，但后台检查服务未能刷新。'
 			fi
 			return 0

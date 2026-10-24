@@ -12,7 +12,7 @@ class PolicyTest(unittest.TestCase):
     compile=routing.RoutingCompilerTest.compile
     def test_profile_modes_limits_and_overlap(self):
         self.assertEqual(self.compile('profile',PROFILE),PROFILE)
-        for change in [dict(strict='yes'),dict(proxy_port=53)]:
+        for change in [dict(strict='yes'),dict(proxy_port=53),dict(failover='yes')]:
             p={**copy.deepcopy(PROFILE),**change};self.compile('profile',p,ok=False)
         for addresses in [['1.1.1.1','8.8.8.8','9.9.9.9','8.8.4.4'],['1.1.1.1','223.5.5.5']]:
             p=copy.deepcopy(PROFILE);p['foreign']['servers']=addresses;self.compile('profile',p,ok=False)

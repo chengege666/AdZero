@@ -29,6 +29,7 @@ export function profile(value) {
 	if(ip_bytes(result.domestic.active)==ip_bytes(result.foreign.active))die('国内和国外 DNS 请选择不同地址，以便分别指定连接路径。');
 	if(value.strict!=null&&type(value.strict)!='bool')die('严格 DNS 模式需要明确的开关值。');
 	if(value.strict===true)result.strict=true;
+	if(value.failover!=null){if(type(value.failover)!='bool')die('自动备用需要明确的开关值。');result.failover=value.failover;}
 	if(value.proxy_port!=null){if(type(value.proxy_port)!='int'||value.proxy_port!=0&&(value.proxy_port<1024||value.proxy_port>65535))die('本机 SOCKS5 端口需要 1024–65535。');result.proxy_port=value.proxy_port;}
 	for(let d in addresses(result,'domestic'))for(let f in addresses(result,'foreign'))if(ip_bytes(d)==ip_bytes(f))die('国内和国外的生效 DNS 地址不能重叠。');
 	return result;

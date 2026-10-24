@@ -6,9 +6,9 @@ v0.15.6 保留 PassWall 原有的 dnsmasq 或 ChinaDNS-NG 分流引擎，不再�
 
 ## 统一配置入口
 
-在「运行概览 → DNS 与分流 → DNS 设置」编辑国内／国外地址、查询策略、严格模式和本机 SOCKS5 端口。「DNS 增强 → 上游与备用」仅展示和测试同一份配置，通过“管理 DNS 与分流”回到唯一编辑入口。
+在「运行概览 → DNS 与分流 → DNS 设置」编辑国内／国外地址、查询策略、严格模式和本机 SOCKS5 端口。v0.19.1 起，测试 DNS 和自动备用也在这个入口；增强页已移除“上游与备用”，只保留过滤入口、CNAME 和设备附加规则。
 
-- **单一 + 备用**：第一条参与查询，其他地址仅备用，每组最多八个。需要自动切换时，在 DNS 增强显式启用备用检测。
+- **单一 + 备用**：第一条参与查询，其他地址仅备用，每组最多八个。需要自动切换时，在同一 DNS 编辑器显式启用自动备用。
 - **组内并发**：最多三个地址同时参与查询，首个有效应答胜出；国内和国外分别进行，不跨组竞争。失败、格式异常或查询不匹配的应答不会胜出，但有效应答不等于经过 DNSSEC／防污染认证。
 - **统一应用**：先保存到待应用，再与规则、分流开关一起应用。严格模式会同时选择自动分流。关闭分流时普通 DNS 编辑只保存设置。
 
@@ -69,8 +69,40 @@ DNS 选择保存在 `/etc/config/adzero` 的 `dns_profile` 选项中。界面显
 
 真实 UCI/ucode 的事务与四代理配置测试、真实 rpcd、NaiLink CGI/API-only 检查，均在隔离环境运行。Mihomo 在独立网络命名空间验证默认与自定义 DNS 的查询、广告拦截和连接去向，DNS/SOCKS/HTTP 上游是本地夹具；dae 检查默认、自定义 IPv4 和 IPv6 的实际配置解析。
 
-v0.19.0 使用当前界面与保存的原生 LuCI DOM，验证桌面统一编辑入口、组内策略、严格模式和一次批量提交；RPC 与运行状态为模拟。本轮没有完成新版 DNS 编辑器的手机端浏览器验收。截图：
+v0.19.1 使用当前界面与保存的原生 LuCI DOM，验证桌面统一编辑、前置限制提示、一次批量提交及同页测试；RPC 与运行状态为模拟。360 像素手机视口检查了单列表单布局，没有进行完整手机端应用验收。截图：
 
-![桌面统一 DNS 编辑，模拟状态](images/adzero-v0.19.0-dns-desktop.png)
+![精简后的 DNS 增强页，模拟状态](images/adzero-v0.19.1-enhance-desktop.png)
+
+![手机 DNS 编辑布局，模拟状态](images/adzero-v0.19.1-dns-mobile.png)
 
 实际路由器上游可达性、代理内核重载耗时、LAN DNS 路径和过滤效果仍需设备验收。SDK 构建和隔离测试不等同于这些结果。
+
+## 推荐设置与 SOCKS5 端口
+
+每组先用两个地址即可：国内 `223.5.5.5`、`119.29.29.29`；国外 `1.1.1.1`、`8.8.8.8`。这是起点，快慢以实际网络与节点测试为准，不保证某家始终更快。并发采用首个有效应答，不验证 DNSSEC 或污染；普通 TCP 也不等于 DoH/DoT。
+
+| 当前代理 | 建议先采用 | 严格模式 | 本机 SOCKS5 |
+| --- | --- | --- | --- |
+| NaiLink | 国内并发、国外并发，自动备用关闭 | 没有可用本机 SOCKS 服务时保持关闭 | 不是“节点与订阅”里远端 SOCKS 节点的端口；当前版本若无本地监听，留空，普通并发仍可使用 |
+| PassWall，Xray／sing-box DNS | 国内并发、国外单一 + 备用，保留原引擎 | 基础网络和 UDP/TCP 正常后再开启；默认接管、本机代理须开启且无自定义 ACL | 国外并发不能只填端口解决；该组合要求原生 TCP DNS，不建议为并发盲目换引擎 |
+| PassWall，原生 TCP DNS | 两组并发，先核对可用本机 SOCKS | 基础检查通过后可开启 | 国外并发及严格 TCP 模式必填真实无认证端口 |
+| OpenClash | 两组并发，保留原有 Fake-IP、节点和代理组 | 基础检查通过后可开启 | 并发／严格本身不需要；仅国外测试使用 |
+
+先选择并发与地址并应用，确认普通站点和广告测试正常，再单独开启严格模式并应用；避免一次改动过多而难以定位。不要为使用这套设置更换已正常的代理节点。严格模式范围及浏览器 DoH 限制见上文。
+
+OpenClash 在「插件设置 → 流量控制」查看 SOCKS5 或混合端口；PassWall 在「基本设置／SOCKS 配置」核对实际启用的本机监听。不同版本字段不同，可用下面的只读命令核对候选值：
+
+```sh
+# PassWall：不同版本使用其中一个名称；值缺失不代表 1070 可用
+uci -q get 'passwall.@global[0].node_socks_port'
+uci -q get 'passwall.@global[0].tcp_node_socks_port'
+# OpenClash：仅用于测试时需要
+uci -q get openclash.config.socks_port
+uci -q get openclash.config.mixed_port
+# 确认候选端口实际监听；监听不等于已通过 SOCKS 协议和 DNS 检查
+netstat -lnt
+```
+
+只有确认 `127.0.0.1:候选端口` 可用、无认证且属于当前代理时，才填到 AdZero。无需对 WAN 开放。示例 1070 不是通用默认值；DNS 53、管理网页、HTTP-only 和透明代理端口不能代替 SOCKS5。不要粘贴完整节点或含密码的配置。
+
+官方实现参考：[PassWall 本机 SOCKS 候选](https://github.com/Openwrt-Passwall/openwrt-passwall/blob/main/luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua)、[OpenClash 端口设置](https://github.com/vernesong/OpenClash/blob/master/luci-app-openclash/luasrc/model/cbi/openclash/settings.lua)、[NaiLink 远端 SOCKS 节点表单](https://github.com/slobys/NaiLink/blob/main/apps/web/src/components/ConfigureNodeFormModal/Socks5Form.tsx)。

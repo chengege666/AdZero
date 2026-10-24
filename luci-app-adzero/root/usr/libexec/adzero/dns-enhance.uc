@@ -25,6 +25,7 @@ function atomic(path,value){
 function quote(s){return "'"+replace(''+s,/'/g,"'\\''")+"'";}
 function command(argv){let p=fs.popen(join(' ',map(argv,quote))+' 2>/dev/null','r');if(!p)return null;let raw=p.read('all'),code=p.close();return code==0?raw:null;}
 function settings(){let c=cursor();return lib.config(decode(c.get('adzero','main','dns_enhance')??'null'));}
+function failover_settings(){let s=settings(),p=dns.profile(decode(cursor().get('adzero','main','dns_profile')??'null'));if(p.failover!=null)s.failover=p.failover;return s;}
 function active(){let c=cursor();return c.get('adzero','main','enabled')=='1'&&c.get('adblock-fast','config','enabled')=='1'&&fs.lstat(state+'/managed')?.type=='file'&&!fs.stat(state+'/pause.json');}
 function mutation_locked(){
 	let path='/tmp/adzero.lock',lock=fs.lstat(path);if(!lock)return false;
@@ -84,7 +85,7 @@ function scan(){
 	let result={updated:time(),profile,proxy_port:port,groups};atomic(dir+'/tests.json',result);return result;
 }
 function switch_plan(group,expected,next){
-	let s=settings(),c=cursor(),profile=dns.profile(decode(c.get('adzero','main','dns_profile')??'null')),tested=decode(read(dir+'/tests.json'));
+	let s=failover_settings(),c=cursor(),profile=dns.profile(decode(c.get('adzero','main','dns_profile')??'null')),tested=decode(read(dir+'/tests.json'));
 	if(index(['domestic','foreign'],group)<0||!s.failover||!active()||c.get('adzero','main','routing_enabled')!='1'||
 		profile[group].mode=='parallel'||profile[group].active!=expected||index(profile[group].servers,next)<0||tested?.proxy_port!=(profile.proxy_port??s.proxy_port)||time()-tested.updated>45||
 		sprintf('%J',profile)!=sprintf('%J',tested.profile)||!length(filter(tested.groups[group],r=>r.address==next&&r.ok)))die('DNS 备用切换条件已变化。');
@@ -96,7 +97,7 @@ function switch_plan(group,expected,next){
 	atomic(dir+'/switch-plan.json',payload);print(dir+'/switch-plan.json\n');
 }
 try{
-	if(action=='status'){print(sprintf('%J\n',{config:settings(),profile:dns.profile(decode(cursor().get('adzero','main','dns_profile')??'null')),runtime:published(),tests:decode(read(dir+'/tests.json')),health:decode(read(dir+'/health.json'))}));}
+	if(action=='status'){print(sprintf('%J\n',{config:settings(),dns_failover:failover_settings().failover,profile:dns.profile(decode(cursor().get('adzero','main','dns_profile')??'null')),runtime:published(),tests:decode(read(dir+'/tests.json')),health:decode(read(dir+'/health.json'))}));}
 	else if(action=='cleanup'){cleanup();atomic(dir+'/status.json',{state:'inactive',reason:'stopped',updated:io.now()});}
 	else if(action=='save'){
 		let p=decode(read(shift(ARGV),50000)),before=lib.config(p?.before),after=lib.config(p?.after),c=cursor();
@@ -135,7 +136,7 @@ try{
 	else if(action=='monitor'){
 		let boot=trim(fs.readfile('/proc/sys/kernel/random/boot_id')??''),saved=decode(read(dir+'/health.json')),hist=saved?.boot==boot?saved.groups??{}:{},last=0;
 		while(true){
-			let s=settings(),c=cursor(),stamp=fs.lstat(state+'/adapter.json'),signature=sprintf('%J',[c.get('adzero','main','dns_profile'),s.proxy_port,stamp?.inode,stamp?.mtime,stamp?.size]);
+			let s=failover_settings(),c=cursor(),stamp=fs.lstat(state+'/adapter.json'),signature=sprintf('%J',[c.get('adzero','main','dns_profile'),s.proxy_port,stamp?.inode,stamp?.mtime,stamp?.size]);
 			if(signature!=hist.signature){hist={signature,domestic:{failures:0,last_switch:hist.domestic?.last_switch??0},foreign:{failures:0,last_switch:hist.foreign?.last_switch??0}};}
 			if(s.failover&&active()&&c.get('adzero','main','routing_enabled')=='1'&&io.now()-last>=60&&!fs.stat('/tmp/adzero.lock')){
 				last=io.now();let result=scan();

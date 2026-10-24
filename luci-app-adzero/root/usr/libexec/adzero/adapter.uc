@@ -14,8 +14,8 @@ const state_dir = root + '/etc/adzero';
 const journal_path = state_dir + '/adapter.json';
 const yaml_reader = fs.dirname(sourcepath()) + '/yaml-json.rb';
 const uci = cursor(root + '/etc/config');
-const split_enabled = uci.get('adzero','main','routing_enabled') == '1';
-const dns_profile=route.profile(json(uci.get('adzero','main','dns_profile')??'null'));
+let split_enabled = uci.get('adzero','main','routing_enabled') == '1';
+let dns_profile=route.profile(json(uci.get('adzero','main','dns_profile')??'null'));
 let routing_data = null;
 let pending_nikki = null;
 let journal = null;
@@ -914,7 +914,7 @@ guard=function(action,target){
 	if(action!='socks'&&!dns_profile.strict&&!fs.lstat(state_dir+'/dns-guard.json'))return;
 	let program=getenv('ADZERO_GUARD_PROGRAM')??root+'/usr/libexec/adzero/dns-guard';
 	let argv=['env','ADZERO_GUARD_ROOT='+root,program,action];if(target)argv=[...argv,...target];
-	if(system(argv)!=0)die('严格 DNS 保护未确认，原配置或恢复记录已保留。');
+	if(system(argv)!=0){if(action=='socks')progress.failure('dns_socks_unavailable');die('DNS 路径未确认，原配置或恢复记录已保留。');}
 };
 finish_guard=function(plugin){
 	prepare_pool(plugin);
@@ -960,7 +960,7 @@ policy_prerequisites=function(plugin){
 	if(!split_enabled)return;
 	if(dns_profile.strict){
 		if(plugin=='none'||plugin=='ssrplus')die('严格 DNS 模式需要唯一活动且受支持的代理；不会回落直连。');
-		if(plugin=='nailink'&&!dns_profile.proxy_port)die('NaiLink 严格模式需要填写其本机无认证 SOCKS5 端口。');
+		if(plugin=='nailink'&&!dns_profile.proxy_port){progress.failure('dns_socks_required');die('NaiLink 严格模式需要填写其本机无认证 SOCKS5 端口。');}
 		if(plugin=='nailink')guard('socks');
 		if(plugin=='passwall'){
 			let enabled=0,section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
@@ -972,10 +972,10 @@ policy_prerequisites=function(plugin){
 	}
 	if(plugin=='passwall'&&dns_profile.foreign.mode=='parallel'){
 		let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
-		if((uci.get('passwall',section,'dns_mode')??'tcp')!='tcp')die('PassWall 国外并发当前需要原生 TCP DNS 模式；不会更换现有 Xray／Sing-box 引擎。');
+		if((uci.get('passwall',section,'dns_mode')??'tcp')!='tcp'){progress.failure('dns_passwall_mode');die('PassWall 国外并发当前需要原生 TCP DNS 模式；不会更换现有 Xray／Sing-box 引擎。');}
 	}
 	if(plugin=='passwall'&&passwall_pool_foreign()){
-		if(!dns_profile.proxy_port)die('PassWall 国外并发或严格 TCP DNS 需要填写其本机无认证 SOCKS5 端口，避免直连回落。');
+		if(!dns_profile.proxy_port){progress.failure('dns_socks_required');die('PassWall 国外并发或严格 TCP DNS 需要填写其本机无认证 SOCKS5 端口，避免直连回落。');}
 		guard('socks');
 	}
 }
@@ -983,11 +983,17 @@ policy_prerequisites=function(plugin){
 ;
 
 try {
+	if(action=='dns-check'){
+		let path=shift(ARGV),stat=path?fs.lstat(path):null;
+		if(stat?.type!='file'||stat.size>100000)die('DNS 预检计划无效。');
+		let p=json(fs.readfile(path));if(type(p?.routing_enabled)!='bool')die('DNS 预检开关无效。');
+		split_enabled=p.routing_enabled;dns_profile=route.profile(p.dns??dns_profile);journal=read_journal();active_plugin();exit(0);
+	}
 	journal = read_journal();
 	if (action == 'status') {
 		let protection;try{protection=json(fs.readfile(state_dir+'/dns-guard.json',16001));}catch(e){}
 		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
-			dns_policy:{domestic:dns_profile.domestic.mode??'single',foreign:dns_profile.foreign.mode??'single',strict:!!dns_profile.strict,guard:protection?.state??'off',scope:'default_lan_ipv4_dns',doh:'device_policy_required'},
+			dns_policy:{domestic:dns_profile.domestic.mode??'single',foreign:dns_profile.foreign.mode??'single',strict:!!dns_profile.strict,guard:protection?.state??'off',scope:'default_lan_ipv4_dns',doh:'device_policy_required',passwall_dns_mode:index(['tcp','xray','sing-box','dns2socks'],uci.get('passwall','@global[0]','dns_mode'))>=0?uci.get('passwall','@global[0]','dns_mode'):null},
 			client_dns_verified:false, router_dns_verified:false,reload_pending:!!journal?.nailink_reload_unconfirmed,
 			runtime:native_runtime[journal?.plugin]?native_dns_state():null,
 			runtime_retry_exhausted:(journal?.runtime_retries??0)>=3,
