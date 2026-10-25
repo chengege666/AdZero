@@ -71,6 +71,8 @@ class AdapterTransactionTest(unittest.TestCase):
         self.write("var/run/adblock-fast/dnsmasq.servers", "server=/ads.example/\nserver=/track.example/\n")
         self.inventory = self.root / "inventory.json"
         self.env = {**os.environ, "ADZERO_ADAPTER_ROOT": str(self.root), "ADZERO_ADAPTER_INVENTORY": str(self.inventory), "ADZERO_SERVICE_TIMEOUT": shutil.which('timeout') or '/usr/bin/timeout'}
+        poolcheck=self.write('bin/pool-check','#!/bin/sh\nprintf \'{"ready":true}\\n\'\n');poolcheck.chmod(0o755)
+        self.env['ADZERO_POOL_CHECK_PROGRAM']=str(poolcheck)
         self.select("passwall")
 
     def write(self, path, content):

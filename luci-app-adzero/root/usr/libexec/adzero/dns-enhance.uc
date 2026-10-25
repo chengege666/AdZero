@@ -9,6 +9,7 @@ import { relay } from './dns-relay.uc';
 import * as cache from './rules-cache.uc';
 import * as handoff from './dns-handoff-lib.uc';
 import * as dns from './routing-lib.uc';
+import * as poolstate from './dns-pool-state.uc';
 import { adapter_context } from './observe-state.uc';
 const dir='/tmp/adzero-enhance',state='/etc/adzero',base=fs.dirname(sourcepath()),uid=fs.stat('/proc/self').uid;
 const marker='AdZero DNS enhance v1',table='adzero_dns_enhance';
@@ -88,14 +89,14 @@ if(!fs.lstat(dir)&&!fs.mkdir(dir,0700)&&!fs.lstat(dir))die('无法创建 DNS 增
 let st=fs.lstat(dir);if(st?.type!='directory'||st.uid!=uid||(st.mode&077))die('DNS 增强目录无效。');
 function scan(){
 	let c=cursor(),profile=dns.profile(decode(c.get('adzero','main','dns_profile')??'null')),s=settings(),groups={};
-	let port=profile.proxy_port??s.proxy_port;
-	for(let group in ['domestic','foreign'])groups[group]=map(profile[group].servers,address=>io.test(address,group=='foreign',port));
-	let result={updated:time(),profile,proxy_port:port,groups};atomic(dir+'/tests.json',result);return result;
+	let plugin=adapter_state().plugin,mode=c.get('passwall','@global[0]','dns_mode')??'tcp',routing_enabled=c.get('adzero','main','routing_enabled')=='1',port=profile.proxy_port??s.proxy_port,used=poolstate.paths(profile,plugin,mode,routing_enabled);
+	for(let group in ['domestic','foreign'])groups[group]=map(profile[group].servers,address=>io.test(address,group=='foreign',port,used.domestic));
+	let result={updated:time(),profile,plugin,routing_enabled,passwall_mode:plugin=='passwall'?mode:null,proxy_port:port,groups};atomic(dir+'/tests.json',result);return result;
 }
 function switch_plan(group,expected,next){
 	let s=failover_settings(),c=cursor(),profile=dns.profile(decode(c.get('adzero','main','dns_profile')??'null')),tested=decode(read(dir+'/tests.json'));
 	if(index(['domestic','foreign'],group)<0||!s.failover||!active()||c.get('adzero','main','routing_enabled')!='1'||
-		profile[group].mode=='parallel'||profile[group].active!=expected||index(profile[group].servers,next)<0||tested?.proxy_port!=(profile.proxy_port??s.proxy_port)||time()-tested.updated>45||
+		profile[group].mode=='parallel'||profile[group].active!=expected||index(profile[group].servers,next)<0||tested?.plugin!=adapter_state().plugin||tested.routing_enabled!==true||tested.plugin=='passwall'&&tested.passwall_mode!=(c.get('passwall','@global[0]','dns_mode')??'tcp')||tested?.proxy_port!=(profile.proxy_port??s.proxy_port)||time()-tested.updated>45||
 		sprintf('%J',profile)!=sprintf('%J',tested.profile)||!length(filter(tested.groups[group],r=>r.address==next&&r.ok)))die('DNS 备用切换条件已变化。');
 	let adapter=decode(read(state+'/adapter.json',25000000));if(index(['nailink','passwall','openclash','nikki'],adapter?.plugin)<0||adapter.stage!='configured_unverified'||!adapter.split)die('当前代理分流尚未确认。');
 	let current=decode(command([base+'/sources','list']));if(!current||current.pending)die('有待完成的规则变更。');

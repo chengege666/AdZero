@@ -370,12 +370,12 @@ return view.extend({
 		return _('测试统一配置的地址；并发组无需切换备用。');
 	},
 	dnsTestBlocked:function(){return !!(this.enhanceDirty()||this.draftCount()||this.controlCount()||this.dnsEditing());},
-	dnsResultsKey:function(){var d=this.enhanceData||{};return JSON.stringify([d.profile,d.tests,(this.draft||{}).dns,(this.enhanceDraft||{}).before]);},
+	dnsResultsKey:function(){var d=this.enhanceData||{},s=this.currentStatus||{};return JSON.stringify([d.profile,d.tests,(this.draft||{}).dns,(this.enhanceDraft||{}).before,((s.compatibility||{}).dns||{}).active_proxies,(s.adapter||{}).plugin,((s.adapter||{}).dns_policy||{}).passwall_dns_mode,(s.policy||{}).routing_enabled]);},
 	dnsPolicyError:function(profile){
 		if(!profile)return null;
 		var s=this.currentStatus||{},active=((s.compatibility||{}).dns||{}).active_proxies||[],plugin=active.length===1?active[0]:(s.adapter||{}).plugin,mode=((s.adapter||{}).dns_policy||{}).passwall_dns_mode,parallel=(profile.foreign||{}).mode==='parallel'||profile.foreign_mode==='parallel';
 		if(plugin==='passwall'&&parallel&&mode&&mode!=='tcp')return _('当前 PassWall DNS 模式为 ')+mode+_('，不支持国外并发。请改为“单一 + 备用”；国内仍可并发，无需更换原引擎。');
-		if(!profile.proxy_port&&(plugin==='passwall'&&(parallel||profile.strict&&mode==='tcp')||plugin==='nailink'&&profile.strict))return _('此组合需要当前代理的本机无认证 SOCKS5 端口。请填写真实监听端口，或关闭国外并发／严格模式。');
+		if(!profile.proxy_port&&(plugin==='passwall'&&(parallel||profile.strict&&mode==='tcp')||plugin==='nailink'&&(parallel||profile.strict)))return _('此组合需要当前代理的本机无认证 SOCKS5 端口。请填写真实监听端口，或关闭国外并发／严格模式。');
 		return null;
 	},
 	updateDNSTestActions:function(){
@@ -388,9 +388,10 @@ return view.extend({
 	renderDNSTests:function(){
 		var self=this,d=self.enhanceData||{},result=d.tests||{},saved=d.profile||(self.sourcesData||{}).dns,profile=self.draft&&self.draft.dns||saved,pending=!!(self.draft&&self.draft.dns&&!sameDNS(self.draft.dns,self.draft.dns_before));
 		self.enhanceResultsKey=self.dnsResultsKey();
-		var current=!!(saved&&result.profile&&sameDNS(saved,result.profile)),port={proxy_port:saved&&saved.proxy_port!=null?saved.proxy_port:(d.config||(self.enhanceDraft||{}).before||{}).proxy_port||0},rows=result.groups||{};
+		var s=self.currentStatus||{},active=((s.compatibility||{}).dns||{}).active_proxies||[],plugin=active.length===1?active[0]:(s.adapter||{}).plugin,mode=((s.adapter||{}).dns_policy||{}).passwall_dns_mode;
+		var current=!!(saved&&result.profile&&sameDNS(saved,result.profile)&&result.plugin===plugin&&result.routing_enabled===!!(s.policy||{}).routing_enabled&&(plugin!=='passwall'||result.passwall_mode===(mode||'tcp'))),port={proxy_port:saved&&saved.proxy_port!=null?saved.proxy_port:(d.config||(self.enhanceDraft||{}).before||{}).proxy_port||0},rows=result.groups||{};
 		return el('div',{'class':'az-dns-test-grid'},['domestic','foreign'].map(function(g){var group=profile&&profile[g];return el('section',{'class':'az-dns-test-group','aria-label':g==='domestic'?_('国内 DNS 地址与测试结果'):_('国外 DNS 地址与测试结果')},[
-			el('div',{'class':'az-dns-group-heading'},[el('h4',{},g==='domestic'?_('国内组'):_('国外组')),el('small',{},pending?_('待应用'):(group&&group.mode==='parallel'?_('并发 · '):'')+(g==='domestic'?'UDP':_('经 SOCKS5')))]),
+			el('div',{'class':'az-dns-group-heading'},[el('h4',{},g==='domestic'?_('国内组'):_('国外组')),el('small',{},pending?_('待应用'):(group&&group.mode==='parallel'?_('并发 · '):'')+(g==='domestic'?((rows[g]||[]).some(function(r){return r.path==='direct_tcp';})?'TCP':current?'UDP':_('按接入路径')):_('经 SOCKS5')))]),
 			group&&Array.isArray(group.servers)&&group.servers.length?group.servers.map(function(address){var sample=(rows[g]||[]).find(function(t){return t.address===address;}),valid=current&&(g==='domestic'||result.proxy_port===port.proxy_port),status=pending?_('待应用'):!valid||!sample?sample?_('需重测'):_('尚未测试'):sample.skipped?_('已跳过'):sample.ok?number(sample.ms)+' ms':_('未通过');return el('div',{'class':'az-dns-test-result'},[
 				el('span',{'class':'az-dns-address',translate:'no'},[address,group.mode==='parallel'?el('small',{},_('并发')):address===group.active?el('small',{},pending?_('首选'):_('当前')):null]),el('span',{'class':!pending&&valid&&sample&&!sample.skipped?(sample.ok?'az-test-passed':'az-test-failed'):'az-test-skipped'},status)]);}):el('p',{'class':'az-test-empty'},_('DNS 地址尚未读取')),
 			g==='foreign'&&!port.proxy_port?el('p',{'class':'az-dns-group-hint'},_('填入本机 SOCKS5 端口后可测试')):null]);}));
@@ -684,7 +685,7 @@ return view.extend({
 		}, el('span', { 'class': 'az-toggle-track', 'aria-hidden': 'true' }, el('span', { 'class': 'az-toggle-thumb' })));
 		var page=self.pageKey(),pages=[['overview',_('运行概览'),'shield',_('查看保护状态、实时统计与当前接入。')],['rules',_('过滤规则'),'book',_('按需选择订阅，改完统一应用。')],['controls',_('访问控制'),'check',_('查找误拦截，精确管理域名放行与拦截。')],['enhance',_('DNS 增强'),'settings',_('按需增强解析与过滤，保留原生网络路径。')]],currentPage=pages.filter(function(p){return p[0]===page;})[0];
 		var nodes = [el('a',{'class':'az-skip-link',href:'#az-page-title'},_('跳到页面内容')),el('div', { 'class': 'az-header' }, [
-			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.21.2', alt: '', width: 44, height: 44, draggable: 'false' }),
+			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.21.3', alt: '', width: 44, height: 44, draggable: 'false' }),
 				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, _('广告过滤与 DNS')) ]) ]),
 			el('nav', { 'class': 'az-help-links', 'aria-label': _('帮助与社区') }, helpLinks.map(function(link) {
 				return el('a', { href: link[0], 'class': 'az-button az-help-link az-help-' + link[2], target: '_blank', rel: 'noopener noreferrer', 'aria-label': link[3] }, [icon(link[2]), link[1]]);
@@ -693,7 +694,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.21.2 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.21.3 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -756,18 +757,18 @@ return view.extend({
 				el('p',{'class':'az-card-copy'},_('每行一个 IP。单一模式使用第一条，其余备用；并发模式同时查询同组最多 3 个地址，采用首个有效应答。')),
 				el('div',{'class':'az-dns-grid'},['domestic','foreign'].map(function(g){return el('div',{'class':'az-dns-field'},[el('label',{'for':'az-dns-'+g},g==='domestic'?_('国内 DNS · 直连'):_('国外 DNS · 当前代理')),el('select',{id:'az-dns-'+g+'-mode','aria-label':g==='domestic'?_('国内查询策略'):_('国外查询策略'),value:self.dnsForm[g+'_mode'],disabled:!editable?true:null,change:function(e){self.dnsForm[g+'_mode']=e.target.value;self.updateDNSTestActions();}},[el('option',{value:'single',selected:self.dnsForm[g+'_mode']==='single'?true:null},_('单一 + 备用')),el('option',{value:'parallel',selected:self.dnsForm[g+'_mode']==='parallel'?true:null},_('组内并发'))]),el('textarea',{id:'az-dns-'+g,rows:3,spellcheck:'false',value:self.dnsForm[g],disabled:!editable?true:null,input:function(e){self.dnsForm[g]=e.target.value;self.updateDNSTestActions();}},self.dnsForm[g])]);})),
 				el('label',{'class':'az-setting-row'},[el('span',{'class':'az-setting-copy'},[el('strong',{},_('严格防 DNS 泄露')),el('small',{},_('接入未确认时阻断 DNS，禁止国外组回落直连'))]),el('span',{'class':'az-setting-switch'},[el('input',{id:'az-dns-strict',type:'checkbox',role:'switch',checked:self.dnsForm.strict?true:null,disabled:!editable?true:null,change:function(e){self.dnsForm.strict=e.target.checked;self.updateDNSTestActions();}}),el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))])]),
-				el('label',{'class':'az-enhance-field az-port-field'},[el('span',{},_('本机无认证 SOCKS5 端口')),el('input',{id:'az-dns-proxy-port',type:'number',min:1024,max:65535,value:self.dnsForm.proxy_port||'',placeholder:_('例如 1070'),disabled:!editable?true:null,input:function(e){self.dnsForm.proxy_port=e.target.value?Number(e.target.value):0;self.updateDNSTestActions();}}),el('small',{},_('国外测试使用；NaiLink 严格模式、PassWall 国外并发或严格 TCP 模式必填。'))]),
+				el('label',{'class':'az-enhance-field az-port-field'},[el('span',{},_('本机无认证 SOCKS5 端口')),el('input',{id:'az-dns-proxy-port',type:'number',min:1024,max:65535,value:self.dnsForm.proxy_port||'',placeholder:_('例如 1070'),disabled:!editable?true:null,input:function(e){self.dnsForm.proxy_port=e.target.value?Number(e.target.value):0;self.updateDNSTestActions();}}),el('small',{},_('国外测试使用；NaiLink 国外并发或严格模式、PassWall 国外并发或严格 TCP 模式必填。'))]),
 				el('div',{id:'az-dns-validation','class':'az-dns-validation',role:'status','aria-live':'polite'},self.dnsPolicyError(self.dnsForm)||''),
 				self.disclosure('dns-port-help',_('端口在哪里查看？'),[el('p',{},_('OpenClash：插件设置 → 流量控制中的 SOCKS5／混合端口；并发和严格模式本身不需要填写，仅国外测试使用。PassWall：基本设置或 SOCKS 配置中的本机 SOCKS 监听；以实际启用且无认证的端口为准。')),
-					el('p',{},_('NaiLink：远端节点里的 SOCKS5 端口不是本机监听。若当前版本没有本地 SOCKS 服务，请留空并保持严格模式关闭，国内、国外普通并发仍可用。不要把网页管理、DNS 或透明代理端口填到这里。')),
+					el('p',{},_('NaiLink：远端节点端口不是本机监听。没有可用本机 SOCKS 服务时，两组先使用“单一＋备用”，严格模式关闭。国内并发还需普通 TCP 53 上游可达；不会自动改成 UDP，以免回环。网页、DNS 和透明代理端口不能代替 SOCKS5。')),
 					el('a',{href:'https://slobys.github.io/AdZero/dns.html#recipes',target:'_blank',rel:'noopener noreferrer'},_('查看分插件推荐设置'))]),
 				el('label',{'class':'az-setting-row'},[el('span',{'class':'az-setting-copy'},[el('strong',{},_('自动使用备用 DNS')),el('small',{},_('仅单一模式：连续 3 轮失败后切换同组备用；并发组不轮换'))]),el('span',{'class':'az-setting-switch'},[el('input',{id:'az-dns-failover',type:'checkbox',role:'switch',checked:self.dnsForm.failover?true:null,disabled:!editable?true:null,change:function(e){self.dnsForm.failover=e.target.checked;self.updateDNSTestActions();}}),el('span',{'class':'az-toggle-track','aria-hidden':'true'},el('span',{'class':'az-toggle-thumb'}))])]),
-				self.disclosure('dns-compatibility',_('兼容性与保护范围'),[el('p',{},_('OpenClash／Nikki 使用内核原生并发；NaiLink 使用本机并发转发。PassWall 国内并发可用，国外并发要求原生 TCP DNS 模式和可用的本机 SOCKS5；不会替换现有 Xray／Sing-box 引擎。无代理时仅使用国内组。')),
+				self.disclosure('dns-compatibility',_('兼容性与保护范围'),[el('p',{},_('OpenClash／Nikki 使用内核原生并发。NaiLink／PassWall 的本机并发会先检查实际 TCP 上游，接入后再检查应答；UDP 测试通过不能替代。PassWall 国外并发还要求原生 TCP DNS 模式和可用本机 SOCKS5，不替换 Xray／Sing-box 引擎。无代理时仅使用国内组。')),
 					el('p',{},_('严格模式要求自动分流及唯一活动的受支持代理。接管默认 IPv4 LAN 的 53 端口查询，阻断该 LAN 的 IPv6 DNS 和 853 端口；保留国内组作为节点引导解析例外。加密 DNS 经当前代理转发时由代理提供传输保护；普通 TCP 本身不加密。')),
 					el('p',{},_('浏览器／应用内置 DoH 使用 HTTPS，需在设备侧禁用或统一管理；其他 VLAN、VPN 和代理自身额外 DNS 不在承诺范围。严格模式期间增强 CNAME／设备入口及临时暂停不可用，关闭并恢复仍可使用。'))]),
 				el('div',{'class':'az-action-row'},[el('button',{id:'az-dns-stage',type:'button','class':'az-button az-button-primary',disabled:!editable||!!self.dnsPolicyError(self.dnsForm)?true:null,click:function(){return self.stageDNS();}},_('保存到待应用')),el('button',{id:'az-dns-default',type:'button','class':'az-button az-button-quiet',disabled:!editable?true:null,click:function(){return self.stageDNS(defaultDNS());}},_('恢复默认到待应用'))]),
 				self.disclosure('dns-tests',_('测试已应用的 DNS'),[el('div',{'class':'az-section-heading'},[el('p',{id:'az-enhance-test-hint','class':'az-section-intro'},self.dnsTestHint()),el('button',{id:'az-dns-test',type:'button','class':'az-button az-button-compact',disabled:!editable||self.dnsTestBlocked()?true:null,click:function(){return self.runEnhance('test');}},[icon('refresh'),_('测试 DNS')])]),
-					el('div',{id:'az-enhance-dns-results','aria-live':'polite'},[self.renderDNSTests()]),el('p',{'class':'az-field-hint'},_('国内使用 UDP；国外通过本机 SOCKS5 TCP 测试，未填写时跳过。测试不验证 DNS 污染或网站登录。自动备用每分钟检查，切换后至少冷却 5 分钟。'))]),
+					el('div',{id:'az-enhance-dns-results','aria-live':'polite'},[self.renderDNSTests()]),el('p',{'class':'az-field-hint'},_('国内按已接入模式测试：本机并发使用 TCP，其余使用 UDP；国外经本机 SOCKS5 TCP，未填写时跳过。这是上游可达性测试，不验证污染、原生分流或网站登录。自动备用每分钟检查，切换后至少冷却 5 分钟。'))]),
 				el('p',{'class':'az-operation-note'},_('与其他修改统一应用。严格模式会同时开启自动分流；不支持的组合会拒绝应用并保留恢复记录。'))]) : null]);
 	},
 	stageDNS: function(value){
@@ -1124,7 +1125,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.21.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.21.3' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();

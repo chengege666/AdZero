@@ -35,7 +35,7 @@ let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 let openclash_error = 'hook_failed';
 const native_runtime={passwall:proxy.dns_runtime(root,'passwall'),ssrplus:proxy.dns_runtime(root,'ssrplus')};
-let guard, finish_guard, pool_needed, prepare_pool, strict_target, policy_prerequisites, passwall_pool_foreign, stop_pool;
+let guard, finish_guard, pool_needed, prepare_pool, verify_pool, pool_preflight, strict_target, policy_prerequisites, passwall_pool_foreign, stop_pool;
 
 function quote(s) { return "'" + replace(s, /'/g, "'\\''") + "'"; }
 function service_command(plugin,operation){
@@ -1001,6 +1001,16 @@ stop_pool=function(){
 };
 passwall_pool_foreign=function(){return dns_profile.foreign.mode=='parallel'||dns_profile.strict&&(uci.get('passwall','@global[0]','dns_mode')??'tcp')=='tcp';};
 pool_needed=function(plugin){return plugin=='nailink'&&(dns_profile.strict||dns_profile.domestic.mode=='parallel'||dns_profile.foreign.mode=='parallel')||plugin=='passwall'&&(dns_profile.domestic.mode=='parallel'||passwall_pool_foreign());};
+pool_preflight=function(plugin){
+	if(!pool_needed(plugin))return;
+	let custom=getenv('ADZERO_POOL_CHECK_PROGRAM'),argv=custom?[custom]:['ucode','-S',root+'/usr/libexec/adzero/dns-pool.uc','check-profile'],value;
+	try{value=json(capture([timeout_helper(),'-k','1','15',...argv,plugin,sprintf('%J',dns_profile),uci.get('passwall','@global[0]','dns_mode')??'tcp']));}catch(e){}
+	if(value?.ready!==true){let reason=index(['dns_passwall_mode','dns_socks_required','dns_pool_domestic_failed','dns_pool_foreign_failed'],value?.reason)>=0?value.reason:'dns_pool_preflight_failed';progress.failure(reason);die(progress.messages[reason]);}
+};
+verify_pool=function(plugin){
+	let value=poolstate.probe(dns_profile,plugin,uci.get('passwall','@global[0]','dns_mode')??'tcp');
+	if(!value.ready){progress.failure(value.reason);die(progress.messages[value.reason]);}
+};
 prepare_pool=function(plugin){
 	if(!pool_needed(plugin))return;
 	function fail(reason){progress.failure(reason);die(progress.messages[reason]);}
@@ -1010,11 +1020,12 @@ prepare_pool=function(plugin){
 	if(!fs.lstat(marker))atomic(marker,'AdZero DNS pool v1\n',0600);
 	if(system(service_command('adzero-dns','enable'))!=0)fail('dns_pool_start_failed');
 	let expected=sprintf('%J',route.effective(dns_profile));
-	if(poolstate.inspect(root,expected).ready)return;
+	if(poolstate.inspect(root,expected).ready){verify_pool(plugin);return;}
 	let requested=monotime();
 	if(system([timeout_helper(),'-k','3','15',...service_command('adzero-dns','start')])!=0)fail('dns_pool_start_failed');
 	let value=poolstate.wait_ready(root,expected,requested);
 	if(!value.ready)fail(value.reason);
+	verify_pool(plugin);
 };
 strict_target=function(plugin){
 	if(plugin=='nailink')return '127.0.0.1#5358';
@@ -1030,7 +1041,6 @@ policy_prerequisites=function(plugin){
 	if(dns_profile.strict){
 		if(plugin=='none'||plugin=='ssrplus')die('严格 DNS 模式需要唯一活动且受支持的代理；不会回落直连。');
 		if(plugin=='nailink'&&!dns_profile.proxy_port){progress.failure('dns_socks_required');die('NaiLink 严格模式需要填写其本机无认证 SOCKS5 端口。');}
-		if(plugin=='nailink')guard('socks');
 		if(plugin=='passwall'){
 			let enabled=0,section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
 			for(let kind in ['acl_rule','acl_rules'])uci.foreach('passwall',kind,s=>{if(s.enabled=='1')enabled++;});
@@ -1045,8 +1055,9 @@ policy_prerequisites=function(plugin){
 	}
 	if(plugin=='passwall'&&passwall_pool_foreign()){
 		if(!dns_profile.proxy_port){progress.failure('dns_socks_required');die('PassWall 国外并发或严格 TCP DNS 需要填写其本机无认证 SOCKS5 端口，避免直连回落。');}
-		guard('socks');
 	}
+	if(plugin=='nailink'&&dns_profile.foreign.mode=='parallel'&&!dns_profile.proxy_port){progress.failure('dns_socks_required');die('NaiLink 国外并发需要可用的本机无认证 SOCKS5 出口；透明代理端口不能代替。请保留国外“单一＋备用”。');}
+	pool_preflight(plugin);
 }
 
 ;

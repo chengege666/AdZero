@@ -19,12 +19,14 @@ v0.15.6 保留 PassWall 原有的 dnsmasq 或 ChinaDNS-NG 分流引擎，不再�
 | 接入 | 国内并发 | 国外并发 | 严格模式条件 |
 | --- | --- | --- | --- |
 | OpenClash / Nikki | 内核原生多上游 | 每个上游绑定现有代理组 | DNS 已运行、可确认监听端口、唯一活动代理 |
-| NaiLink | 本机有界 TCP 并发 | 本机 TCP 并发，保留原生 DNS 缓存 | 必须填写并验证当前 NaiLink 的无认证 SOCKS5 端口 |
+| NaiLink | 本机有界 TCP 并发，必须通过实际 TCP 上游预检 | 经本机 SOCKS5 TCP 并发，保留原生 DNS 缓存 | 国外并发及严格模式均需可用的本机无认证 SOCKS5；国内 TCP 路径也须通过检查 |
 | PassWall | 本机 TCP 并发，保留 dnsmasq / ChinaDNS-NG | 要求原生 `dns_mode=tcp` 和经验证的本机 SOCKS5 端口 | 默认 LAN、无启用的自定义 ACL、原生 DNS 接管与本机代理开启 |
 | 无代理 | dnsmasq 原生多上游 | 不使用 | 不支持严格模式 |
 | SSR Plus+ | 保留原生配置 | 保留原生配置 | 目前仅基础广告过滤 |
 
-PassWall 的国外并发，以及严格模式中的原生 TCP DNS，均要求填写并验证本机 SOCKS5 端口，防止透明代理模式或端口排除导致直连。PassWall 的 Xray／sing-box DNS 模式不能直接填写多个远端地址。此版拒绝不支持的国外并发组合，保留原引擎，不会静默改成 TCP 或替换节点。NaiLink 的本机转发器不增加共享缓存；OpenClash / Nikki 保留原有 Fake-IP 和节点选择。并发会增加上游请求量，未必快于已经命中本地缓存的查询。
+NaiLink 的国外并发与严格模式，以及 PassWall 的国外并发与严格原生 TCP DNS，均要求可用的本机无认证 SOCKS5。独立并发进程不会自动继承 NaiLink 内核内部的 DNS 出口。国内并发使用普通 TCP 53，UDP 查询成功不能证明这条路径可用；不能盲目改成 UDP，以免被透明 DNS 再次截获而回环。v0.21.3 起先检查待应用配置的实际路径，再在入口启动和代理重载后检查应答；失败按原事务恢复，不静默改协议、引擎、节点或跨组回落。
+
+PassWall 的 Xray／sing-box DNS 模式不能直接填写多个远端地址，仍拒绝国外并发组合。NaiLink 的本机转发器不增加共享缓存；OpenClash / Nikki 使用内核原生并发，保留 Fake-IP 和节点选择，不因本次修改而新增 SOCKS 要求。并发会增加上游请求量，未必快于已经命中本地缓存的查询。
 
 ## 严格 DNS 防旁路的范围
 
@@ -83,12 +85,20 @@ v0.19.1 使用当前界面与保存的原生 LuCI DOM，验证桌面统一编辑
 
 | 当前代理 | 建议先采用 | 严格模式 | 本机 SOCKS5 |
 | --- | --- | --- | --- |
-| NaiLink | 国内并发、国外并发，自动备用关闭 | 没有可用本机 SOCKS 服务时保持关闭 | 不是“节点与订阅”里远端 SOCKS 节点的端口；当前版本若无本地监听，留空，普通并发仍可使用 |
-| PassWall，Xray／sing-box DNS | 国内并发、国外单一 + 备用，保留原引擎 | 基础网络和 UDP/TCP 正常后再开启；默认接管、本机代理须开启且无自定义 ACL | 国外并发不能只填端口解决；该组合要求原生 TCP DNS，不建议为并发盲目换引擎 |
-| PassWall，原生 TCP DNS | 两组并发，先核对可用本机 SOCKS | 基础检查通过后可开启 | 国外并发及严格 TCP 模式必填真实无认证端口 |
+| NaiLink | 两组先使用单一 + 备用；国内并发通过 TCP 预检后再考虑 | 无可用本机 SOCKS 时关闭 | 远端节点、网页、透明代理端口均不能代替本机 SOCKS；缺少此出口不能开启国外并发 |
+| PassWall，Xray／sing-box DNS | 国外单一 + 备用；国内先单一，TCP 预检通过后可并发 | 基础网络和 UDP/TCP 正常后再开启；默认接管、本机代理须开启且无自定义 ACL | 国外并发不能只填端口解决；该组合要求原生 TCP DNS，不建议为并发盲目换引擎 |
+| PassWall，原生 TCP DNS | 先单一，确认国内 TCP 与国外 SOCKS DNS 均可达后再并发 | 基础检查通过后可开启 | 国外并发及严格 TCP 模式必填真实无认证端口 |
 | OpenClash | 两组并发，保留原有 Fake-IP、节点和代理组 | 基础检查通过后可开启 | 并发／严格本身不需要；仅国外测试使用 |
 
-先选择并发与地址并应用，确认普通站点和广告测试正常，再单独开启严格模式并应用；避免一次改动过多而难以定位。不要为使用这套设置更换已正常的代理节点。严格模式范围及浏览器 DoH 限制见上文。
+先应用普通策略，确认普通站点、广告过滤与终端 UDP/TCP DNS，再单独开启严格模式；避免一次改动过多。没有 SOCKS 的 NaiLink 继续使用原生单一 DNS，不要填一个猜测端口，也不要为并发更换已正常的节点。严格模式范围及浏览器 DoH 限制见上文。
+
+### 并发失败与测速的注意事项
+
+- NaiLink／PassWall 共用的本机并发路径要求国内 TCP 53 真正可达。TCP 443 能连接、UDP DNS 很快，都不能替代；也不能仅凭这一现象断言是哪家运营商或哪条防火墙规则造成。
+- 应用前检查新草稿中的地址和 SOCKS 端口，未通过时不切入新路径。入口启动、复用及代理重载后还要获得有效 DNS 应答，端口监听或健康文件存在不算通过。
+- 「测试已应用的 DNS」对本机并发的国内组使用 TCP，其余国内路径使用 UDP；国外经明确的本机 SOCKS5 TCP。切换代理、PassWall DNS 引擎或地址后需重测。这是上游可达性检查，不是原生分流、DNSSEC、防污染或网页验收。
+- 接入失败请先看具体的国内 TCP／国外代理 DNS 错误；不要反复重启、全局清连接或删恢复记录。保留上一份可用配置，普通模式可改为两组单一后重新保存并应用；严格模式失败仍遵守阻断与恢复规则。
+- SSR Plus+ 仅支持广告名单接入；PassWall 2 / HomeProxy 仍只识别，不把它们列为并发适配完成。
 
 OpenClash 在「插件设置 → 流量控制」查看 SOCKS5 或混合端口；PassWall 在「基本设置／SOCKS 配置」核对实际启用的本机监听。不同版本字段不同，可用下面的只读命令核对候选值：
 
@@ -104,5 +114,7 @@ netstat -lnt
 ```
 
 只有确认 `127.0.0.1:候选端口` 可用、无认证且属于当前代理时，才填到 AdZero。无需对 WAN 开放。示例 1070 不是通用默认值；DNS 53、管理网页、HTTP-only 和透明代理端口不能代替 SOCKS5。不要粘贴完整节点或含密码的配置。
+
+没有本机 SOCKS 不妨碍 NaiLink 的原生单一 DNS；但 AdZero 国外测速会跳过，国外自动备用也不会用未验证的地址切换。保存多个备用地址不等于它们都已通过测试。
 
 官方实现参考：[PassWall 本机 SOCKS 候选](https://github.com/Openwrt-Passwall/openwrt-passwall/blob/main/luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua)、[OpenClash 端口设置](https://github.com/vernesong/OpenClash/blob/master/luci-app-openclash/luasrc/model/cbi/openclash/settings.lua)、[NaiLink 远端 SOCKS 节点表单](https://github.com/slobys/NaiLink/blob/main/apps/web/src/components/ConfigureNodeFormModal/Socks5Form.tsx)。

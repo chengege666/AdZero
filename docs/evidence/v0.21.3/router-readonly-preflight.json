@@ -1,0 +1,1 @@
+{ "scope": "read_only_candidate_preflight_no_apply", "rows": [ { "case": "single", "ready": true }, { "case": "both_without_socks", "ready": false, "reason": "dns_socks_required" }, { "case": "domestic_parallel", "ready": false, "reason": "dns_pool_domestic_failed" } ] }

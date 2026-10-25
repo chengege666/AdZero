@@ -5,6 +5,14 @@ import * as dns from './routing-lib.uc';
 import { pool } from './dns-pool-lib.uc';
 import { now } from './dns-io.uc';
 import * as state from './dns-pool-state.uc';
+let action=shift(ARGV);if(action=='--')action=shift(ARGV);
+if(action=='check-profile'){
+	let plugin=shift(ARGV),profile=shift(ARGV),mode=shift(ARGV),result;
+	try{if(index(['nailink','passwall'],plugin)<0||length(profile??'')>10000)die('invalid');result=state.preflight(json(profile),plugin,mode);}
+	catch(e){result={ready:false,reason:'dns_pool_preflight_failed'};}
+	print(sprintf('%J\n',result));exit(0);
+}
+if(action!=null)die('Unexpected DNS pool action');
 let server=null,signature=null,last=0,error=null,effective=null;
 try{while(true){
 	if(now()-last>=1){last=now();let c=cursor(),profile=dns.profile(json(c.get('adzero','main','dns_profile')??'null')),file=fs.stat('/etc/daed/adzero-cn-domains.txt');effective=sprintf('%J',dns.effective(profile));let next=sprintf('%J',[effective,file?.inode,file?.mtime,file?.size]);

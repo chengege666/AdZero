@@ -1,0 +1,177 @@
+{
+  "source_sha256": "eb7f348c3c32eb80217da2c292c64196b7bc4e18cefefa7f08d681fafd15142b",
+  "cases": [
+    {
+      "ok": false,
+      "error": "DNS \u5e76\u53d1\u5165\u53e3\u5c1a\u672a\u5c31\u7eea\uff0c\u5c1a\u672a\u91cd\u8f7d\u4ee3\u7406\u3002",
+      "elapsed": 0.029431758999976,
+      "case": "old_fractional_wait",
+      "code": 1,
+      "reason": null
+    },
+    {
+      "ok": true,
+      "error": null,
+      "elapsed": 0.73154961800003,
+      "case": "delayed_650ms_domestic_parallel",
+      "code": 0,
+      "reason": null,
+      "dns_queries": 24
+    },
+    {
+      "ok": true,
+      "error": null,
+      "elapsed": 0.10951851699997,
+      "case": "foreign_parallel",
+      "code": 0,
+      "reason": null,
+      "dns_queries": 24
+    },
+    {
+      "ok": true,
+      "error": null,
+      "elapsed": 0.10969712400004,
+      "case": "both_parallel",
+      "code": 0,
+      "reason": null,
+      "dns_queries": 24
+    },
+    {
+      "ok": true,
+      "error": null,
+      "elapsed": 0.10746511699995,
+      "case": "strict_via_local_socks",
+      "code": 0,
+      "reason": null,
+      "dns_queries": 24
+    },
+    {
+      "ok": false,
+      "error": "DNS \u5e76\u53d1\u5165\u53e3\u76d1\u542c\u5931\u8d25\uff0c\u53ef\u80fd\u6709\u5176\u4ed6\u670d\u52a1\u5360\u7528\u6240\u9700\u7aef\u53e3\u3002",
+      "elapsed": 0.10443069099995,
+      "case": "occupied_5356_udp",
+      "code": 1,
+      "reason": "dns_pool_bind_failed"
+    },
+    {
+      "ok": false,
+      "error": "DNS \u5e76\u53d1\u5165\u53e3\u76d1\u542c\u5931\u8d25\uff0c\u53ef\u80fd\u6709\u5176\u4ed6\u670d\u52a1\u5360\u7528\u6240\u9700\u7aef\u53e3\u3002",
+      "elapsed": 0.10611349800001,
+      "case": "occupied_5356_tcp",
+      "code": 1,
+      "reason": "dns_pool_bind_failed"
+    },
+    {
+      "ok": false,
+      "error": "DNS \u5e76\u53d1\u5165\u53e3\u76d1\u542c\u5931\u8d25\uff0c\u53ef\u80fd\u6709\u5176\u4ed6\u670d\u52a1\u5360\u7528\u6240\u9700\u7aef\u53e3\u3002",
+      "elapsed": 0.10703973700004,
+      "case": "occupied_5357_udp",
+      "code": 1,
+      "reason": "dns_pool_bind_failed"
+    },
+    {
+      "ok": false,
+      "error": "DNS \u5e76\u53d1\u5165\u53e3\u76d1\u542c\u5931\u8d25\uff0c\u53ef\u80fd\u6709\u5176\u4ed6\u670d\u52a1\u5360\u7528\u6240\u9700\u7aef\u53e3\u3002",
+      "elapsed": 0.10354502199993,
+      "case": "occupied_5357_tcp",
+      "code": 1,
+      "reason": "dns_pool_bind_failed"
+    },
+    {
+      "ok": false,
+      "error": "DNS \u5e76\u53d1\u5165\u53e3\u76d1\u542c\u5931\u8d25\uff0c\u53ef\u80fd\u6709\u5176\u4ed6\u670d\u52a1\u5360\u7528\u6240\u9700\u7aef\u53e3\u3002",
+      "elapsed": 0.10745391299997,
+      "case": "occupied_5358_udp",
+      "code": 1,
+      "reason": "dns_pool_bind_failed"
+    },
+    {
+      "ok": false,
+      "error": "DNS \u5e76\u53d1\u5165\u53e3\u76d1\u542c\u5931\u8d25\uff0c\u53ef\u80fd\u6709\u5176\u4ed6\u670d\u52a1\u5360\u7528\u6240\u9700\u7aef\u53e3\u3002",
+      "elapsed": 0.103645056,
+      "case": "occupied_5358_tcp",
+      "code": 1,
+      "reason": "dns_pool_bind_failed"
+    },
+    {
+      "ok": true,
+      "error": null,
+      "elapsed": 0.11002247600004,
+      "case": "ready_after_failed_starts",
+      "code": 0,
+      "reason": null,
+      "dns_queries": 24,
+      "reuse_upstream_failure_rejected": true
+    },
+    {
+      "ok": false,
+      "error": "\u56fd\u5185\u5e76\u53d1\u9700\u8981\u7684 TCP DNS \u8def\u5f84\u672a\u901a\u8fc7\u3002UDP \u6d4b\u8bd5\u6210\u529f\u4e0d\u4ee3\u8868\u6b64\u8def\u5f84\u53ef\u7528\uff1b\u8bf7\u4fdd\u7559\u6216\u6539\u7528\u201c\u5355\u4e00\uff0b\u5907\u7528\u201d\u3002",
+      "elapsed": 0.104486157,
+      "case": "listener_ready_but_tcp_unreachable",
+      "code": 1,
+      "reason": "dns_pool_domestic_failed"
+    },
+    {
+      "ok": false,
+      "error": "\u56fd\u5185\u5e76\u53d1\u9700\u8981\u7684 TCP DNS \u8def\u5f84\u672a\u901a\u8fc7\u3002UDP \u6d4b\u8bd5\u6210\u529f\u4e0d\u4ee3\u8868\u6b64\u8def\u5f84\u53ef\u7528\uff1b\u8bf7\u4fdd\u7559\u6216\u6539\u7528\u201c\u5355\u4e00\uff0b\u5907\u7528\u201d\u3002",
+      "elapsed": 0.10544464500003,
+      "case": "listener_ready_but_servfail",
+      "code": 1,
+      "reason": "dns_pool_domestic_failed"
+    },
+    {
+      "ok": false,
+      "error": "\u56fd\u5916\u5e76\u53d1\u7684\u4ee3\u7406 DNS \u8def\u5f84\u672a\u901a\u8fc7\u3002\u8bf7\u6838\u5bf9\u672c\u673a SOCKS5\u3001\u8282\u70b9\u548c\u4e0a\u6e38\uff1b\u6ca1\u6709\u56de\u843d\u76f4\u8fde\u3002",
+      "elapsed": 0.10749541500002,
+      "case": "socks_dns_failure_no_direct_fallback",
+      "code": 1,
+      "reason": "dns_pool_foreign_failed"
+    },
+    {
+      "case": "candidate_socks_not_stored_uci",
+      "ready": true
+    },
+    {
+      "case": "missing_socks_rejected",
+      "ready": false,
+      "reason": "dns_socks_required"
+    },
+    {
+      "case": "test_uses_actual_udp_or_tcp",
+      "results": [
+        {
+          "address": "192.0.2.57",
+          "ok": true,
+          "ms": 0.7,
+          "path": "direct_udp"
+        },
+        {
+          "address": "192.0.2.57",
+          "ok": false,
+          "ms": null,
+          "path": "direct_tcp"
+        }
+      ]
+    },
+    {
+      "case": "udp_success_does_not_prove_tcp",
+      "ready": false,
+      "reason": "dns_pool_domestic_failed"
+    },
+    {
+      "case": "passwall_domestic_same_tcp_risk",
+      "ready": false,
+      "reason": "dns_passwall_mode"
+    },
+    {
+      "case": "passwall_xray_domestic_preflight",
+      "ready": false,
+      "reason": "dns_pool_domestic_failed"
+    },
+    {
+      "case": "passwall_tcp_via_socks",
+      "ready": true
+    }
+  ],
+  "scope": "real OpenWrt ucode, production prepare function and pool, loopback DNS in private netns; async service manager fixture; no router or proxy acceptance"
+}

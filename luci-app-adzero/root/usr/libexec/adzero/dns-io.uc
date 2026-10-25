@@ -35,9 +35,9 @@ export function exchange(address,port,query,tcp,proxy_port){
 		s.close();return response;
 	}catch(e){if(s)s.close();return null;}
 };
-export function test(address,foreign,proxy_port){
+export function test(address,foreign,proxy_port,domestic_tcp){
 	if(foreign&&!proxy_port)return {address,ok:false,skipped:true,reason:'proxy_endpoint_required',ms:null};
-	let start=now(),r=exchange(address,53,wire.question(foreign?'www.google.com':'www.baidu.com',int(start*100)%65536),foreign,foreign?proxy_port:0);
+	let start=now(),r=exchange(address,53,wire.question(foreign?'www.google.com':'www.baidu.com',int(start*100)%65536),foreign||!!domestic_tcp,foreign?proxy_port:0);
 	let ok=r!=null&&(wire.u16(r,2)&15)==0&&wire.u16(r,6)>0;
-	return {address,ok,ms:ok?int((now()-start)*10000)/10.0:null,path:foreign?'socks5_tcp':'direct_udp'};
+	return {address,ok,ms:ok?int((now()-start)*10000)/10.0:null,path:foreign?'socks5_tcp':domestic_tcp?'direct_tcp':'direct_udp'};
 };

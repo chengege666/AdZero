@@ -20,6 +20,8 @@ const root={root},state_dir=root+'/etc/adzero';
 let prepare_pool,dns_profile=route.profile(json(fs.readfile(root+'/profile')));
 function atomic(path,raw,mode){{let f=fs.open(path,'wx',mode);if(!f)die('write');f.write(raw);f.close();}}
 function pool_needed(plugin){{return true;}}
+// These cases isolate readiness; native pool integration tests the real probe.
+function verify_pool(plugin){{}}
 function service_command(plugin,action){{return ['/bin/sh',root+'/service',action];}}
 function timeout_helper(){{return '/usr/bin/timeout';}}
 fs.writefile(root+'/expected',sprintf('%J',route.effective(dns_profile)));
@@ -101,6 +103,6 @@ class PoolStart(unittest.TestCase):
         source=(LIB/'adapter.uc').read_text();function=source[source.index('policy_prerequisites=function(plugin)'):source.index('\ntry {')]
         for port in [0,1070]:
             p=json.loads(json.dumps(PROFILE));p.update(strict=True,proxy_port=port)
-            script=self.root/'strict.uc';script.write_text("import * as route from '"+str(LIB/'routing-lib.uc')+"';let dns_profile=route.profile("+json.dumps(p)+");let policy_prerequisites,split_enabled=true,calls=[],progress={failure:()=>true},guard=s=>push(calls,s),strict_target=()=>true;"+function+"let ok=true;try{policy_prerequisites('nailink');}catch(e){ok=false;}print(sprintf('%J',{ok,calls}));")
+            script=self.root/'strict.uc';script.write_text("import * as route from '"+str(LIB/'routing-lib.uc')+"';let dns_profile=route.profile("+json.dumps(p)+");let policy_prerequisites,split_enabled=true,calls=[],progress={failure:()=>true},guard=s=>push(calls,s),strict_target=()=>true,pool_preflight=()=>push(calls,'pool');"+function+"let ok=true;try{policy_prerequisites('nailink');}catch(e){ok=false;}print(sprintf('%J',{ok,calls}));")
             run=subprocess.run(UCODE+[str(script)],text=True,capture_output=True);self.assertEqual(run.returncode,0,run.stderr);r=json.loads(run.stdout)
-            self.assertEqual(r['ok'],bool(port));self.assertEqual(r['calls'],['socks','preflight'] if port else [])
+            self.assertEqual(r['ok'],bool(port));self.assertEqual(r['calls'],['preflight','pool'] if port else [])

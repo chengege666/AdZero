@@ -1,7 +1,39 @@
 'use strict';
 import * as fs from 'fs';
-import { now } from './dns-io.uc';
+import { now, exchange } from './dns-io.uc';
+import * as wire from './dns-enhance-lib.uc';
+import * as route from './routing-lib.uc';
 const errors=['dns_pool_bind_failed','dns_pool_runtime_failed'];
+export function paths(p,plugin,mode,enabled){if(enabled===false)return {domestic:false,foreign:false};return {
+	domestic:plugin=='nailink'?(p.strict===true||p.domestic.mode=='parallel'):plugin=='passwall'&&p.domestic.mode=='parallel',
+	foreign:plugin=='nailink'?(p.strict===true||p.foreign.mode=='parallel'):plugin=='passwall'&&(p.foreign.mode=='parallel'||p.strict===true&&mode=='tcp')
+};};
+function responsive(raw){return raw!=null&&!(wire.u16(raw,2)&0x0200)&&(wire.u16(raw,2)&15)==0&&wire.u16(raw,6)>0;}
+// Public names avoid a local synthetic .invalid NXDOMAIN masquerading as
+// a working upstream. This checks reachability, not DNSSEC or pollution.
+function question(group){return wire.question(group=='domestic'?'www.baidu.com':'www.google.com',int(now()*1000)%65536);}
+export function preflight(profile,plugin,mode,ask){
+	let p=route.profile(profile),used=paths(p,plugin,mode);ask??=exchange;
+	if(plugin=='passwall'&&p.foreign.mode=='parallel'&&mode!='tcp')return {ready:false,reason:'dns_passwall_mode'};
+	if(used.foreign&&!p.proxy_port)return {ready:false,reason:'dns_socks_required'};
+	for(let group in ['domestic','foreign'])if(used[group]){
+		let ok=false;
+		for(let address in route.addresses(p,group)){
+			let raw=ask(address,53,question(group),true,group=='foreign'?p.proxy_port:0);
+			if(responsive(raw)){ok=true;break;}
+		}
+		if(!ok)return {ready:false,reason:'dns_pool_'+group+'_failed'};
+	}
+	return {ready:true};
+};
+export function probe(profile,plugin,mode,ports,ask){
+	let used=paths(profile,plugin,mode);ask??=exchange;
+	for(let group in ['domestic','foreign'])if(used[group]){
+		let raw=ask('127.0.0.1',ports?.[group]??(group=='domestic'?5356:5357),question(group),true,0);
+		if(!responsive(raw))return {ready:false,reason:'dns_pool_'+group+'_failed'};
+	}
+	return {ready:true};
+};
 export function inspect(root,expected,at){
 	let path=(root??'')+'/tmp/adzero-dns-pool.json',s=fs.lstat(path),value;
 	if(!s)return {ready:false,reason:'dns_pool_not_ready'};

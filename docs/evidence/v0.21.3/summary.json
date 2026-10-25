@@ -1,0 +1,28 @@
+{
+  "version": "0.21.3",
+  "source_sha256": "eb7f348c3c32eb80217da2c292c64196b7bc4e18cefefa7f08d681fafd15142b",
+  "python_tests": 626,
+  "ui_assertions": 393,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 63,
+  "installer_delivery_cases": 6,
+  "native_components": [
+    "rpc",
+    "openclash",
+    "passwall",
+    "nailink_gateway",
+    "dns_pool_start",
+    "alias_entry",
+    "strict_guard"
+  ],
+  "browser_qa": "validation and result text changes: UI regressions; existing visual layout retained",
+  "router_modified": false,
+  "router_readonly_preflight_cases": 3,
+  "device_acceptance": "not_run",
+  "audit_findings": "actual shared-pool TCP and SOCKS preflight, positive DNS response after startup and restart, NaiLink foreign SOCKS prerequisite, transport-aware tests and stale result invalidation",
+  "dns_pool_cases": 22,
+  "dns_pool_queries": 120,
+  "rpc_checks": 72,
+  "new_runtime_dependencies": false
+}

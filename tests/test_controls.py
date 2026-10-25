@@ -74,6 +74,7 @@ else:
 (r/'service.json').write_text(json.dumps(service))
 ''', True)
         self.env['ADZERO_BACKEND_INIT'] = str(backend)
+        self.env['ADZERO_POOL_CHECK_PROGRAM']=str(self.write('bin/pool-check','#!/bin/sh\nprintf \'{"ready":true}\\n\'\n',True))
         for name in ('adapter','backend'):
             key = 'ADZERO_ADAPTER' if name == 'adapter' else 'ADZERO_BACKEND_CHECK'
             self.env[key] = str(self.write('bin/'+name, '#!/bin/sh\nexec '+shlex.join(UCODE+[str(LIBEXEC/(name+'.uc')),'--'])+' "$@"\n', True))

@@ -3,14 +3,15 @@
 <table><thead><tr><th>分组</th><th>默认当前地址</th><th>默认备选</th></tr></thead><tbody><tr><td>国内</td><td>223.5.5.5</td><td>119.29.29.29</td></tr><tr><td>国外</td><td>1.1.1.1</td><td>8.8.8.8</td></tr></tbody></table>
 <p>支持有效 IPv4/IPv6 数字地址与标准 53 端口，不接受 DoH/DoT 网址、域名或任意端口。两组实际参与查询的地址不可重叠。普通 TCP DNS 本身不加密，代理传输与节点出口的加密范围取决于所用协议。</p>
 <h2 id="edit">修改与应用</h2>
-<ol><li>每行一个 IP，选择“单一 + 备用”或“组内并发”。</li><li>按需设置本机无认证 SOCKS5 端口；国外测试使用，NaiLink 严格模式、PassWall 国外并发及严格 TCP 模式必填。</li><li>保存到待应用，核对规则和分流草稿，再点一次「应用并重新加载」。</li></ol>
+<ol><li>每行一个 IP，先使用“单一 + 备用”；满足路径条件后再选“组内并发”。</li><li>本机无认证 SOCKS5 用于国外测试；NaiLink 国外并发及严格模式、PassWall 国外并发及严格 TCP 模式必填。</li><li>保存到待应用，核对规则和分流草稿，再点一次「应用并重新加载」。</li></ol>
 <p>单一模式最多八个地址，仅第一条参与查询，其他为<a href="enhancements.html#failover">同组备用</a>。并发模式最多三个地址同时查询，采用首个有效应答；格式错误、查询不匹配或失败应答不会抢先胜出。国内、国外不跨组竞争。并发增加请求量，不能把污染应答自动变成可信答案。</p>
 <p>升级保留原模式，不自动开启并发或严格模式。恢复默认也先进入草稿，不立即改网络。并发模式不再做备用轮换。</p>
 <h2 id="routing">自动分流要不要开</h2>
 <p>普通广告过滤无需开启自动分流。需要由 AdZero 设置国内直连、国外经当前受支持代理的 DNS 与分流时，再开启。关闭时保留个人地址库；设置通常在下一次开启自动分流时使用。</p>
 <p>PassWall 保留原有 dnsmasq 或 ChinaDNS-NG 引擎和原生节点、分组策略。AdZero 不保证任意代理引擎或自定义 ACL 都支持自动分流；无法确认时会提示，不强制转换引擎。</p>
 <h2 id="compatibility">并发兼容性</h2>
-<table><thead><tr><th>接入</th><th>并发路径</th><th>限制</th></tr></thead><tbody><tr><td>OpenClash / Nikki</td><td>内核原生多上游，国外各项绑定当前代理组</td><td>保留 Fake-IP 与节点选择</td></tr><tr><td>NaiLink</td><td>本机有界 TCP 并发，继续使用原生缓存</td><td>严格模式要求可用的本机 SOCKS5 端口</td></tr><tr><td>PassWall</td><td>国内使用本机 TCP 并发；国外要求原生 TCP DNS 模式和经验证的本机 SOCKS5</td><td>Xray / sing-box 远端并发组合会拒绝应用，不静默改引擎</td></tr><tr><td>无代理</td><td>国内组使用 dnsmasq 多上游</td><td>不使用国外组，不支持严格模式</td></tr></tbody></table>
+<table><thead><tr><th>接入</th><th>并发路径</th><th>限制</th></tr></thead><tbody><tr><td>OpenClash / Nikki</td><td>内核原生多上游，国外各项绑定当前代理组</td><td>保留 Fake-IP 与节点选择；并发本身无需 SOCKS</td></tr><tr><td>NaiLink</td><td>国内普通 TCP，国外经本机 SOCKS5 TCP；沿用原生缓存</td><td>国内 TCP 路径必须可达；国外并发和严格模式必须有可用本机 SOCKS5</td></tr><tr><td>PassWall</td><td>国内使用本机 TCP 并发；国外要求原生 TCP DNS 模式和经验证的本机 SOCKS5</td><td>国内也须通过 TCP 预检；Xray / sing-box 国外并发会拒绝，不静默改引擎</td></tr><tr><td>无代理</td><td>国内组使用 dnsmasq 多上游</td><td>不使用国外组，不支持严格模式</td></tr></tbody></table>
+<p>独立并发进程不会自动继承 NaiLink 内核内部的 DNS 出口。UDP 查询成功不代表 TCP 53 可用；不能盲目改为 UDP，以免再次进入透明 DNS 而回环。SSR Plus+ 仅适配广告名单，PassWall 2 / HomeProxy 仅识别，未宣称支持这些并发能力。</p>
 <h2 id="strict">严格 DNS 防旁路</h2>
 <p>默认关闭，需要自动分流与唯一活动的受支持代理、单个默认 IPv4 LAN、端口 53 的单个 dnsmasq，以及 nft / conntrack。代理接入未确认时阻断 DNS；通过 UDP/TCP 应答检查后开放。切换期间通常在下一轮五秒检查中发起恢复，实际耗时取决于代理；不会因代理失败回落到国内组或直连。</p>
 <ul><li>接管默认 IPv4 LAN 的 UDP/TCP 53，阻断该 LAN 的 IPv6 DNS 与 TCP/UDP 853；其他 IPv6 数据继续保留。</li><li>国内生效 DNS 组保留为代理节点引导解析例外。这不是零外发承诺；其他进程显式查询这些例外地址也不在“国外组不直连”保证内。</li><li>浏览器／应用内置 DoH 经 HTTPS 443，需在设备侧关闭或统一管理。此版不解密 HTTPS，不阻断全部 443，也不声称覆盖任意 DoH、其他 VLAN、VPN 或绕过本路由器的流量。</li><li>PassWall 严格模式要求默认 DNS 接管与本机代理开启，没有启用的自定义 ACL。SSR Plus+ 暂不支持。</li><li>严格模式期间不接入可选 CNAME／设备增强入口，也不提供临时暂停。关闭并恢复仍可使用；恢复冲突保留记录，不覆盖手动设置。</li></ul>
@@ -21,9 +22,9 @@
 
 <h2 id="recipes">兼顾速度和稳定性的起始设置</h2>
 <p>国内先填 223.5.5.5、119.29.29.29；国外先填 1.1.1.1、8.8.8.8。每组两个即可，实际快慢以网络与节点测试为准。先应用普通策略并验收，再单独打开严格模式。</p>
-<table><thead><tr><th>当前代理</th><th>起始查询策略</th><th>严格模式和 SOCKS5</th></tr></thead><tbody><tr><td>NaiLink</td><td>国内、国外均并发</td><td>无本机 SOCKS 服务时留空端口，严格关闭；普通并发仍可使用</td></tr><tr><td>PassWall：Xray / sing-box DNS</td><td>国内并发，国外单一 + 备用</td><td>保留引擎；国外并发不能仅填端口解决。严格需原生接管、本机代理、无自定义 ACL</td></tr><tr><td>PassWall：原生 TCP DNS</td><td>两组并发</td><td>国外并发或严格模式必须有当前代理的无认证本机 SOCKS 端口</td></tr><tr><td>OpenClash</td><td>两组并发，保留节点和 Fake-IP</td><td>严格可在基础测试后开启；并发和严格本身无需 SOCKS，仅国外测试使用</td></tr></tbody></table>
+<table><thead><tr><th>当前代理</th><th>起始查询策略</th><th>严格模式和 SOCKS5</th></tr></thead><tbody><tr><td>NaiLink</td><td>两组先用单一 + 备用；国内 TCP 预检通过后再考虑并发</td><td>无可用本机 SOCKS 时关闭严格模式和国外并发，不猜端口</td></tr><tr><td>PassWall：Xray / sing-box DNS</td><td>国外单一 + 备用；国内 TCP 预检通过后可并发</td><td>保留引擎；国外并发不能仅填端口解决。严格需原生接管、本机代理、无自定义 ACL</td></tr><tr><td>PassWall：原生 TCP DNS</td><td>先用单一；国内 TCP 与国外 SOCKS DNS 检查通过后再并发</td><td>国外并发或严格模式必须有当前代理的无认证本机 SOCKS 端口</td></tr><tr><td>OpenClash / Nikki</td><td>可使用内核原生两组并发，保留节点和 Fake-IP</td><td>严格在基础测试后开启；并发和严格本身无需 SOCKS，仅国外测试使用</td></tr></tbody></table>
 <h2 id="ports">在哪里查看 SOCKS5 端口</h2>
-<p>OpenClash：「插件设置 → 流量控制」的 SOCKS5／混合端口。PassWall：「基本设置／SOCKS 配置」的本机监听，不同版本字段有所不同。NaiLink 的远端 SOCKS 节点不是本机监听；如果当前版本未提供本地 SOCKS 服务，不能凭空填写一个端口来启用严格模式。</p>
+<p>OpenClash：「插件设置 → 流量控制」的 SOCKS5／混合端口。PassWall：「基本设置／SOCKS 配置」的本机监听，不同版本字段有所不同。NaiLink 的远端 SOCKS 节点不是本机监听；没有本地 SOCKS 服务时，不能凭空填端口开启国外并发或严格模式。透明代理端口也不能代替。</p>
 <pre><code># 只读；缺失的字段会留空
 uci -q get 'passwall.@global[0].node_socks_port'
 uci -q get 'passwall.@global[0].tcp_node_socks_port'
@@ -31,11 +32,13 @@ uci -q get openclash.config.socks_port
 uci -q get openclash.config.mixed_port
 netstat -lnt</code></pre>
 <p>必须确认候选端口在路由器本机监听、支持无认证 SOCKS5 且属于当前代理，再填到 AdZero。不需要对 WAN 开放；1070 只是示例，DNS 53、网页管理、HTTP-only 和透明代理端口都不能代替。</p>
+<p>未填本机 SOCKS 不妨碍 NaiLink 原生单一 DNS，但 AdZero 国外测试会跳过，国外自动备用不会用未验证的地址切换。保存了备用地址不代表它们都已验证。</p>
 <h2 id="testing">测试、备用和失败提示</h2>
 <p>v0.21.1 修复部分固件不支持小数秒 sleep 导致的并发启动误判。入口使用原生毫秒等待，仍在三秒内核对健康、配置和进程；无需为此关闭并发或严格模式。开启失败且回滚成功时，页面显示本次操作已撤销、原配置已恢复，保护保持关闭；恢复尚未确认时会保留恢复提示。</p>
 <p>启动请求失败、入口未就绪、健康记录不符和监听失败会分别说明。监听失败时先核对端口归属；不要强行终止未知服务。广告规则已载入而入口未就绪，仍不能视为本次开启成功。</p>
 <p>组内并发的 TCP／SOCKS DNS 请求会短时复用已建立的连接，减少重复握手；连接按组、目标地址和本机 SOCKS 端口隔离，空闲 10 秒或达到寿命限制后关闭。不缓存 DNS 答案、不修改 TTL、不改变国内／国外出口。复用连接失效时仅在原查询时限内尝试一次新连接；国外组不会因此回退直连。</p>
-<p>在同一编辑器展开「测试已应用的 DNS」。国内使用 UDP；国外通过明确配置的本机 SOCKS5 TCP，留空时跳过。修改先应用再测试，不把旧结果套到新设置。自动备用仅用于单一模式，开关随 DNS 草稿统一应用；并发组无需轮换备用。</p>
+<p>v0.21.3 起，本机并发在应用前核对新配置的实际 TCP／SOCKS DNS 路径；启动、复用入口和代理重载后还要验证 DNS 应答。端口监听、健康文件存在都不能单独证明可用。国内 TCP 失败时不会改为 UDP，国外失败时不会回落直连；应用失败按原事务恢复，恢复未确认时保留记录。</p>
+<p>展开「测试已应用的 DNS」：国内本机并发使用 TCP，其余国内路径使用 UDP；国外通过明确配置的本机 SOCKS5 TCP，留空时跳过。代理、PassWall 引擎或地址改变后需重测。测试仅说明上游可达，不证明原生分流、抗污染或网页可用。自动备用仅用于单一模式，并发组无需轮换。</p>
 <p>当前代理引擎不支持、缺少 SOCKS5 或 SOCKS 路径不可用时，预检会拒绝应用并保留原配置。具体原因直接显示在界面；不把“上一项操作失败”当成保护已关闭。已有待应用选择可以修改后重新保存，不要反复重启或手删恢复记录。</p>
 
-<p>代理切换后如显示“代理接入待同步”，当前运行代理与上次接入尚未一致。PassWall 使用 Xray 或 Sing-box DNS 时，国外组使用“单一＋备用”，国内组可保留并发；修改后先保存到待应用，再统一应用。v0.21.2 起两次预检均核对这份新计划，旧的不兼容设置不会阻止修正；真正的配置冲突仍会拒绝。旧接入记录和旧设备检测不能证明新代理已完成过滤接入。</p>
+<p>代理切换后如显示“代理接入待同步”，当前运行代理与上次接入尚未一致。PassWall 的 Xray / Sing-box DNS 使用国外单一＋备用；国内并发还须通过新路径 TCP 预检。NaiLink 无本机 SOCKS 时先保留两组单一。修改后保存到待应用，再统一应用；两次预检都核对新计划，真正的配置冲突仍会拒绝。旧接入记录和旧设备检测不能证明新接入已完成。</p>

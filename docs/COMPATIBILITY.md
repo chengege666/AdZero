@@ -41,6 +41,8 @@ v0.12.3 对 NaiLink 单独查询实际代理内核状态，不再把常驻管理
 
 ## 不自动处理的情况
 
+v0.21.3 对 NaiLink / PassWall 的独立 DNS 并发新增实际 TCP 路径预检与接入后的应答校验。NaiLink 国外并发及严格模式要求可用本机 SOCKS5；国内并发还要求普通 TCP 53 上游可达。PassWall 国内有相同传输条件，国外仍要求原生 TCP DNS 与本机 SOCKS5。OpenClash / Nikki 使用原生内核并发，不走该独立进程；不新增 SOCKS 要求。该检查不证明任意版本、终端或公网链路已验收，详见 [DNS 设置](DNS_SETTINGS.md)。
+
 - 同时有多个启用/运行的代理，或无法识别的代理核心。
 - Nikki core_only、禁用但已有内容的混入文件。
 - Fake-IP whitelist 模式；不擅自改变原模式语义。
