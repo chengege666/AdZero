@@ -202,6 +202,14 @@ function proxyBlocker(s) {
 	return unsupported?(_('已识别 ')+(names[unsupported.id]||unsupported.id)+_('，当前版本尚未支持安全接入。请保留该插件的原生 DNS 设置。')):null;
 }
 function pluginRunning(p){return p&&(typeof p.active==='boolean'?p.active:p.runtime==='running');}
+function connectionSelection(s) {
+	var a=s.adapter||{},dns=(s.compatibility||{}).dns||{},active=dns.active_proxies;
+	if(s.stale||s.state!=='configured_unverified'||!Array.isArray(active))return {known:false,plugin:a.plugin,pending:false};
+	if(active.length>1||(dns.uncertain_proxies||[]).length)return {known:true,plugin:null,pending:true,detail:proxyBlocker(s)||_('代理运行状态待确认，暂未同步。')};
+	var plugin=active[0]||'none',policy=a.dns_policy||{},incompatible=plugin==='passwall'&&policy.foreign==='parallel'&&policy.passwall_dns_mode&&policy.passwall_dns_mode!=='tcp';
+	return {known:true,plugin:plugin,pending:plugin!==(a.plugin||'none')||!!incompatible,
+		detail:incompatible?_('已应用的国外 DNS 仍为并发，与当前 PassWall DNS 引擎不兼容。请将国外组改为“单一＋备用”后统一应用；国内组可保留并发。'):_('已识别新的运行路径，后台尚未完成接入同步；旧接入记录不代表当前代理已加载规则。')};
+}
 function flags(s) {
 	var enabled = s.state === 'configured_unverified';
 	return { enabled: enabled, paused: s.state === 'paused', canDisable: !s.stale && !operationActive(s) && (enabled || s.state === 'paused' || (s.state === 'inconsistent' && s.managed === true)),
@@ -314,13 +322,14 @@ return view.extend({
 		return Promise.resolve();
 	},
 	renderConnection:function(s){
-		var self=this,inv=s.compatibility||{},list=(inv.plugins||[]).filter(function(p){return p.installed;}),a=s.adapter||{},f=flags(s),current=list.filter(function(p){return p.id===a.plugin;})[0];
+		var self=this,inv=s.compatibility||{},list=(inv.plugins||[]).filter(function(p){return p.installed;}),a=s.adapter||{},f=flags(s),selection=connectionSelection(s),current=list.filter(function(p){return p.id===a.plugin;})[0];
 		return el('details',{'class':'az-card az-connection',id:'az-connection',open:self.connectionOpen?true:null,toggle:function(e){self.connectionOpen=e.target.open;}},[
-			el('summary',{},[el('div',{'class':'az-summary-title'},[icon('shield'),el('div',{},[el('strong',{},_('代理接入')),el('p',{},a.plugin&&a.plugin!=='none'?(names[a.plugin]||a.plugin)+_(' · ')+(f.enabled&&pluginRunning(current)?_('配置已应用'):_('接入待确认')):_('自动识别当前代理，保留原生 DNS 路径'))])]),el('span',{'class':'az-chevron','aria-hidden':'true'})]),
+			el('summary',{},[el('div',{'class':'az-summary-title'},[icon('shield'),el('div',{},[el('strong',{},_('代理接入')),el('p',{},selection.pending?(names[selection.plugin]||(selection.plugin==='none'?_('路由器 DNS'):_('接入待确认')))+_(' · 待同步'):a.plugin&&a.plugin!=='none'?(names[a.plugin]||a.plugin)+_(' · ')+(f.enabled&&pluginRunning(current)?_('配置已应用'):_('接入待确认')):_('自动识别当前代理，保留原生 DNS 路径'))])]),el('span',{'class':'az-chevron','aria-hidden':'true'})]),
 			el('div',{'class':'az-disclosure-body'},[
-				list.length?list.map(function(p){var running=pluginRunning(p),selected=f.enabled&&p.id===a.plugin&&running;return el('div',{'class':'az-connection-row'},[
+				list.length?list.map(function(p){var running=pluginRunning(p),selected=f.enabled&&!selection.pending&&p.id===a.plugin&&running;return el('div',{'class':'az-connection-row'},[
 					el('div',{},[el('strong',{},names[p.id]||p.id),el('p',{},p.adapter_supported===false?_('已识别；当前仅检测，尚不接管。'):p.core_checked===false?_('内核状态待确认，请检查原插件。'):selected?_('已接入；实际过滤效果可在电脑检测。'):p.runtime==='stopped'?_('内核已停止，保留原有设置。'):running?_('已识别正在运行的代理。'):_('尚未确认运行状态。'))]),
 					pill(selected?_('当前接入'):running?_('运行中'):p.runtime==='stopped'?_('已停止'):_('待确认'),selected?'positive':p.core_checked===false?'attention':'neutral')]);}):el('p',{'class':'az-empty'},_('未检测到代理插件。确认系统 DNS 可用后，可使用路由器 DNS 过滤。')),
+				selection.pending?el('p',{'class':'az-inline-warning'},selection.detail):null,
 				el('p',{'class':'az-field-hint'},_('切换时先停止旧代理，再启动新代理。多个代理或未知内核状态下暂停自动接管，避免改变正在工作的网络。'))
 			])]);
 	},
@@ -499,11 +508,14 @@ return view.extend({
 	updateStatsActions:function(){var a=document.getElementById('az-stats-actions'),n=document.getElementById('az-stats-notice'),key=JSON.stringify([!!(this.observation||{}).available,!!this.statsBusy,!!this.statsIntent,!!this.busy,this.statsNotice]);if(key===this.statsPaintKey)return;this.statsPaintKey=key;if(a)dom.content(a,[this.renderStatsActions()]);if(n)dom.content(n,[this.statsNotice||'']);},
 	renderMetrics:function(s){
 		var o=this.observation||{},available=o.available===true,hasCounts=available&&(o.active===true||o.queries>0||!!o.reset_token),ready=flags(s).enabled&&(s.backend||{}).state==='ready';
-		var connection=available&&o.connection?o.connection:null,adapter=connection||s.adapter||{},active=names[adapter.plugin]||(adapter.plugin==='none'?_('路由器 DNS'):_('接入待确认')),
+		var selection=connectionSelection(s),connection=available&&o.connection?o.connection:null;
+		if(selection.known&&connection&&connection.plugin!==selection.plugin)connection=null;
+		var adapter=connection||s.adapter||{},active=names[adapter.plugin]||(adapter.plugin==='none'?_('路由器 DNS'):_('接入待确认')),
 			synced=connection?connection.confirmed===true:adapter.stage==='configured_unverified'&&(!adapter.runtime||adapter.runtime.state==='ready'),ratio=available&&o.queries>0?(100*o.blocked/o.queries).toFixed(1)+'%':'—';
 		var connectionHint=adapter.runtime&&adapter.runtime.state==='missing'?(adapter.runtime_retry_exhausted?_('DNS 规则未加载，请重新加载'):_('DNS 规则未加载，等待自动同步')):adapter.runtime&&adapter.runtime.state==='unknown'?_('配置已保存，DNS 加载待确认'):synced?_('规则已同步'):_('接入待确认');
 		var detected=(((s.compatibility||{}).dns||{}).active_proxies||[]);
 		if(adapter.plugin==='none'&&detected.length===1&&names[detected[0]]){active=names[detected[0]];synced=false;}
+		if(selection.pending){active=names[selection.plugin]||(selection.plugin==='none'?_('路由器 DNS'):_('接入待确认'));synced=false;connectionHint=_('代理接入待同步');}
 		return el('div',{'class':'az-stats-grid az-live-grid'},[
 			el('section',{'class':'az-card az-stat az-stat-accent'},[el('span',{'class':'az-stat-label'},_('已拦截 DNS 请求')),
 				el('strong',{'class':'az-number'},number(hasCounts?o.blocked:null)),el('p',{},available&&o.active?_('DNS请求拦截占比 ')+ratio:observationHint(o,s)),el('small',{'class':'az-stat-hint'},_('已拦截 ÷ 已观察请求，不代表网页广告拦截率。'))]),
@@ -555,12 +567,12 @@ return view.extend({
 	},
 	renderVerificationSteps:function(v){return el('div',{'class':'az-test-steps','aria-live':'polite'},[pill(v.marker?_('已识别设备'):_('等待设备')),pill(v.blocked?_('拦截符合预期'):_('等待拦截样本')),pill(v.normal?_('正常网站可解析'):_('等待正常样本')),el('span',{},number(v.remaining)+_(' 秒内有效'))]);},
 	renderVerification:function(){
-		var self=this,o=self.observation||{},v=o.verification||{},enabled=flags(self.currentStatus||{}).enabled,passed=o.available&&o.active&&enabled&&!(self.currentStatus||{}).stale&&v.state==='passed',waiting=o.available&&o.active&&enabled&&!(self.currentStatus||{}).stale&&v.state==='waiting';
+		var self=this,o=self.observation||{},v=o.verification||{},selection=connectionSelection(self.currentStatus||{}),enabled=flags(self.currentStatus||{}).enabled,changing=selection.pending||selection.known&&o.connection&&o.connection.plugin!==selection.plugin,passed=o.available&&o.active&&enabled&&!changing&&!(self.currentStatus||{}).stale&&v.state==='passed',waiting=o.available&&o.active&&enabled&&!changing&&!(self.currentStatus||{}).stale&&v.state==='waiting';
 		self.verificationPaintKey=verificationKey(self);
-		var title=!enabled?_('开启或恢复保护后可检测实际过滤效果。'):passed?_('此设备检测通过'):waiting?_('等待电脑发出检测查询'):!o.available?_('统计组件尚未就绪，广告过滤可继续使用。'):!o.active?observationHint(o,self.currentStatus||{}):v.state==='expired'?_('检测已过期，可重新开始'):_('确认实际过滤效果');
+		var title=!enabled?_('开启或恢复保护后可检测实际过滤效果。'):changing?_('当前代理接入待同步，完成后可检测。'):passed?_('此设备检测通过'):waiting?_('等待电脑发出检测查询'):!o.available?_('统计组件尚未就绪，广告过滤可继续使用。'):!o.active?observationHint(o,self.currentStatus||{}):v.state==='expired'?_('检测已过期，可重新开始'):_('确认实际过滤效果');
 		return el('section',{'class':'az-card az-verification-card'},[
 			el('div',{'class':'az-section-heading'},[el('div',{},[el('h3',{},_('效果检测')),el('p',{id:'az-test-description','class':'az-card-copy'},title)]),
-				el('button',{id:'az-test-start',type:'button','class':'az-button '+(passed?'az-button-quiet':'az-button-primary'),disabled:self.observationBusy||self.busy||!flags(self.currentStatus||{}).enabled||!o.available||!o.active||waiting?true:null,click:function(){return self.startVerification();}},self.observationBusy?_('准备中…'):passed?_('再次检测'):_('开始检测'))]),
+				el('button',{id:'az-test-start',type:'button','class':'az-button '+(passed?'az-button-quiet':'az-button-primary'),disabled:self.observationBusy||self.busy||changing||!flags(self.currentStatus||{}).enabled||!o.available||!o.active||waiting?true:null,click:function(){return self.startVerification();}},self.observationBusy?_('准备中…'):passed?_('再次检测'):_('开始检测'))]),
 			passed?el('p',{'class':'az-test-success'},[icon('check'),_('已收到此设备的拦截应答和正常解析：'),el('span',{translate:'no'},v.client||'')]):null,
 			self.verificationNotice?el('p',{'class':'az-inline-warning',role:'status'},self.verificationNotice):null,
 			self.verificationCommands&&!passed?el('div',{'class':'az-test-instructions'},[
@@ -639,7 +651,7 @@ return view.extend({
 	},
 	renderPanel: function(s) {
 		var self = this; self.currentStatus = s;
-		var f = flags(s), inv = s.compatibility || {}, dns = inv.dns || {};
+		var f = flags(s), inv = s.compatibility || {}, dns = inv.dns || {},selection=connectionSelection(s);
 		var confirming=confirmingAction(self);
 		var operating=operationActive(s);
 		var adapter = s.adapter || {}, backend = s.backend || {}, busy = self.busy, locked = busy || s.stale || confirming || operating, loading = s.state === 'loading';
@@ -657,6 +669,7 @@ return view.extend({
 			paused: pause.error ? _('自动恢复未完成，当前仍暂停。请尝试立即恢复，或关闭并恢复原设置。') : pause.remaining > 0 ? _('约 ') + Math.ceil(pause.remaining / 60) + _(' 分钟后自动恢复；重启路由器也会尝试恢复。') : _('暂停已到期，正在等待后台恢复保护。'),
 			inconsistent: _('部分配置尚未确认，请关闭并恢复后再开启。'), external_owner: _('请先在原服务中关闭过滤后端，再启用 AdZero。'),
 			unavailable: _('请检查插件依赖是否完整，然后重新检测。'), error: _('状态请求未完成，请查看错误详情后重新检测。'), loading: _('页面已就绪，正在读取后端与代理状态。') };
+		if(f.enabled&&selection.pending){titles.configured_unverified=_('代理接入待同步');descriptions.configured_unverified=selection.detail;}
 		if(adapter.reload_pending){titles.inconsistent=_('正在确认代理重载');descriptions.inconsistent=_('本批规则已保留，后台正在核对代理是否完成。请勿重复应用或重载。');}
 		if(strictDNS&&guardState!=='active'){titles.inconsistent=guardState==='error'?_('严格 DNS 保护待检查'):_('严格 DNS 正在等待接入');descriptions.inconsistent=guardState==='error'?_('防火墙保护未能确认，请检查日志；可关闭并恢复。'):_('DNS 查询保持阻断，等待代理接入确认。可重新检测，或关闭并恢复。');}
 		if(confirming){titles.inconsistent=self.notice.action==='disable'?_('正在确认关闭'):_('正在确认配置');descriptions.inconsistent=_('操作已执行，正在核对最终状态，请勿重复提交。');}
@@ -671,7 +684,7 @@ return view.extend({
 		}, el('span', { 'class': 'az-toggle-track', 'aria-hidden': 'true' }, el('span', { 'class': 'az-toggle-thumb' })));
 		var page=self.pageKey(),pages=[['overview',_('运行概览'),'shield',_('查看保护状态、实时统计与当前接入。')],['rules',_('过滤规则'),'book',_('按需选择订阅，改完统一应用。')],['controls',_('访问控制'),'check',_('查找误拦截，精确管理域名放行与拦截。')],['enhance',_('DNS 增强'),'settings',_('按需增强解析与过滤，保留原生网络路径。')]],currentPage=pages.filter(function(p){return p[0]===page;})[0];
 		var nodes = [el('a',{'class':'az-skip-link',href:'#az-page-title'},_('跳到页面内容')),el('div', { 'class': 'az-header' }, [
-			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.21.1', alt: '', width: 44, height: 44, draggable: 'false' }),
+			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.21.2', alt: '', width: 44, height: 44, draggable: 'false' }),
 				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, _('广告过滤与 DNS')) ]) ]),
 			el('nav', { 'class': 'az-help-links', 'aria-label': _('帮助与社区') }, helpLinks.map(function(link) {
 				return el('a', { href: link[0], 'class': 'az-button az-help-link az-help-' + link[2], target: '_blank', rel: 'noopener noreferrer', 'aria-label': link[3] }, [icon(link[2]), link[1]]);
@@ -680,7 +693,7 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.21.1 · '+_('测试版'))]));
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.21.2 · '+_('测试版'))]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -693,10 +706,10 @@ return view.extend({
 		if (self.rulesOpen) { nodes.push(self.renderRules(s)); return el('div',{'class':'az-app'},nodes); }
 		if (self.controlsOpen) { nodes.push(self.renderControls(s));return el('div',{'class':'az-app'},nodes); }
 		if (self.enhanceOpen) {nodes.push(self.renderEnhance());return el('div',{'class':'az-app'},nodes);}
-		nodes.push(el('section', { 'class': 'az-card az-hero' + (f.enabled && !operating ? ' is-on' : '') + (loading ? ' is-loading' : ''), 'aria-busy': loading || confirming || operating ? 'true' : 'false' }, [
+		nodes.push(el('section', { 'class': 'az-card az-hero' + (f.enabled && !operating && !selection.pending ? ' is-on' : '') + (loading ? ' is-loading' : ''), 'aria-busy': loading || confirming || operating ? 'true' : 'false' }, [
 			el('div', { 'class': 'az-hero-main' }, [ el('div', { 'class': 'az-hero-heading' }, [ icon('shield'),
 				el('h3', { 'class': 'az-hero-title' }, titles[s.state] || _('状态暂未确认')),
-				pill(s.stale ? _('上次状态') : loading ? _('检测中') : operating ? _('同步中') : confirming ? _('确认中') : f.enabled ? _('已开启') : f.paused ? _('已暂停') : s.state === 'disabled' ? _('已关闭') : _('需要留意'), operating ? 'neutral' : f.enabled ? 'positive' : s.state === 'disabled' || loading || confirming ? 'neutral' : 'attention') ]),
+				pill(s.stale ? _('上次状态') : loading ? _('检测中') : operating ? _('同步中') : confirming ? _('确认中') : selection.pending ? _('待同步') : f.enabled ? _('已开启') : f.paused ? _('已暂停') : s.state === 'disabled' ? _('已关闭') : _('需要留意'), selection.pending ? 'attention' : operating ? 'neutral' : f.enabled ? 'positive' : s.state === 'disabled' || loading || confirming ? 'neutral' : 'attention') ]),
 				el('p', { 'class': 'az-hero-copy' }, descriptions[s.state] || _('请重新检测当前状态。')), blocker ? el('p', { 'class': 'az-inline-warning' }, [ icon('info'), blocker ]) : null ]),
 			el('div', { 'class': 'az-switch-control' }, [ el('span', {}, loading ? _('等待状态确认') : _('保护开关')), toggle ]) ]));
 		if (f.enabled || f.paused) nodes.push(el('div', { 'class': 'az-pause-bar' }, f.paused ? [
@@ -1111,7 +1124,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.21.1' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.21.2' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();

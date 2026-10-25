@@ -828,6 +828,13 @@ function rollback_update(previous) {
 	providers.gc([journal]);
 }
 
+function select_dns_candidate(path,wanted) {
+	let stat=path?fs.lstat(path):null;
+	if(stat?.type!='file'||stat.size>100000)die('DNS 预检计划无效。');
+	let p=json(fs.readfile(path));if(type(p?.routing_enabled)!='bool')die('DNS 预检开关无效。');
+	if(wanted!=null&&(p.routing_enabled?'1':'0')!=wanted)die('分流预检目标与待应用计划不一致。');
+	split_enabled=p.routing_enabled;dns_profile=route.profile(p.dns??dns_profile);
+}
 function routing_check(wanted) {
 	if(index(['0','1'],wanted)<0)die('自动分流目标无效。');
 	if(wanted=='0'&&dns_profile.strict)die('请同时关闭严格 DNS 模式，再关闭自动分流。');
@@ -1046,10 +1053,7 @@ policy_prerequisites=function(plugin){
 
 try {
 	if(action=='dns-check'){
-		let path=shift(ARGV),stat=path?fs.lstat(path):null;
-		if(stat?.type!='file'||stat.size>100000)die('DNS 预检计划无效。');
-		let p=json(fs.readfile(path));if(type(p?.routing_enabled)!='bool')die('DNS 预检开关无效。');
-		split_enabled=p.routing_enabled;dns_profile=route.profile(p.dns??dns_profile);journal=read_journal();active_plugin();exit(0);
+		select_dns_candidate(shift(ARGV));journal=read_journal();active_plugin();exit(0);
 	}
 	journal = read_journal();
 	if (action == 'status') {
@@ -1067,7 +1071,11 @@ try {
 	} else if (action == 'pending') { if(journal?.nailink_reload_unconfirmed){print('nailink\n');exit(0);}exit(1); }
 	else if (action == 'settle') settle_nailink();
 	else if (action == 'remove'||action=='detach') restore();
-	else if(action=='routing-check')print(routing_check(shift(ARGV))+'\n');
+	else if(action=='routing-check'){
+		let wanted=shift(ARGV),path=shift(ARGV);
+		if(path!=null)select_dns_candidate(path,wanted);
+		print(routing_check(wanted)+'\n');
+	}
 	else if(action=='reconfigure-nailink')reconfigure_nailink();
 	else if(action=='reconfigure-nailink-rules')reconfigure_nailink(true);
 	else if(action=='reconfigure-passwall')reconfigure_passwall();

@@ -643,7 +643,9 @@ apply_settings() {
 	fi
 	routing_method=full
 	if [ "$routing_changed" = 1 ] && [ "$active" = 1 ]; then
-		routing_method=$("$ADAPTER" routing-check "$wanted") || error '分流配置预检未通过，尚未应用更改。'
+		# Both preflights must inspect the same candidate. The old DNS policy
+		# may be incompatible with a newly selected proxy and need correction.
+		routing_method=$("$ADAPTER" routing-check "$wanted" "$settings_file") || error '分流配置预检未通过，尚未应用更改。'
 	fi
 	if "$SOURCES" begin-batch "$settings_file"; then
 		applied=0

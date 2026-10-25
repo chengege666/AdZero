@@ -1,0 +1,29 @@
+{
+  "source_sha256": "b3fa85dd1674dd0ad1ac36d04f40ade96af192dac1e991d85e185ebb30101342",
+  "results": [
+    {
+      "name": "full",
+      "exit_code": 0
+    },
+    {
+      "name": "check_rpc",
+      "exit_code": 0
+    },
+    {
+      "name": "check_openclash_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_passwall_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_dns_pool_runtime",
+      "exit_code": 0
+    },
+    {
+      "name": "check_nailink_gateway",
+      "exit_code": 0
+    }
+  ]
+}

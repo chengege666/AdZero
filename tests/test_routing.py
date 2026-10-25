@@ -111,6 +111,40 @@ class RoutingAdapterTest(unittest.TestCase):
         profile={'domestic':{'servers':['119.29.29.29'],'active':'119.29.29.29'},'foreign':{'servers':['8.8.8.8'],'active':'8.8.8.8'}}
         p=self.root/'etc/config/adzero';p.write_text(p.read_text()+" option dns_profile '"+json.dumps(profile)+"'\n")
 
+    def candidate_dns(self,strict=False):
+        self.select('passwall')
+        old={'domestic':{'servers':['223.5.5.5','119.29.29.29'],'active':'223.5.5.5','mode':'parallel'},'foreign':{'servers':['1.1.1.1','8.8.8.8'],'active':'1.1.1.1','mode':'parallel'}}
+        if strict:old.update(strict=True,proxy_port=1070)
+        config=self.root/'etc/config/adzero';config.write_text(config.read_text()+" option dns_profile '"+json.dumps(old)+"'\n")
+        candidate=json.loads(json.dumps(old));candidate['foreign'].pop('mode');candidate.pop('strict',None)
+        return config,candidate
+
+    def test_routing_preflight_uses_repaired_candidate_after_dns_preflight(self):
+        config,candidate=self.candidate_dns();before=config.read_bytes()
+        plan=self.write('candidate.json',json.dumps({'routing_enabled':True,'dns':candidate}))
+        self.run_adapter('dns-check',str(plan))
+        self.assertEqual(self.run_adapter('routing-check','1',str(plan)).stdout.strip(),'full')
+        self.assertEqual(config.read_bytes(),before)
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+
+    def test_candidate_preflight_still_rejects_foreign_parallel_xray(self):
+        config,candidate=self.candidate_dns();before=config.read_bytes();candidate['foreign']['mode']='parallel'
+        plan=self.write('candidate.json',json.dumps({'routing_enabled':True,'dns':candidate}))
+        result=self.run_adapter('routing-check','1',str(plan),success=False)
+        self.assertIn('PassWall',result.stderr);self.assertEqual(config.read_bytes(),before)
+
+    def test_candidate_routing_target_must_match_the_plan(self):
+        _,candidate=self.candidate_dns()
+        plan=self.write('candidate.json',json.dumps({'routing_enabled':False,'dns':candidate}))
+        result=self.run_adapter('routing-check','1',str(plan),success=False)
+        self.assertIn('目标',result.stderr)
+
+    def test_candidate_can_disable_strict_and_routing_together(self):
+        config,candidate=self.candidate_dns(True);before=config.read_bytes()
+        plan=self.write('candidate.json',json.dumps({'routing_enabled':False,'dns':candidate}))
+        self.assertEqual(self.run_adapter('routing-check','0',str(plan)).stdout.strip(),'full')
+        self.assertEqual(config.read_bytes(),before)
+
     def test_direct_dns_restart_does_not_inherit_blocked_sigchld(self):
         self.select()
         mask=self.root/'restart-mask'
@@ -522,6 +556,24 @@ class RoutingControllerTest(unittest.TestCase):
         f.ctl('routing-off');self.assertEqual(len(count.read_text().splitlines()),before+2)
         self.assertIn("dns_shunt 'chinadns-ng'",(self.root/'etc/config/passwall').read_text())
         self.assertEqual(f.status()['state'],'configured_unverified')
+
+    def test_dns_correction_can_migrate_stopped_nailink_to_xray_passwall(self):
+        p=self.nailink();f=self.fixture;f.ctl('enable');f.ctl('routing-on')
+        previous=json.loads(p.read_text());previous['running']=False;p.write_text(json.dumps(previous))
+        count=self.passwall()
+        old={'domestic':{'servers':['223.5.5.5'],'active':'223.5.5.5'},'foreign':{'servers':['1.1.1.1','8.8.8.8'],'active':'1.1.1.1','mode':'parallel'}}
+        f.write('etc/config/adzero',"config adzero 'main'\n option enabled '1'\n option routing_enabled '1'\n option dns_profile '"+json.dumps(old)+"'\n")
+        data=json.loads(f.ctl('sources-list').stdout);candidate=json.loads(json.dumps(data['dns']));candidate['foreign'].pop('mode')
+        items=[{k:i[k] for k in ['id','name','url','format','enabled']} for i in data['items']]
+        plan=f.write('candidate.json',json.dumps({'revision':data['revision'],'items':items,'routing_before':True,'routing_enabled':True,'dns_before':data['dns'],'dns':candidate}))
+        starts=(self.root/'start-events').read_bytes()
+        f.ctl('settings-apply',str(plan))
+        self.assertEqual(f.status()['adapter']['plugin'],'passwall')
+        self.assertEqual((self.root/'start-events').read_bytes(),starts)
+        self.assertEqual(len(count.read_text().splitlines()),1)
+        self.assertIn("dns_mode 'xray'",(self.root/'etc/config/passwall').read_text())
+        self.assertFalse(json.loads(p.read_text())['running'])
+        self.assertEqual(f.query('ads.example')['match'],'exact')
 
     def test_passwall_failed_fast_change_restores_preference_and_rules(self):
         count=self.passwall();f=self.fixture;f.ctl('enable')
