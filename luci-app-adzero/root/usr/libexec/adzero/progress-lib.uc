@@ -16,7 +16,15 @@ export const messages={
 	source_limit:'规则超过当前设备的单源、预处理或最终加载保护上限。请核对规则页的设备容量；不是已启用规则占用的累计配额，重复域名会自动去重。',
 	source_duplicate:'存在完全相同的订阅地址或规则标识，请编辑或删除重复项。不同列表的域名重叠会自动去重。',
 	country_data:'国内分类库下载或校验失败，未能开启自动分流。',
-	adapter:'代理配置应用或恢复未完成，请检查 AdZero 的恢复记录。',
+	adapter:'代理 DNS 配置未能确认完成，请查看任务日志和当前状态。',
+	dns_pool_start_failed:'DNS 并发服务启动请求失败，未切入新的并发 DNS 路径。',
+	dns_pool_not_ready:'DNS 并发入口在等待期限内尚未就绪，未切入新的并发 DNS 路径。',
+	dns_pool_state_invalid:'DNS 并发入口的健康记录未通过文件或内容校验。',
+	dns_pool_profile_mismatch:'DNS 并发入口尚未载入本次 DNS 设置。',
+	dns_pool_stale:'DNS 并发入口的健康记录已过期或时间无效。',
+	dns_pool_process_exited:'DNS 并发入口的健康记录对应进程已退出或无法确认。',
+	dns_pool_bind_failed:'DNS 并发入口监听失败，可能有其他服务占用所需端口。',
+	dns_pool_runtime_failed:'DNS 并发进程报告运行错误，请保留任务日志。',
 	dns_passwall_mode:'PassWall 当前 DNS 引擎不支持国外并发。请把国外组改为“单一 + 备用”，国内组仍可并发；不会替换原引擎。',
 	dns_socks_required:'此 DNS 组合需要当前代理的本机无认证 SOCKS5 端口。请填写真实监听端口，或关闭国外并发／严格模式。',
 	dns_socks_unavailable:'本机 SOCKS5 的 DNS 查询未通过。请核对端口、监听和认证设置；没有回落直连。',
@@ -31,6 +39,14 @@ export const messages={
 	backend_processing:'规则解析、排序、输出格式或处理结果校验未通过。请核对订阅格式及任务日志中的固定错误代码。',
 	backend_files:'过滤后端未能创建或更新规则输出文件。请核对空间、目录和权限，保留原配置及恢复记录。',
 	interrupted:'后台任务已停止且没有完成回执，请重新检测；有恢复提示时先关闭并恢复。'
+};
+export function message(reason,recovery){
+	let text=messages[reason]??'操作未确认完成，原始日志仅保留在路由器。请重新检测；必要时关闭并恢复。';
+	if(index(reason??'','dns_pool_')==0){
+		if(recovery=='restored')text+=' 本次操作已撤销，原配置已恢复。';
+		else if(recovery=='unconfirmed')text+=' 原配置恢复尚未确认，请检查 AdZero 恢复记录。';
+	}
+	return text;
 };
 function write(name,value){
 	let dir=getenv('ADZERO_JOB_CONTEXT');if(!dir||fs.lstat(dir)?.type!='directory')return;

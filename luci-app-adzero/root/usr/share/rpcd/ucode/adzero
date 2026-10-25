@@ -131,7 +131,8 @@ return {adzero:{
 			if(code==null)return {ok:true,pending:true,progress:metadata};
 		}
 		let reason=trim(fs.readfile(path+'/reason')??'');
-		return int(trim(code)) == 0 ? {ok:true,pending:false,progress:metadata} : {ok:false,pending:false,reason:progress.messages[reason]?reason:'unknown',message:progress.messages[reason]??'操作未确认完成，原始日志仅保留在路由器。请重新检测；必要时关闭并恢复。',progress:metadata};
+		let recovery=trim(fs.readfile(path+'/recovery',128)??'');if(index(['restored','unconfirmed'],recovery)<0)recovery=null;
+		return int(trim(code)) == 0 ? {ok:true,pending:false,progress:metadata} : {ok:false,pending:false,reason:progress.messages[reason]?reason:'unknown',message:progress.message(reason,recovery),...(recovery?{recovery}:{}),progress:metadata};
 	}},
 	lookup:{args:{domain:''},call:r => domain(r,'lookup',false)},
 	allow:{args:{domain:'',scope:''},call:r => domain(r,'allow',true)},

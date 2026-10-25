@@ -56,6 +56,13 @@ public_failure() {
 	[ ! -e "$ADZERO_JOB_CONTEXT/reason" ] || return 0
 	case "$1" in lock_busy|backend|source_limit|source_download|backend_memory|backend_dns|backend_processing|backend_files) printf '%s' "$1" > "$ADZERO_JOB_CONTEXT/reason" ;; esac
 }
+public_recovery() {
+	[ -n "$ADZERO_JOB_CONTEXT" ] && [ -d "$ADZERO_JOB_CONTEXT" ] || return 0
+	case "$(cat "$ADZERO_JOB_CONTEXT/reason" 2>/dev/null)" in dns_pool_*) ;; *) return 0 ;; esac
+	case "$1" in restored|unconfirmed) ;; *) return 0 ;; esac
+	[ ! -L "$ADZERO_JOB_CONTEXT/recovery" ] && [ ! -L "$ADZERO_JOB_CONTEXT/recovery.new" ] || return 0
+	printf '%s' "$1" > "$ADZERO_JOB_CONTEXT/recovery.new" && mv "$ADZERO_JOB_CONTEXT/recovery.new" "$ADZERO_JOB_CONTEXT/recovery" || :
+}
 backend_failure() {
 	# Only a fixed token from the read-only checker, never raw service errors.
 	backend_hint=$("$BACKEND_CHECK" failure 2>/dev/null) || backend_hint=backend
@@ -516,7 +523,8 @@ enable_protection() {
 			[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero start
 			retain_pending_reload
 		fi
-		rollback_enable "$previous" && error '代理 DNS 适配失败，原配置已恢复。'
+		public_recovery unconfirmed
+		if rollback_enable "$previous"; then public_recovery restored; error '代理 DNS 适配失败，原配置已恢复。'; fi
 		error '代理 DNS 适配失败，恢复未完成；备份已保留。'
 	fi
 	[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero start
@@ -657,6 +665,7 @@ apply_settings() {
 	fi
 	if ! sources_clean; then
 		retain_pending_reload
+		public_recovery unconfirmed
 		"$SOURCES" rollback || error '批量恢复遇到并发修改，恢复记录已保留。'
 		restored=0
 		if [ "$active" = 0 ]; then restored=1
@@ -667,7 +676,7 @@ apply_settings() {
 			if [ "$routing_changed" = 1 ]; then "$ADAPTER" detach || error '代理恢复未完成，批量记录已保留。'; fi
 			{ [ "$rules_changed" = 0 ] || backend_restart dl; } && "$ADAPTER" apply && restored=1
 		fi
-		if [ "$restored" = 1 ]; then "$SOURCES" discard || error '旧配置已恢复，但记录未清理。'; error '更改未能应用，已恢复之前的配置。'; fi
+		if [ "$restored" = 1 ]; then "$SOURCES" discard || error '旧配置已恢复，但记录未清理。'; public_recovery restored; error '更改未能应用，已恢复之前的配置。'; fi
 		error '更改与恢复尚未确认，记录已保留。'
 	fi
 	error '更改尚未应用，请检查规则校验结果。'

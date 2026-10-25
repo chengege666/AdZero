@@ -164,6 +164,14 @@ esac
             assert not call('pause',{'seconds':1})['ok']
             failed=finished(call('pause',{'seconds':300}))
             assert not failed['ok'] and failed['reason']=='source_download' and 'HTTPS' in failed['message'],failed
+            for outcome in ['restored','unconfirmed','private-recovery-marker','']:
+                task=str(uuidlib.uuid4());folder=base/'tmp/adzero-jobs'/task;folder.mkdir(mode=0o700)
+                for name,value in {'result':'1','reason':'dns_pool_not_ready','recovery':outcome}.items():(folder/name).write_text(value)
+                result=call('job_status',{'job':task});assert result['reason']=='dns_pool_not_ready',result
+                assert result.get('recovery')==(outcome if outcome in ['restored','unconfirmed'] else None),result
+                assert 'private-recovery-marker' not in json.dumps(result),result
+                if outcome=='restored':assert '原配置已恢复' in result['message'] and '请检查' not in result['message']
+                if outcome=='unconfirmed':assert '恢复尚未确认' in result['message'] and '已恢复' not in result['message']
             result=call('allow',{'domain':'ads.example','scope':'ads.example'})
             assert result['ok'] and 'private-backend' not in json.dumps(result),result
             assert finished(result)['ok']
@@ -271,7 +279,7 @@ esac
             assert not (base/'tmp/service-was-called').exists(),'observation invoked network lifecycle'
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':68,'empty_ruleset_and_unknown_capacity_reasons':'passed','controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
+                    'checks':72,'dns_pool_reason_and_recovery_outcome':'passed','empty_ruleset_and_unknown_capacity_reasons':'passed','controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
                     'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')

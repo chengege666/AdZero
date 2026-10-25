@@ -165,6 +165,22 @@ exit 0
     def config(self):
         return json.loads(self.conf.read_text())
 
+    def pool_failure(self,restore=True):
+        job=Path(self.tmp.name)/'job';job.mkdir();self.env['ADZERO_JOB_CONTEXT']=str(job)
+        self.adapter.write_text('#!/bin/sh\ncase "$1" in\n apply) printf dns_pool_not_ready > "$ADZERO_JOB_CONTEXT/reason"; exit 1;;\n remove) exit '+('0' if restore else '1')+';;\n status) echo \'{"plugin":"none","stage":"inactive","domains":0}\';;\nesac\nexit 0\n')
+        before=self.config();self.run_ctl('enable',success=False)
+        self.assertEqual((job/'reason').read_text(),'dns_pool_not_ready')
+        return job,before
+
+    def test_dns_pool_failed_enable_records_confirmed_rollback(self):
+        job,before=self.pool_failure()
+        self.assertEqual((job/'recovery').read_text(),'restored')
+        self.assertEqual(self.config(),before);self.assertFalse((self.state/'managed').exists())
+
+    def test_dns_pool_failed_rollback_never_claims_original_settings_restored(self):
+        job,_=self.pool_failure(False)
+        self.assertEqual((job/'recovery').read_text(),'unconfirmed');self.assertTrue((self.state/'managed').exists())
+
     def status(self):
         return json.loads(self.run_ctl("status").stdout)
 

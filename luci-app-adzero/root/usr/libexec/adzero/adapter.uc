@@ -14,6 +14,8 @@ import { lan_valid } from './dns-handoff-lib.uc';
 import { config as enhance_config } from './dns-enhance-lib.uc';
 import { limits } from './capacity-lib.uc';
 import { store } from './provider-store.uc';
+import * as poolstate from './dns-pool-state.uc';
+import { now as monotime } from './dns-io.uc';
 
 const root = getenv('ADZERO_ADAPTER_ROOT') ?? '';
 const state_dir = root + '/etc/adzero';
@@ -994,17 +996,18 @@ passwall_pool_foreign=function(){return dns_profile.foreign.mode=='parallel'||dn
 pool_needed=function(plugin){return plugin=='nailink'&&(dns_profile.strict||dns_profile.domestic.mode=='parallel'||dns_profile.foreign.mode=='parallel')||plugin=='passwall'&&(dns_profile.domestic.mode=='parallel'||passwall_pool_foreign());};
 prepare_pool=function(plugin){
 	if(!pool_needed(plugin))return;
+	function fail(reason){progress.failure(reason);die(progress.messages[reason]);}
 	let marker=state_dir+'/dns-pool-needed';
 	if(fs.lstat(marker)?.type=='link'||fs.lstat(marker)&&fs.readfile(marker)!='AdZero DNS pool v1\n')die('DNS 并发所有权标记冲突，未覆盖。');
-	if(!fs.access(root+'/etc/init.d/adzero-dns','x'))die('缺少 DNS 并发启动服务，尚未重载代理。');
+	if(!fs.access(root+'/etc/init.d/adzero-dns','x'))fail('dns_pool_start_failed');
 	if(!fs.lstat(marker))atomic(marker,'AdZero DNS pool v1\n',0600);
-	if(system(service_command('adzero-dns','enable'))!=0)die('DNS 并发开机服务未确认，尚未重载代理。');
-	let status=root+'/tmp/adzero-dns-pool.json',expected=sprintf('%J',route.effective(dns_profile)),value;
-	function ready(){let s=fs.lstat(status);if(s?.type!='file'||s.uid!=fs.stat('/proc/self').uid||(s.mode&077)||s.size>10000)return false;try{value=json(fs.readfile(status));}catch(e){return false;}let stamp=clock(true),at=stamp[0]+stamp[1]/1000000000.0;return value?.profile==expected&&index(['double','int'],type(value.updated))>=0&&at-value.updated>=0&&at-value.updated<3;}
-	if(ready())return;
-	if(system([timeout_helper(),'-k','3','15',...service_command('adzero-dns','start')])!=0)die('DNS 并发实例未能启动，尚未重载代理。');
-	for(let i=0;i<30;i++){if(ready())return;system(['sleep','0.1']);}
-	die('DNS 并发入口尚未就绪，尚未重载代理。');
+	if(system(service_command('adzero-dns','enable'))!=0)fail('dns_pool_start_failed');
+	let expected=sprintf('%J',route.effective(dns_profile));
+	if(poolstate.inspect(root,expected).ready)return;
+	let requested=monotime();
+	if(system([timeout_helper(),'-k','3','15',...service_command('adzero-dns','start')])!=0)fail('dns_pool_start_failed');
+	let value=poolstate.wait_ready(root,expected,requested);
+	if(!value.ready)fail(value.reason);
 };
 strict_target=function(plugin){
 	if(plugin=='nailink')return '127.0.0.1#5358';

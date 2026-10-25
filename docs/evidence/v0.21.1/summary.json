@@ -1,0 +1,26 @@
+{
+  "version": "0.21.1",
+  "source_sha256": "85e19e4350d40198bf5ff4a469d3125af747c926b138d980aa0f1684d654b99e",
+  "python_tests": 615,
+  "ui_assertions": 378,
+  "docs_tests": 5,
+  "sdk_targets": 3,
+  "payload_files_per_package": 63,
+  "installer_delivery_cases": 6,
+  "native_components": [
+    "rpc",
+    "openclash",
+    "passwall",
+    "nailink_gateway",
+    "dns_pool_start"
+  ],
+  "browser_qa": "state-only change: regression assertions; existing visual layout retained",
+  "router_modified": false,
+  "device_acceptance": "not_run",
+  "audit_findings": "native millisecond readiness deadline, private health and process checks, fixed startup diagnostics, confirmed versus unconfirmed rollback",
+  "dns_pool_cases": 12,
+  "dns_pool_queries": 120,
+  "rpc_checks": 72,
+  "mihomo_dns_cases": 40,
+  "new_runtime_dependencies": false
+}
