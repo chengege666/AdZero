@@ -8,7 +8,9 @@ try {
 	let path=shift(ARGV);
 	if (!path || !match(path,/^\/tmp\/adzero-update\/releases\.[A-Za-z0-9]{8}$/)) exit(2);
 	let stat=fs.lstat(path);
-	if (stat?.type!='file' || stat.size>1048576 || stat.uid!=0 || (stat.mode&077)!=0) exit(2);
+	// rpcd normally runs as root; verify ownership against our actual UID so
+	// isolated OpenWrt userspace tests retain this same trust boundary.
+	if (stat?.type!='file' || stat.size>1048576 || stat.uid!=fs.stat('/proc/self')?.uid || (stat.mode&077)!=0) exit(2);
 	let releases=json(fs.readfile(path));
 	if (type(releases)!='array') exit(2);
 	let found=null, parts=null;

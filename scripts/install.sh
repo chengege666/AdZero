@@ -227,7 +227,9 @@ case "$TARGET" in
 	*[!a-zA-Z0-9._/-]*) fail '固件 DISTRIB_TARGET 包含无效字符，请检查 /etc/openwrt_release。' ;;
 esac
 case "$DECLARED_ARCH" in *[!a-zA-Z0-9._+-]*) fail '固件 DISTRIB_ARCH 包含无效字符，请检查 /etc/openwrt_release。' ;; esac
-FIRMWARE=$(printf '%s' "$FIRMWARE_LABEL" | tr '[:upper:]' '[:lower:]')
+# OpenWrt BusyBox tr 1.36 may mis-handle paired character classes: OpenWrt -> OwenWrt.
+# Use explicit ASCII alphabets after the UCI ID character whitelist.
+FIRMWARE=$(printf '%s' "$FIRMWARE_LABEL" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
 PM=
 if command -v opkg >/dev/null 2>&1 && [ -r "$ROOT/usr/lib/opkg/status" ]; then PM=opkg; fi
 if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then

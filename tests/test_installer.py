@@ -61,6 +61,21 @@ class InstallerTest(unittest.TestCase):
         self.assertTrue(list((self.root / "etc/adzero-backups").glob("*/config.tar.gz")))
         self.assertEqual((self.root / "etc/config/keep").read_text(), "private=original\n")
 
+    def test_distribution_normalization_avoids_busybox_tr_class_bug(self):
+        # Official OpenWrt 24.10.8 BusyBox tr maps "OpenWrt" to "OwenWrt"
+        # when passed paired [:upper:] [:lower:] character classes. A local
+        # shim intentionally reproduces that defect so ordinary sh CI also
+        # verifies the portable ASCII translation boundary.
+        self.executable(self.bin / "tr", """#!/bin/sh
+if [ "$1" = '[:upper:]' ] && [ "$2" = '[:lower:]' ]; then
+    sed 's/OpenWrt/OwenWrt/g'
+else
+    exec /usr/bin/tr "$@"
+fi
+""")
+        self.run_installer("--no-enable")
+        self.assertEqual(self.log.read_text().splitlines(), ["opkg update", "opkg install"])
+
     def test_unsupported_version_and_vendor_do_not_install(self):
         for value in ("DISTRIB_ID='ImmortalWrt'\nDISTRIB_RELEASE='24.10.8'\nDISTRIB_TARGET='x86/64'\n", "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='24.10.9'\nDISTRIB_TARGET='x86/64'\n"):
             self.write("etc/openwrt_release", value)

@@ -83,6 +83,7 @@ def main():
         subprocess.run(shlex.split(env['ADZERO_UCODE']) + ['-c', '-o', str(runtime / (program + '.ucb')),
                        str(ROOT / ('luci-app-adzero/root/usr/libexec/adzero/' + program + '.uc'))], check=True)
     subprocess.run(shlex.split(env["ADZERO_UCODE"]) + ["-c", "-o", str(runtime / "rpc.ucb"), str(ROOT / "luci-app-adzero/root/usr/share/rpcd/ucode/adzero")], check=True)
+    subprocess.run(shlex.split(env["ADZERO_UCODE"]) + ["-c", "-o", str(runtime / "update-check.ucb"), str(ROOT / "luci-app-adzero/root/usr/libexec/adzero/update-check.uc")], check=True)
     result = subprocess.run(command + ["ash", "scripts/check.sh"], cwd=ROOT, env=env, text=True, capture_output=True)
     log = result.stdout + result.stderr
     (cache / "openwrt-24.10.8-check.log").write_text(log)

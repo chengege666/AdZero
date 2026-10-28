@@ -43,6 +43,9 @@ prepare() {
 	[ ! -L "$state" ] || fail '更新状态目录不可使用符号链接。'
 	mkdir -p "$state" || fail '无法创建更新状态目录。'
 	[ -d "$state" ] && [ ! -L "$state" ] || fail '更新状态目录无效。'
+	# /tmp is shared; a pre-created non-root-owned directory must not be
+	# accepted, even if root could chmod or write through it.
+	[ -O "$state" ] || fail '更新状态目录不属于当前服务用户，拒绝使用。'
 	chmod 700 "$state"
 }
 download() {
