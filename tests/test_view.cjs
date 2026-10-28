@@ -43,12 +43,15 @@ const api = { exec: async (program, args) => {
 } };
 let rpcFailure = false, rpcStale = false, rpcListFailure = false, storageBlocked = false, sessionID = 'b'.repeat(32), jobSteps=[], ruleData, lookup = {available:true,domain:'login.ads.example',match:'parent',rule:'ads.example',scope:'ads.example'};
 let enhanceFixture,enhanceFailure=false;
+let updateFixture,updateFailure=false;
 const storage = new Map();
 const session = {getItem:k=>{if(storageBlocked)throw Error('storage unavailable');return storage.get(k)||null;},setItem:(k,v)=>{if(storageBlocked)throw Error('storage unavailable');storage.set(k,v);},removeItem:k=>storage.delete(k)};
 const rpc = { getSessionID:()=> sessionID, declare: spec => async (...args) => {
 	if(spec.method==='enhance_status'){if(enhanceFailure)throw Error('enhance read unavailable');return {ok:true,data:structuredClone({...enhanceFixture,profile:Object.hasOwn(enhanceFixture,'profile')?enhanceFixture.profile:ruleData.dns})};}
 	if(spec.method==='enhance_save'){enhanceFixture.config=JSON.parse(args[0]).after;return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
 	if(spec.method==='dns_test'){commands.push('dns_test');return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
+	if(spec.method==='update_check'){commands.push('update_check');return updateFailure?{ok:false,message:'GitHub unavailable'}:structuredClone(updateFixture);}
+	if(spec.method==='update_start'){commands.push('update_start');if(rpcFailure)return {ok:false,message:'typed failure'};return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
 	if(spec.method==='temporary'){state.policy.allowed.push(args[1]);state.policy.temporary=[{scope:args[1],duration:args[2],remaining:args[2]}];return {ok:true,job:'11111111-1111-1111-1111-111111111111'};}
   if(spec.method==='observation'){observationReads++;if(observationFailure)throw Error('observer unavailable');const reply={ok:true,data:structuredClone(observationFixture)};if(deferObservation){deferObservation=false;return new Promise(resolve=>{releaseObservation=()=>resolve(reply);});}return reply;}
   if(spec.method==='verification_start')return {ok:true,commands:'nslookup -type=A nonce.adzero.invalid\nnslookup -type=A doubleclick.net\nnslookup -type=A www.baidu.com'};
@@ -98,6 +101,8 @@ function reset(overrides = {}) {
   app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
 	app.enhanceOpen=false;app.enhanceData=null;app.enhanceDraft=null;app.enhanceError=null;
 	enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[]},runtime:{state:'waiting',reason:'disabled'}};
+	updateFixture={ok:true,current:'v0.21.4',latest:'v0.21.5',available:true,compatible:true};
+	updateFailure=false;app.updateOpen=false;app.updateData=null;app.updateError=null;app.updateBusy=null;app.updateConfirm=false;app.updateComplete=false;app.updateChecked=false;
   observationFixture={available:false,verification:{state:'idle'}};observationFailure=false;
   app.observation=null;app.observationReading=false;app.observationBusy=false;app.verificationCommands='';app.verificationNotice=null;app.networkOpen=false;
   app.recentBusy=false;app.recentIntent=null;app.recentNotice=null;app.recentPaintKey=null;
@@ -122,6 +127,34 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(brandLogo.tag==='img'&&brandLogo.attrs.src==='/luci-static/resources/view/adzero/logo.png?v=0.21.3','page header uses the packaged approved Z shield instead of a generic status icon');
   check(brandLogo.attrs.alt===''&&brandLogo.attrs.draggable==='false','adjacent brand text names the logo without duplicate screen reader output');
   check(brandLogo.attrs.width==='44'&&brandLogo.attrs.height==='44','brand image reserves a square before loading');
+  const brand=nodes(root,n=>n.attrs?.class==='az-brand')[0];
+  check(!!nodes(brand,n=>n.id==='az-version').length && text(brand).includes('v0.21.4'), 'clickable version now sits beside the top-left logo');
+  check(!nodes(root,n=>n.attrs?.class==='az-page-eyebrow').length, 'old version text is removed from overview title');
+  check(!find('az-update-panel'), 'update details are initially collapsed');
+  await find('az-version').events.click();
+  check(commands.includes('update_check') && find('az-update-panel'), 'version button opens online update check');
+  check(find('az-upgrade-ready') && text(find('az-upgrade-ready')).includes('v0.21.5'), 'compatible release offers an upgrade');
+  check(nodes(brand,n=>n.id==='az-version').length===1, 'version button identity stays stable');
+  await find('az-upgrade-ready').events.click();
+  check(find('az-upgrade-confirm') && find('az-upgrade-cancel'), 'upgrade requires a second explicit confirmation');
+  await find('az-upgrade-cancel').events.click();
+  check(!find('az-upgrade-confirm') && !commands.includes('update_start'), 'cancel never starts installation');
+  await find('az-upgrade-ready').events.click();
+  await find('az-upgrade-confirm').events.click();
+  check(commands.includes('update_start') && app.updateComplete, 'confirmed upgrade follows the detached job and completes');
+  check(find('az-update-reload'), 'successful upgrade prompts a fresh UI load for version verification');
+  reset();
+  updateFixture={ok:true,current:'v0.21.4',latest:'v0.21.4',available:false,compatible:true};
+  await find('az-version').events.click();
+  check(text(find('az-update-panel')).includes('已是当前发布通道的最新版本')&&!find('az-upgrade-ready'), 'up-to-date state never offers package mutation');
+  reset();
+  updateFixture={ok:true,current:'v0.21.4',latest:'v0.21.5',available:true,compatible:false,message:'SDK target unsupported'};
+  await find('az-version').events.click();
+  check(!find('az-upgrade-ready') && text(find('az-update-panel')).includes('SDK target unsupported'), 'incompatible firmware cannot click upgrade');
+  reset(); updateFailure=true;
+  await find('az-version').events.click();
+  check(text(find('az-update-panel')).includes('GitHub unavailable')&&!find('az-upgrade-ready'), 'offline update errors do not affect protection controls');
+  reset();
   await app.runAction('enable'); assert.deepEqual(commands, ['enable', 'job_status', 'status']);
   check(find('az-toggle').attrs['aria-checked'] === 'true', 'on only after backend status');
   check(!find('az-toggle').disabled && !find('az-toggle').disabled, 'actions genuinely enabled');

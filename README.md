@@ -35,23 +35,36 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 ## 安装与升级
 
-本版补充 NaiLink／PassWall 并发 DNS 的实际 TCP 与 SOCKS 路径检查，避免仅因监听就绪就接入无应答入口；更正 NaiLink 的推荐设置和本机 SOCKS 条件。详见 [更新说明](docs/RELEASE_0.21.3.md)。
+v0.21.4 新增 LuCI 在线更新、中文菜单安装与固件 SDK 兼容判断改进。详见 [v0.21.4 更新说明](docs/RELEASE_0.21.4.md)。v0.21.3 的 NaiLink／PassWall DNS 并发修复继续保留。
 
-当前为 **v0.21.3 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+下一版本为 **v0.21.4 测试发行候选版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。
 
-```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
-```
+### 中文菜单式安装（推荐）
 
-已有 AdZero，使用升级命令：
+以 root 登录路由器 SSH，运行下面**一条固定命令**。地址不包含版本号，不需要每次修改命令；菜单会根据已安装状态自动选择安装或升级，并使用发行版内固定的 SDK 校验清单选包：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --menu
 ```
+
+菜单包含「一键安装/自动升级」「安装但不自动开启」「只读环境与安装包校验」「安全卸载」「退出」。**不会要求手填 OpenWrt 版本、目标架构、IPK/APK 文件名或 GitHub 发布版本**；默认使用仓库安装器当前固定的已发布版本，维护者发布新版时更新该默认来源。下载后也可以再次运行 `sh /tmp/adzero-install.sh --menu` 打开菜单。
+
+安装/升级仍会严格检查固件完整版本、target、软件包架构和 SHA-256；不在兼容矩阵内的设备会停止，不会强装。环境检查只下载并核对安装包，不改变路由器服务。普通用户推荐菜单；已有自动化脚本仍可用 `--install`、`--upgrade`、`--no-enable` 和 `--local-dir` 进行非交互操作。
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 
-安装器会检查机型与软件包、备份配置并安装依赖。也可以从 [Releases](https://github.com/slobys/AdZero/releases/tag/v0.21.3) 下载对应发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+安装器会检查机型与软件包、备份配置并安装依赖。也可以在 [GitHub Releases](https://github.com/slobys/AdZero/releases) 下载已发布且匹配固件的发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
+
+### LuCI 页面内在线更新（无需 SSH）
+
+安装**包含此功能的新版本**后，版本号会显示在左上角 AdZero Logo 旁。点击版本号即可检查 GitHub 官方发布版本；有匹配的新版本时显示目标版本、兼容性结果和「立即更新」，再次确认后启动后台升级任务。升级完成后刷新页面核对版本。网页打开时也会静默检查一次，GitHub 不可用不会阻断现有广告过滤。
+
+- 更新检查使用 GitHub Releases API，包括已发布测试版但不包含草稿；仅接受 vX.Y.Z 标签和具有 GitHub SHA-256 digest 的官方 install.sh 资产。
+- 更新前验证发布安装脚本 SHA-256，并调用其只读预检核对固件 ID、完整版本、target、包格式、架构及安装包 SHA-256。**没有匹配 SDK 构建的固件仍会拒绝升级。**
+- 只有第二次点击「确认升级」才会启动后台任务。已校验的许可 15 分钟有效、针对特定版本且一次性使用；并发任务被锁定，失败不会自动重复安装。
+- 后台沿用安装器原有的依赖预检、配置备份、恢复记录和安装锁。升级可能短暂中断 DNS/代理；若未确认成功，保留恢复记录并手动核对。
+- 这不是 OpenWrt 固件升级或刷机，只升级 AdZero 软件包。
+- **注意：已发布的 v0.21.3 安装包尚不包含在线更新按钮。** 需要先通过 SSH 菜单升级到 v0.21.4（正式构建发布后）或更高版本，此后才可在 LuCI 内点击更新。合并源码不会自动替换旧 Release。
 
 ## 日常怎么用
 
@@ -74,6 +87,8 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 | OpenWrt 25.12.5 | rockchip/armv8 | APK |
 
 SDK 构建与隔离测试已通过，实际设备的网络与过滤效果仍需验证。ImmortalWrt、iStoreOS、其他版本与架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进，安装器会拒绝尚未匹配的组合。
+
+**安装器兼容性修正（main 分支、待新版本发行）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。当前仍只有上表三个 SDK 构建通过的 OpenWrt 组合；没有独立验证并发布的 ImmortalWrt/iStoreOS 包，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
 
 NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。概览中的「代理接入」可展开查看：区分实际内核、已保存开关和当前接入，不把识别到插件当作已经适配。
 

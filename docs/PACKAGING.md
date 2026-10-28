@@ -2,6 +2,17 @@
 
 公开安装只使用真实 SDK 输出，不使用 build_ipk.py 的离线预览。
 
+## 安装菜单与发行一致性
+
+推荐的用户入口不再包含版本号：从 `https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh` 下载脚本后运行 `sh /tmp/adzero-install.sh --menu`。该入口的默认 `BASE_URL` 由维护者指向当前**已发布且具备 SDK 包的发行标签**；用户无需选择版本或手动判断 IPK/APK。菜单只是交互包装，安装和升级仍调用原有的 SHA-256 核对与备份恢复流程。
+
+`build_release.py` 必须将同一版本的 `install.sh` 和 `releases.tsv` 一并放进发行归档，并在 `INSTALL.txt` 指引用户执行 `sh install.sh --menu --local-dir "$(pwd)"`。菜单的“环境检查”使用 `--check`，只下载和校验匹配安装包、不运行软件包安装或后端恢复。无交互任务可以显式传 `--install`、`--upgrade`、`--no-enable`；不带参数默认进入菜单，避免在自动化/输入结束时无意触发安装。
+
+不要把主分支尚未发布的菜单脚本与不同版本的 SDK 构建产物混合宣称为一个已验收发行版；新菜单上线仍需经 release 的原始字节校验和真实设备升级/卸载测试。
+
+
+新安装器不再内置发行版白名单；公开发行包仍必须由 `scripts/build_release.py` 校验。其允许的完整组合现在来自 `docs/compatibility-matrix.json` 的 `sdk_verified` 列表（`sdk_build=passed`），构建报告也必须具有匹配的源码哈希和实际包 SHA-256。新增 ImmortalWrt/iStoreOS 时，必须先用该厂商匹配 SDK 构建，通过验证后再增加兼容矩阵行。未验证的候选条目不会生成可安装的发布清单。
+
 | 官方 SDK | target | 格式 | 当前结果 |
 | --- | --- | --- | --- |
 | OpenWrt 24.10.8 / GCC 13.3 | x86/64 | IPK | 实际构建通过 |
@@ -9,6 +20,18 @@
 | OpenWrt 25.12.5 / GCC 14.3 | rockchip/armv8 | APK | 实际构建通过 |
 
 SDK 的 SHA-256 固定在 scripts/fetch_sdk.py，来源为对应 [官方版本目录](https://downloads.openwrt.org/releases/)。构建保留 SDK 自带 feeds.conf.default；不能用另一固件的 feeds 代替。
+
+## 在线更新的 SDK / Release 发布要求
+
+本项目新增三个安装文件：
+
+- /usr/libexec/adzero/update：只对官方发行源执行版本检查和一次性升级。
+- /usr/libexec/adzero/update-check.uc：解析 GitHub Releases API 的数字版本与 install.sh 的 SHA-256 digest。
+- /usr/share/adzero/version：必须与 Makefile 的 PKG_VERSION 及 LuCI 页头显示的版本保持一致。
+
+有新版本时，仅从官方 HTTPS 下载已发布的 install.sh，按 GitHub asset digest 验证 SHA-256。脚本必须支持只读 --check，在真实执行 --upgrade 之前完成固件完整版本、target、包格式、架构、SDK 安装包哈希验证。更新许可 15 分钟有效、只针对用户确认的特定版本，且一次性使用；不允许因重试自动重复升级。
+
+**新版本的 GitHub Release 必须包含新版 install.sh、releases.tsv、真实 SDK 构建产物和已核对的包 SHA-256。** 公开的 v0.21.3 仍是旧版，不应重写旧标签资产。只有构建、发布和设备验收后，当前运行 v0.21.3 的用户才能先升级到首个带在线更新按钮的版本。
 
 ## Linux / WSL 复现
 

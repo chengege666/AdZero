@@ -6,6 +6,10 @@
 'require poll';
 
 var policyCalls = {};
+var updateCalls = {
+	check: rpc.declare({object:'adzero',method:'update_check',params:[]}),
+	start: rpc.declare({object:'adzero',method:'update_start',params:['version']})
+};
 // Static help links stay available while the router is loading or applying changes.
 var helpLinks = [
 	['https://slobys.github.io/AdZero/', _('在线文档'), 'book', _('在线使用文档（新窗口）')],
@@ -650,6 +654,82 @@ return view.extend({
 		// Render first. A slow RPC must not hold LuCI's whole view behind a spinner.
 		return Promise.resolve(readSnapshot() || { state: 'loading' });
 	},
+	renderUpdatePanel:function(){
+		var self=this,d=self.updateData||{},hasUpdate=d.ok&&d.available&&d.compatible,checking=self.updateBusy==='check',
+			upgrading=self.updateBusy==='upgrade'||self.busy==='upgrade',blocked=self.busy||operationActive(self.currentStatus||{})||self.jobUncertain;
+		var content=[el('div',{'class':'az-update-panel-heading'},[
+			el('div',{},[el('h3',{id:'az-update-title'},_('在线更新')),
+				el('p',{},_('仅检查 GitHub 官方发布包；安装前核对固件、架构与 SHA-256。'))]),
+			el('button',{type:'button','class':'az-button az-button-quiet',id:'az-update-close',
+				click:function(){self.updateOpen=false;self.updateConfirm=false;self.paint('az-version');}},_('关闭'))])];
+		if(checking)content.push(el('p',{role:'status'},_('正在安全检查官方发布版本及安装包…')));
+		else if(upgrading)content.push(el('p',{role:'status'},_('升级流程正在后台执行，可能短暂中断 DNS 或代理。请勿重复点击或关闭路由器。')));
+		else if(self.updateComplete)content.push(el('p',{'class':'az-update-success',role:'status'},_('安装器报告升级完成。请重新载入页面并验证实际安装版本。')));
+		else if(self.updateError||d.ok===false)content.push(el('p',{'class':'az-inline-warning',role:'alert'},self.updateError||d.message||_('无法检查更新，请确认路由器能够访问 GitHub。')));
+		else if(d.ok){
+			content.push(el('p',{'class':'az-update-detail'},[
+				_('当前版本：'),el('strong',{translate:'no'},d.current||'v0.21.4'),
+				_('　官方最新：'),el('strong',{translate:'no'},d.latest||'—')]));
+			content.push(el('p',{role:'status'},!d.available?_('已是当前发布通道的最新版本。'):!d.compatible?d.message||_('有新版本，但没有与当前固件兼容的安装包，不能强制升级。'):_('发现适用于当前固件的新版本，已通过安装包与 SHA-256 预检。')));
+		}else content.push(el('p',{},_('点击检查更新，查找官方最新版本。')));
+		if(hasUpdate&&!upgrading&&!self.updateComplete){
+			if(self.updateConfirm){
+				content.push(el('p',{'class':'az-inline-warning'},_('升级将备份现有配置并尝试恢复旧版接管的 DNS/代理设置，可能短暂中断网络。请确认设备可通过局域网恢复。')));
+				content.push(el('div',{'class':'az-update-actions'},[
+					el('button',{type:'button',id:'az-upgrade-confirm','class':'az-button az-button-primary',disabled:blocked?true:null,
+						click:function(){return self.runUpgrade();}},_('确认升级至 ')+(d.latest||'')),
+					el('button',{type:'button',id:'az-upgrade-cancel','class':'az-button az-button-quiet',
+						click:function(){self.updateConfirm=false;self.paint('az-version');}},_('取消'))]));
+			}else content.push(el('button',{type:'button',id:'az-upgrade-ready','class':'az-button az-button-primary',disabled:blocked?true:null,
+				click:function(){self.updateConfirm=true;self.paint('az-upgrade-confirm');}},_('立即更新到 ')+(d.latest||'')));
+		}
+		if(self.updateComplete)content.push(el('button',{type:'button',id:'az-update-reload','class':'az-button az-button-primary',
+			click:function(){if(typeof window!=='undefined'&&window.location)window.location.reload();}},_('刷新页面确认版本')));
+		if(!upgrading)content.push(el('button',{type:'button',id:'az-update-check','class':'az-button az-button-quiet',
+			disabled:checking||self.busy?true:null,click:function(){return self.checkUpdate(false);}},checking?_('检查中…'):_('重新检查更新')));
+		content.push(el('p',{'class':'az-update-footnote'},_('仅更新 AdZero 软件包，不自动升级整个 OpenWrt 固件；已发布版本不代表所有固件均已适配。')));
+		return el('section',{id:'az-update-panel','class':'az-card az-update-panel',role:'region','aria-labelledby':'az-update-title'},content);
+	},
+	toggleUpdate:function(){
+		this.updateOpen=!this.updateOpen;this.updateConfirm=false;
+		this.paint('az-version');
+		if(this.updateOpen&&!this.updateData&&!this.updateBusy)return this.checkUpdate(false);
+		return Promise.resolve();
+	},
+	checkUpdate:function(silent){
+		var self=this;
+		if(self.updateBusy||self.busy)return Promise.resolve();
+		self.updateBusy='check';self.updateChecked=true;self.updateError=null;self.updateConfirm=false;self.paint();
+		return updateCalls.check().then(function(d){
+			if(!d||typeof d.ok!=='boolean')throw Error(_('更新服务未返回有效结果。'));
+			if(d.latest&&!/^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/.test(d.latest))throw Error(_('官方版本格式无效。'));
+			self.updateData=d;
+			if(!d.ok&&silent!==true)self.updateError=d.message||_('检查失败，请稍后重试。');
+		}).catch(function(e){
+			self.updateData=null;
+			self.updateError=String(e.message||e);
+		}).then(function(){self.updateBusy=null;self.paint('az-version');});
+	},
+	runUpgrade:function(receipt){
+		var self=this,d=self.updateData||{},s=self.currentStatus||{};
+		if(self.updateBusy||self.busy)return Promise.resolve();
+		if(!receipt&&(!self.updateConfirm||!d.ok||!d.available||!d.compatible||!/^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/.test(d.latest||'')||
+			operationActive(s)||s.stale||self.draftCount()||self.controlCount()||self.enhanceDirty()||self.unstagedEdits())){
+			self.updateError=_('存在尚未应用的更改、其他后台任务或无效的版本校验。请先完成当前操作再更新。');
+			self.paint();return Promise.resolve();
+		}
+		self.updateOpen=true;self.updateConfirm=false;self.busy='upgrade';self.updateBusy='upgrade';self.updateError=null;
+		self.updateComplete=false;self.jobProgress=null;self.jobUncertain=false;self.paint();
+		return (receipt?Promise.resolve(receipt):updateCalls.start(d.latest)).then(function(reply){
+			return trackJob(reply,'upgrade','self-upgrade',self);
+		}).then(function(){
+			self.updateComplete=true;self.updateError=null;
+		}).catch(function(e){
+			self.updateError=_('升级没有确认完成：')+String(e.message||e)+_('。请保留原有恢复记录，核对后再操作。');
+		}).then(function(){
+			finishJob(self);self.updateBusy=null;self.paint('az-version');
+		});
+	},
 	renderPanel: function(s) {
 		var self = this; self.currentStatus = s;
 		var f = flags(s), inv = s.compatibility || {}, dns = inv.dns || {},selection=connectionSelection(s);
@@ -686,7 +766,14 @@ return view.extend({
 		var page=self.pageKey(),pages=[['overview',_('运行概览'),'shield',_('查看保护状态、实时统计与当前接入。')],['rules',_('过滤规则'),'book',_('按需选择订阅，改完统一应用。')],['controls',_('访问控制'),'check',_('查找误拦截，精确管理域名放行与拦截。')],['enhance',_('DNS 增强'),'settings',_('按需增强解析与过滤，保留原生网络路径。')]],currentPage=pages.filter(function(p){return p[0]===page;})[0];
 		var nodes = [el('a',{'class':'az-skip-link',href:'#az-page-title'},_('跳到页面内容')),el('div', { 'class': 'az-header' }, [
 			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.21.3', alt: '', width: 44, height: 44, draggable: 'false' }),
-				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, _('广告过滤与 DNS')) ]) ]),
+				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, _('广告过滤与 DNS')) ]),
+				el('button',{id:'az-version',type:'button','class':'az-version-button'+(self.updateData&&self.updateData.available&&self.updateData.compatible?' has-update':''),
+					'aria-expanded':self.updateOpen?'true':'false','aria-controls':'az-update-panel',
+					'aria-label':_('AdZero v0.21.4，检查在线更新'),disabled:self.updateBusy||self.busy?true:null,
+					click:function(){return self.toggleUpdate();}},[
+					el('span',{translate:'no'},'v0.21.4'),
+					self.updateData&&self.updateData.available&&self.updateData.compatible?el('span',{'class':'az-update-dot','aria-label':_('有新版本')},''):null,
+					icon('refresh')]) ]),
 			el('nav', { 'class': 'az-help-links', 'aria-label': _('帮助与社区') }, helpLinks.map(function(link) {
 				return el('a', { href: link[0], 'class': 'az-button az-help-link az-help-' + link[2], target: '_blank', rel: 'noopener noreferrer', 'aria-label': link[3] }, [icon(link[2]), link[1]]);
 			})),
@@ -694,7 +781,8 @@ return view.extend({
 				el('button', { id: 'az-status', type: 'button', 'class': 'az-button az-button-quiet', 'data-action': 'status', disabled: busy ? true : null,
 					click: function() { return self.refreshStatus(); } }, [ icon('refresh'), busy === 'status' ? _('检测中…') : _('重新检测') ]) ]) ]) ];
 		nodes.push(el('nav', { 'class':'az-tabs', 'aria-label':_('AdZero 页面') },pages.map(function(p){return el('a',{id:'az-tab-'+p[0],href:'#adzero/'+p[0],'class':page===p[0]?'is-selected':'','aria-current':page===p[0]?'page':null,click:function(e){if(e&&(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button>0))return;if(e&&e.preventDefault)e.preventDefault();return self.selectPage(p[0]);}},[icon(p[2]),el('span',{},p[1])]);})));
-		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])]),el('span',{'class':'az-page-eyebrow'},'v0.21.3 · '+_('测试版'))]));
+		if(self.updateOpen)nodes.push(self.renderUpdatePanel());
+		nodes.push(el('div',{'class':'az-page-heading'},[el('div',{},[el('h2',{id:'az-page-title',tabindex:'-1'},currentPage[1]),el('p',{},currentPage[3])])]));
 		if(self.draftCount())nodes.push(self.renderDraft(s));
 		if(self.controlCount())nodes.push(self.renderControlDraft());
 		if (s.stale) nodes.push(el('p',{'class':'az-snapshot-hint',role:'status'},_('上次读取的概览，正在后台核对；取得新状态前暂停操作。')));
@@ -1070,6 +1158,7 @@ return view.extend({
 			if(saved.kind==='action')return self.runAction(saved.action,receipt);
 			if(saved.kind==='controls')return self.applyControls(receipt);
 			if(saved.kind==='policy')return self.runPolicy(saved.action,[],receipt);
+			if(saved.kind==='upgrade')return self.runUpgrade(receipt);
 			if(saved.kind==='source')return self.continueSourceJob(receipt);
 			if(saved.kind==='settings')return self.applyDraft(receipt);
 		}
@@ -1138,12 +1227,19 @@ return view.extend({
 				if (!pendingJob || !/^[a-f0-9-]{36}$/.test(pendingJob.job || '')) return;
 				var receipt={ok:true,job:pendingJob.job};
 				if (pendingJob.kind==='action') return self.runAction(pendingJob.action,receipt);
+				if (pendingJob.kind==='upgrade') return self.runUpgrade(receipt);
 				if (pendingJob.kind==='controls') {self.controlsOpen=true;return self.applyControls(receipt);}
 				if (pendingJob.kind==='policy') return self.runPolicy(pendingJob.action,[],receipt);
 				if (pendingJob.kind==='enhance') {self.enhanceOpen=true;self.rulesOpen=false;self.controlsOpen=false;return self.runEnhance(pendingJob.action,receipt);}
 				if (pendingJob.kind==='source') { self.rulesOpen=true; self.loadSources(); return self.continueSourceJob(receipt); }
 				if (pendingJob.kind==='settings') { return self.applyDraft(receipt); }
 			});
+		}
+		// One quiet check per page load. A network error only affects the
+		// optional version control; the main LuCI page remains usable.
+		if(typeof window!=='undefined'&&!self.updateChecked){
+			self.updateChecked=true;
+			setTimeout(function(){if(!self.pageClosed&&!self.busy)self.checkUpdate(true);},2500);
 		}
 		return root;
 	},
