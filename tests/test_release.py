@@ -144,6 +144,7 @@ class ReleaseTest(unittest.TestCase):
                 finally:
                     fixture.doCleanups()
 
+    @unittest.skipUnless(os.name == 'posix', 'actual package lifecycle uses POSIX shell')
     def test_five_exact_sdk_platforms_assemble_and_install_safely(self):
         """Real release selection requires both distinct vendor packages."""
         from check_release_delivery import check
