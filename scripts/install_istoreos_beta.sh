@@ -232,6 +232,14 @@ do_install() (
             "$CTL" disable || :
             fail '主动启用失败，已尝试恢复配置，测试备份保留。'
         fi
+        # Mirror the established stable installer: persist the user's
+        # explicit enable choice for subsequent router boots.
+        if [ -x "$ROOT/etc/init.d/adzero" ]; then
+            if ! "$ROOT/etc/init.d/adzero" enable || ! "$ROOT/etc/init.d/adzero" start; then
+                "$CTL" disable || :
+                fail '开机启用或启动服务失败，已尝试撤回保护；请检查配置备份。'
+            fi
+        fi
         say '已安装并启用。请立即检查 LAN 上网、DNS 和代理状态。'
     else
         # The factory package is installed disabled. Do not call disable

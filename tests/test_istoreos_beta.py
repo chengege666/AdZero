@@ -165,9 +165,15 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
     def test_explicit_enable_requires_ack_and_uninstall_requires_marker(self):
         self.configure("x86_64")
         self.invoke("x86_64","--install","--enable","--local-dir",str(self.release),success=False)
+        init=self.router/"etc/init.d/adzero"
+        init.parent.mkdir(parents=True,exist_ok=True)
+        init.write_text("#!/bin/sh\necho init:$1 >> \"$MOCK_CTL_LOG\"\n")
+        init.chmod(0o755)
         self.invoke("x86_64","--install","--enable","--accept-network-risk",
                     "--local-dir",str(self.release))
         self.assertIn("ctl:enable",self.ctls.read_text())
+        self.assertIn("init:enable",self.ctls.read_text())
+        self.assertIn("init:start",self.ctls.read_text())
         marker=self.router/"etc/adzero-beta/installed"
         marker.write_text("tag=wrong\nprofile=x86_64\n")
         self.invoke("x86_64","--uninstall",success=False)
