@@ -13,12 +13,16 @@ on:
       - 'scripts/build_istoreos_pilot.py'
       - 'scripts/check_istoreos_pilot_snapshot.py'
       - 'scripts/validate_istoreos_readiness.py'
+      - 'scripts/build_istoreos_beta.py'
+      - 'scripts/install_istoreos_beta.sh'
       - 'scripts/istoreos_pilot_preflight.sh'
       - 'tests/test_istoreos_arm64.py'
       - 'tests/test_istoreos_arm64_image.py'
       - 'tests/test_istoreos_dependencies.py'
       - 'tests/test_istoreos_apk_solver.py'
       - 'tests/test_istoreos_pilot.py'
+      - 'tests/test_istoreos_beta.py'
+      - 'docs/RELEASE_ISTOREOS_BETA_0.21.5.md'
       - 'docs/ISTOREOS_PILOT.md'
       - 'docs/evidence/istoreos-25.12.6/*readonly-pilot-snapshot.json'
       - 'docs/evidence/istoreos-25.12.6/*readiness-snapshot.json'
@@ -56,6 +60,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_istoreos_dependencies.py -v
           python3 -m unittest discover -s tests -p test_istoreos_apk_solver.py -v
           python3 -m unittest discover -s tests -p test_istoreos_pilot.py -v
+          python3 -m unittest discover -s tests -p test_istoreos_beta.py -v
           python3 -m unittest discover -s tests -p test_arm64_matrix.py -v
       - name: Upload read-only firmware provenance (no installable APK)
         uses: actions/upload-artifact@v4
