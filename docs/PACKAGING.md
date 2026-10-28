@@ -42,7 +42,7 @@ python3 scripts/fetch_sdk.py --firmware immortalwrt --release 24.10.6 --target x
 python3 scripts/fetch_sdk.py --firmware immortalwrt --release 25.12.2 --target x86/64 --directory "$HOME/vendor-sdks" --cache "$HOME/vendor-cache"
 ~~~
 
-24.10.6 使用 IPK，25.12.2 使用 APK。GitHub CI 已用两个独立的 ImmortalWrt 官方 SDK、各自 feeds 完成 v0.21.4 代码的实际封装和 LuCI 验证；证据见 docs/evidence/v0.21.5/vendor-sdk-builds.json。v0.21.5 正式发布之前必须使用新的 v0.21.5 源码重新编译，并与三个 OpenWrt 版本一起校验完整五项发行清单；即使 SDK 通过，也不意味着已在真实设备上验证过滤和回滚。
+24.10.6 使用 IPK，25.12.2 使用 APK。GitHub CI 已用两个独立的 ImmortalWrt 官方 SDK、各自 feeds 完成 v0.21.4 代码的实际封装和 LuCI 验证；证据见 docs/evidence/v0.21.5/vendor-sdk-builds.json。公开的 v0.21.5 已经使用对应源码重新编译并校验了五项完整发行包，且通过了公开资产下载、SHA-256 与 10 组隔离安装测试；即使 SDK 通过，也不意味着已在真实设备上验证过滤和回滚。
 
 iStoreOS 25.12.6-2026102312 x86/64 的官方 commit/config/feeds/版本索引可运行以下只读核验：
 
@@ -57,7 +57,51 @@ mkdir -p "$HOME/istoreos-builds"
 python3 scripts/prepare_istoreos_source.py --directory "$HOME/istoreos-builds/istoreos-25.12.6-2026102312"
 ~~~
 
-源码准备程序要求 GitHub 分支 HEAD 必须与官方 buildinfo 公布的 283d02639c740f8ae6e9425b48be8c61f152c6b8 完全相同，并使用官方 feeds.buildinfo 中的不可变提交 SHA。它不会覆盖已有目录、运行固件安装或冒充 SDK 验证。之后仍需原生 Buildroot 工具链和 SDK 编译，再核对固件 ABI、依赖和安装测试。缺少匹配该厂商构建的 SDK/ABI 验证之前，不发布 iStoreOS 二进制包，不跨平台借用普通 OpenWrt SDK。
+源码准备程序现会显式获取并脱离分支检出官方 buildinfo 公布的历史提交 283d02639c740f8ae6e9425b48be8c61f152c6b8（不依赖厂商分支日后不变化），并使用官方 feeds.buildinfo 中的不可变提交 SHA。它不会覆盖已有目录、运行固件安装或冒充 SDK 验证。之后仍需原生 Buildroot 工具链和 SDK 编译，再核对固件 ABI、依赖和安装测试。缺少匹配该厂商构建的 SDK/ABI 验证之前，不发布 iStoreOS 二进制包，不跨平台借用普通 OpenWrt SDK。
+
+**面向将来 iStoreOS SDK 的严格发行清单：** 当前其他固件仍使用 `sha256 / file / firmware / release / target / arch / format` 七列，iStoreOS 必须有第八列 `revision`，取固件内 `DISTRIB_REVISION` 的十位数字修订号。构建矩阵里的 iStoreOS SDK 条目必须明确固定相同修订号；构建报告、发行清单和路由器检测有任何差异即拒绝安装。此功能是预先加固，不解除当前 iStoreOS 尚无可发布包的限制。
+
+## iStoreOS 独立源码 APK 候选验证（尚未开放用户安装）
+
+目前核对的固件为 iStoreOS x86/64：DISTRIB_RELEASE=25.12.6、DISTRIB_REVISION=2026102312，包管理器 APK。厂商源码和全部 13 组 feeds 均按官方提交号固定，已完成宿主工具、交叉工具链、内核和 AdZero 原生 APK 编译；仍需真实设备上测试依赖安装及 DNS、代理和回滚。
+
+维护者在隔离的厂商 Buildroot 中准备 feeds 和 package/luci-app-adzero 源码后，执行 make defconfig、make tools/install、make toolchain/install、make target/linux/compile、make package/feeds/luci/luci-base/host/compile、make package/luci-app-adzero/compile。原厂 Linux 内核 .config 须由真实 target/linux/compile 生成，不能跳过内核依赖或伪造配置打包。
+
+为避免维护者漏掉必要的内核和 SDK 构建步骤，也提供**一条命令**自动完成本地原厂编译流程：
+
+~~~sh
+python3 scripts/build_istoreos_native.py \
+  --source /absolute/path/to/istoreos-vendor-source \
+  --output /absolute/path/to/new-candidate-output \
+  --jobs 4
+~~~
+
+该命令要求事先准备并校验 13 组固定 feeds，按顺序运行 defconfig、宿主工具、交叉工具链、原厂 Linux 内核、LuCI 宿主构建及 AdZero 原生 APK 构建，然后调用下述候选包检查器。已有构建结果可使用 Buildroot 原生增量编译；它不会删除用户目录、修改软路由、打版本标签或把候选 APK 视为 SDK 已发布包。默认并行 4 任务，可调范围 1–12。
+原生 APK 构建完成后，从 AdZero 源码目录运行以下检查命令：
+
+~~~sh
+python3 scripts/inspect_istoreos_candidate.py \
+  --source /absolute/path/to/istoreos-vendor-source \
+  --output /absolute/path/to/new-candidate-output
+~~~
+
+检查器会核对厂商真实 Git 提交、官方 feeds.buildinfo 的 SHA-256，以及 **13 个 feed 目录当前检出的 Git 提交是否与原厂逐项一致**；任何 SHA 漂移、缺失或符号链接都会拒绝。还会验证 Buildroot 构建配置、target/架构/包格式、当前 AdZero 源码及原生 APK 工具对封装内容的校验结果。只生成候选证据，报告明确保留 sdk_build=native_vendor_source_candidate_not_sdk_verified 和 publishable=false，绝不会自动将它升级为 SDK 验证通过。
+导出候选时还会重新核对**实际复制到输出目录的 APK SHA-256**，避免在检查与复制之间文件发生变化却仍写入有效清单；发现不一致即删除本次不完整的导出目录。拒绝符号链接 APK 提取器及厂商 feed/包输出目录，防止本地构建来源被间接替换。
+
+为确认 APK 是否能在原始固件的软件包集合中解析全部依赖，还须提供**从官方 gzip 镜像校验并解压**的真实固件镜像，运行如下只读命令。它对 2.4 GB 原始镜像先核对固定 SHA-256，再读取 SquashFS 内 `/lib/apk/db/installed`，通过原厂 APK 工具逐层解析缺失的包及其原厂 Buildroot 提供者，逐一记录包架构、版本和 SHA-256。源码、包校验与固件版本/修订有任何偏差就拒绝：
+
+~~~sh
+python3 scripts/check_istoreos_dependencies.py \
+  --source /absolute/path/to/istoreos-vendor-source \
+  --image /absolute/path/to/verified-original-firmware.img \
+  --output /absolute/path/to/new-dependency-closure.json
+~~~
+
+**历史候选记录（不是当前二进制）：**最初审计对比了原厂固件已安装的 1,065 个软件包，旧候选的 `tcpdump-mini` 等 7 个缺失依赖可由原厂 Buildroot 产物补齐。该 [旧版候选审计报告](evidence/v0.21.5/istoreos-native-apk-candidate.json) 保留当时 APK 的 SHA-256，不应替换成后续新编译的同名文件。**最新版隔离虚拟机验证**已改用通用 `tcpdump`，缺失依赖降至 6 个，使用的是**不同 SHA-256 的新候选字节**，以 [虚拟机报告](evidence/istoreos-25.12.6/native-apk-virtual-machine-acceptance.json) 为准。两者均保持 `publishable=false`，都不能视为真实路由器 DNS、代理或回滚验收。
+
+后续发布必须进一步在对应真实 iStoreOS 固件上验证依赖/ABI、安装和升级、DNS 拦截、NaiLink 等代理共存、重启和恢复。没有完成之前，当前公开 v0.21.5 的五组已验证固件目标不受影响，iStoreOS 仍不能通过公开安装器。
+
+**iStoreOS 虚拟机验证的新证据：**使用已固定的原厂完整镜像启动隔离 KVM/QEMU，核对 `DISTRIB_RELEASE=25.12.6`、`DISTRIB_REVISION=2026102312` 以及 APK 3.0.5。`tcpdump-mini` 在原包中会替换固件预装的 `tcpdump`，因此开发中的新包改为通用 `tcpdump` 依赖（原厂完整版和 mini 均可满足），并将所需原生依赖由 7 个减少为 6 个。原始镜像的离线包管理器 `--simulate` 和随后真实 `apk add` 均返回 0、保留完整版 `tcpdump`，默认 `adzero.main.enabled=0`。详细内容和散列证明见 [原生 APK 虚拟机验收报告](evidence/istoreos-25.12.6/native-apk-virtual-machine-acceptance.json)。此实测只发生在可丢弃的虚拟机快照；**不代表真实路由器网络认证完成，亦不得将内部版本同为 0.21.5-r1 的新字节替换公开 v0.21.5 Release**。
 
 ## Linux / WSL 复现
 

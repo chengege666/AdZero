@@ -172,6 +172,43 @@ class ReleaseTest(unittest.TestCase):
         # silently reuse the same x86_64 binary package.
         self.assertNotIn("istoreos", (self.output / "releases.tsv").read_text())
 
+    @unittest.skipUnless(os.name == 'posix', 'installer lifecycle uses POSIX shell')
+    def test_future_sixth_istoreos_release_requires_revision_in_delivery(self):
+        """A vendor SDK candidate is NOT published, but its future exact
+        eight-column release must pass the same LF/CRLF upgrade checks."""
+        from check_release_delivery import check
+        manifests = [
+            self.manifest("x86/64", "x86_64", "24.10.8", "ipk"),
+            self.manifest("x86/64", "x86_64", "25.12.5", "apk"),
+            self.manifest("rockchip/armv8", "aarch64_generic", "25.12.5", "apk"),
+        ]
+        for release, fmt in (("24.10.6", "ipk"), ("25.12.2", "apk")):
+            path = self.manifest("x86/64", "x86_64", release, fmt)
+            report = json.loads(path.read_text())
+            report["firmware_declared"] = "immortalwrt"
+            path.write_text(json.dumps(report))
+            manifests.append(path)
+        istore = self.manifest("x86/64", "x86_64", "25.12.6", "apk")
+        report = json.loads(istore.read_text())
+        report.update(firmware_declared="istoreos", revision_declared="2026102312")
+        istore.write_text(json.dumps(report))
+        manifests.append(istore)
+        identity = ("istoreos", "25.12.6", "x86/64", "apk")
+        with mock.patch.dict(build_release.SUPPORTED_BUILDS, {identity: "x86_64"}), \
+             mock.patch.dict(build_release.SUPPORTED_REVISIONS, {identity: "2026102312"}), \
+             mock.patch.object(build_release, "source_hash", return_value="current"):
+            build_release.bundle(manifests, self.output)
+            result = check(self.output)
+            self.assertEqual(result["checks"], 12)
+            istore_cases = [x for x in result["cases"]
+                            if x["target"].startswith("istoreos-")]
+            self.assertEqual({c["catalog_ending"] for c in istore_cases},
+                             {"LF", "CRLF"})
+            self.assertTrue(all(c["selection_checksum_backup_restore_install"] == "passed"
+                                for c in istore_cases))
+        # The public trusted matrix remains unchanged outside test patches.
+        self.assertNotIn(identity, build_release.SUPPORTED_BUILDS)
+
     def test_trusted_matrix_contains_only_current_sdk_verified_rows(self):
         actual = build_release.verified_builds()
         self.assertEqual(actual, {
@@ -215,6 +252,13 @@ class ReleaseTest(unittest.TestCase):
             self.assertEqual(build_release.verified_builds(path), {})
             data["sdk_verified"][0]["sdk_build"] = "passed"
             path.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "pinned ten-digit"):
+                build_release.verified_builds(path)
+            data["sdk_verified"][0]["revision"] = "2026102312"
+            path.write_text(json.dumps(data))
+            self.assertEqual(build_release.verified_revisions(path), {
+                ("istoreos", "24.10.8", "x86/64", "ipk"): "2026102312"
+            })
             self.assertEqual(build_release.verified_builds(path), {
                 ("istoreos", "24.10.8", "x86/64", "ipk"): "x86_64"
             })
@@ -227,6 +271,34 @@ class ReleaseTest(unittest.TestCase):
             path.write_text(json.dumps(data))
             with self.assertRaisesRegex(ValueError, "Invalid verified SDK identity"):
                 build_release.verified_builds(path)
+
+    def test_istoreos_catalog_requires_verified_revision_and_matching_manifest(self):
+        item = self.manifest("x86/64", "x86_64", "25.12.5", "apk")
+        report = json.loads(item.read_text())
+        report.update(firmware_declared="istoreos", release_declared="25.12.6",
+                      revision_declared="2026102312")
+        item.write_text(json.dumps(report))
+        identity = ("istoreos", "25.12.6", "x86/64", "apk")
+        with mock.patch.object(build_release, "source_hash", return_value="current"), \
+             mock.patch.dict(build_release.SUPPORTED_BUILDS, {identity: "x86_64"}), \
+             mock.patch.dict(build_release.SUPPORTED_REVISIONS, {identity: "2026102312"}):
+            build_release.bundle([item], self.output)
+            lines = (self.output / "releases.tsv").read_text().splitlines()
+            row = next(line for line in lines if not line.startswith("#"))
+            self.assertEqual(len(row.split("\t")), 8)
+            self.assertTrue(row.endswith("\t2026102312"))
+            build_release.validate_release(self.output)
+            # Corrupt, missing or mismatched revisions can never publish.
+            for corrupted in (row.rsplit("\t", 1)[0],
+                              row.rsplit("\t", 1)[0] + "\t2026102313",
+                              row.rsplit("\t", 1)[0] + "\tbad"):
+                (self.output / "releases.tsv").write_text(lines[0] + "\n" + corrupted + "\n", newline="\n")
+                with self.assertRaisesRegex(ValueError, "revision"):
+                    build_release.validate_release(self.output)
+            report["revision_declared"] = "2026102313"
+            item.write_text(json.dumps(report))
+            with self.assertRaisesRegex(ValueError, "Build revision"):
+                build_release.bundle([item], self.root / "reject-mismatch")
 
     def test_x86_output_cannot_be_relabelled_as_arm(self):
         with mock.patch.object(build_release, "source_hash", return_value="current"):

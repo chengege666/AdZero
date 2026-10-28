@@ -44,8 +44,11 @@ def parse_pinned_feeds(raw):
 
 def prepare(destination, *, fetch=read_remote, run=subprocess.run, check_output=subprocess.check_output):
     evidence = validate_metadata(fetch)
-    destination = Path(destination).resolve()
-    if destination.exists() or destination.is_symlink():
+    requested = Path(destination)
+    if requested.is_symlink():
+        raise ValueError("Vendor-source destination is a symlink; refusing to follow it")
+    destination = requested.resolve()
+    if destination.exists():
         raise ValueError("Vendor-source destination exists; refusing to overwrite other work")
     if not destination.parent.is_dir():
         raise ValueError("Create the parent directory first; refusing implicit source tree deletion")
@@ -54,11 +57,17 @@ def prepare(destination, *, fetch=read_remote, run=subprocess.run, check_output=
     if hashlib.sha256(config).hexdigest() != METADATA_SHA256["config.buildinfo"]:
         raise ValueError("Vendor config digest changed")
     pinned_feeds = parse_pinned_feeds(feeds)
-    run(["git", "clone", "--filter=blob:none", "--depth", "1", "--branch",
-         "istoreos-25.12", "--", SOURCE_REPO + ".git", str(destination)], check=True)
+    # A vendor branch can move after a firmware is published. Fetch and
+    # checkout the exact commit recorded in its buildinfo, rather than
+    # assuming the branch still points at that historical revision.
+    run(["git", "clone", "--filter=blob:none", "--no-checkout", "--depth", "1",
+         "--branch", "istoreos-25.12", "--", SOURCE_REPO + ".git", str(destination)], check=True)
+    run(["git", "-C", str(destination), "fetch", "--depth", "1", "origin",
+         SOURCE_COMMIT], check=True)
+    run(["git", "-C", str(destination), "checkout", "--detach", SOURCE_COMMIT], check=True)
     current = check_output(["git", "-C", str(destination), "rev-parse", "HEAD"], text=True).strip()
     if current != SOURCE_COMMIT:
-        raise ValueError("iStoreOS source branch differs from official firmware build; no build allowed")
+        raise ValueError("Pinned iStoreOS source differs from official firmware build; no build allowed")
     if not (destination / "rules.mk").is_file() or not (destination / "scripts/feeds").is_file():
         raise ValueError("Cloned tree is not the expected OpenWrt Buildroot")
     (destination / ".config").write_bytes(config)

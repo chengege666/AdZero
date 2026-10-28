@@ -12,7 +12,7 @@ v0.18.0 使用共享代码和下列 SDK 组合构建，不把旧版本的单设�
 | OpenWrt 其他 24.10.x / 25.12.x | 按实际 target | 实际 OPKG/APK | 逐项推进 | 待测 | 待测 |
 | ImmortalWrt 24.10.6 | x86/64 / x86_64 | IPK | 独立厂商 SDK 编译与实际包验证通过 | 待测 | 待测 |
 | ImmortalWrt 25.12.2 | x86/64 / x86_64 | APK | 独立厂商 SDK 编译与实际包验证通过 | 待测 | 待测 |
-| iStoreOS 25.12.6，修订 2026102312 | x86/64 / x86_64 | APK（官方镜像已核实） | 固件源码、feeds 和原生工具链准备完成，专用 APK 未构建 | 待测 | 待测 |
+| iStoreOS 25.12.6，修订 2026102312 | x86/64 / x86_64 | APK（官方镜像已核实） | 原厂 Buildroot 已生成专用 APK、封装与依赖闭环验证通过；仍为候选 | 待测 | 待测 |
 
 机器可读计划见 [compatibility-matrix.json](compatibility-matrix.json)。x86/64、rockchip/armv8 之后，按 mediatek/filogic、ipq40xx/generic、ramips/mt7621 逐项扩展；i386、MIPS/MIPS64、RISC-V 仍为候选。
 
@@ -31,7 +31,13 @@ ImmortalWrt 不复用 OpenWrt 的二进制包。已从 ImmortalWrt 官方下载�
 
 官方 rootfs 的 /etc/openwrt_release 也已核对：DISTRIB_ID='ImmortalWrt'、完整版本、x86/64 和 x86_64 架构；相应 DISTRIB_REVISION 分别为 r33869-cf234f8de6d5 和 r38135-0c4cd0f9920a。新增 vendor-sdk.yml 已使用各自的官方 SDK、各自 feeds 完成独立编译与封装验证；构建产物 SHA-256、安装文件和 LuCI 交互测试全部通过，证据见 [vendor-sdk-builds.json](evidence/v0.21.5/vendor-sdk-builds.json)。这两个精确目标现列入 sdk_verified，但实际设备启停、DNS、代理和故障回滚仍需验收；不能扩展为全部 ImmortalWrt 版本通用。
 
-iStoreOS 最新 x86_64 25.12.6-2026102312 的官方编译元数据已经核实：源代码 istoreos/istoreos 的 istoreos-25.12 分支提交是 283d02639c740f8ae6e9425b48be8c61f152c6b8。官方另提供对应 config、feeds 和构建信息；CONFIG_VERSION_DIST="iStoreOS"。scripts/probe_istoreos.py 使用 SHA-256 固定并核对这些官方元数据；scripts/prepare_istoreos_source.py 还可从该固定提交准备原生源码与 13 个 SHA 锁定的 feeds，拒绝覆盖用户已有代码。源代码及 13 组 SHA 锁定的 feeds 准备已经实测通过，宿主构建工具链也已成功构建。进一步从官方 SHA-256 核验的完整原始镜像内，直接读取 `/etc/openwrt_release`：`DISTRIB_RELEASE=25.12.6`、`DISTRIB_REVISION=2026102312`、`DISTRIB_TARGET=x86/64`、`DISTRIB_ARCH=x86_64`；同时确认 `/lib/apk/db/installed` 存在。证据见 [istoreos-original-image.json](evidence/v0.21.5/istoreos-original-image.json)。**这些不等于已经编译成功厂商 SDK、完成软件包 ABI 验证或真机验收**。完成真正的 iStoreOS 构建以前，不得将其加入 releases.tsv。
+iStoreOS 最新 x86_64 25.12.6-2026102312 的官方编译元数据已经核实：源代码 istoreos/istoreos 的 istoreos-25.12 分支提交是 283d02639c740f8ae6e9425b48be8c61f152c6b8。官方另提供对应 config、feeds 和构建信息；CONFIG_VERSION_DIST="iStoreOS"。scripts/probe_istoreos.py 使用 SHA-256 固定并核对这些官方元数据；scripts/prepare_istoreos_source.py 还可从该固定提交准备原生源码与 13 个 SHA 锁定的 feeds，拒绝覆盖用户已有代码。源代码及 13 组 SHA 锁定的 feeds 准备已经实测通过，宿主构建工具链也已成功构建。进一步从官方 SHA-256 核验的完整原始镜像内，直接读取 `/etc/openwrt_release`：`DISTRIB_RELEASE=25.12.6`、`DISTRIB_REVISION=2026102312`、`DISTRIB_TARGET=x86/64`、`DISTRIB_ARCH=x86_64`；同时确认 `/lib/apk/db/installed` 存在。证据见 [istoreos-original-image.json](evidence/v0.21.5/istoreos-original-image.json)。现已使用该精确固件对应的原生 Buildroot 生成 `luci-app-adzero-0.21.5-r1.apk`，完成 66 个封装文件和 406 项 LuCI 交互断言验收，并对官方固件镜像内的 1,065 个已安装包做递归依赖核对：缺失的 7 个依赖均由原厂锁定源码构建的 APK 提供，SHA-256、版本及包架构一致。原始字节与构建来源审计见 [iStoreOS 原生 APK 候选证据](evidence/v0.21.5/istoreos-native-apk-candidate.json)。**这些仅证明构建及离线依赖闭环，不代表已完成固件 SDK/ABI 与真实路由器上的 DNS、代理、重启、卸载及故障回滚验收**。因此继续拒绝通过公开安装器安装 iStoreOS，不能将候选包加入正式 `releases.tsv`。
+
+**隔离虚拟机扩展验证：**在 QEMU/KVM 以临时磁盘快照启动原厂镜像，实际读取的 `DISTRIB_ID=iStoreOS`、版本 `25.12.6`、修订 `2026102312`、内核 `6.12.112` 和 APK 3.0.5 均与构建目标一致。挂载仅用于测试的 ext4 虚拟磁盘，在完全无外网的 `apk add --simulate --no-network` 中，AdZero 原生 APK 加七个厂商依赖均通过解算，但**发现原包会把系统预装的完整 `tcpdump` 替换成 `tcpdump-mini`**。后续源码已改为通用 `tcpdump` 依赖，原有完整版与提供 `tcpdump` 虚拟能力的 mini 均可满足，避免无必要的软件包替换；必须重新编译新源码并在虚拟机及真实设备中验收，才能对外发布 iStoreOS 包。虚拟机内预检不等于实机 LAN、DNS、代理共存验收。
+
+**修复后的隔离虚拟机实装（2026-10-28）：**使用原厂镜像、禁用外网连接的 QEMU/KVM 和临时磁盘快照，将**修复为通用 `tcpdump` 依赖**的 AdZero 原生 APK 与 6 个缺失的厂商 APK 一起作为离线本地包提供。原厂 APK 的 `--simulate --no-network` 返回 0，且没有移除原有完整版 `tcpdump`；随后在相同隔离环境中执行真实 `apk add --no-network --allow-untrusted` 安装也返回 0，确认 AdZero 已登记、配置文件存在、完整版 `tcpdump` 仍存在、AdZero 默认启用状态仍为 `0`。验证记录及全部 APK/来源 SHA-256 见 [原厂 iStoreOS 虚拟机安装验收](evidence/istoreos-25.12.6/native-apk-virtual-machine-acceptance.json)。**注意：此候选包内部仍标注 0.21.5-r1，但与公开 v0.21.5 Release 的实际字节不同，不能覆盖或冒充已发布资产。该验证仍不证明实际路由器上的 LAN、NaiLink、DNS、启动及升级回滚已通过；不得据此自动开放 iStoreOS 一键安装。**
+
+**iStoreOS 固件修订号保护（后续独立安装包）：** `25.12.6-2026102312` 是固件镜像的组合命名，系统真实的 `DISTRIB_RELEASE=25.12.6` 与 `DISTRIB_REVISION=2026102312` 是两个独立字段。安装器现已为未来的 iStoreOS 专属包预留 `releases.tsv` 第八列（必须是 10 位数字），并要求两项完全匹配；旧式七列的 iStoreOS 行也会被拒绝。其他 OpenWrt、ImmortalWrt 发行清单保留七列不变。**这一安全准备不意味着已经发布了 iStoreOS 安装包**。
 
 请保留系统 /etc/openwrt_release 的真实信息，不能把 ImmortalWrt / iStoreOS 伪装成 OpenWrt。所有新固件必须逐一通过 SDK 构建、包格式验证、安装备份恢复、DNS 和代理的真实设备验收。
 
