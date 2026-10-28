@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "release_tag": "v0.21.5-istoreos-beta.1",
+  "release_type": "public_opt_in_prerelease",
+  "firmware": "istoreos",
+  "release": "25.12.6",
+  "revision": "2026102312",
+  "app_package": "luci-app-adzero-0.21.5-r1.apk",
+  "app_apk_sha256": "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52",
+  "app_package_source_sha256": "8df7589827fdc1adc418c3b83887097589b257a4a7654ac0dd91ddf878ee60c9",
+  "vendor_source_commit": "283d02639c740f8ae6e9425b48be8c61f152c6b8",
+  "archives": [
+    {
+      "profile": "x86_64",
+      "target": "x86/64",
+      "arch": "x86_64",
+      "name": "adzero-istoreos-x86_64-beta.tar.gz",
+      "sha256": "aa63a3ac904cb4aded1f61e71567ce3dd2b0ae84e495051395e3397f31086f39",
+      "factory_image_sha256": "833e203e667fb49b27dd69ce8a8a8176a563d5f7154ba95ac219bed0af5da3c9",
+      "dependency_count": 6
+    },
+    {
+      "profile": "armsr",
+      "target": "armsr/armv8",
+      "arch": "aarch64_generic",
+      "name": "adzero-istoreos-armsr-beta.tar.gz",
+      "sha256": "f285da3c8a2b00f7ef3c2f2c72f6041e8a4753744ee695546ae8952b02962def",
+      "factory_image_sha256": "c46658d6f9a4b1d6d45b2da25f0eee0d188a7a625cdc200a59eb7af1a4f78128",
+      "dependency_count": 6
+    },
+    {
+      "profile": "rockchip-r6xs",
+      "target": "rockchip/armv8",
+      "arch": "aarch64_generic",
+      "name": "adzero-istoreos-rockchip-r6xs-beta.tar.gz",
+      "sha256": "af50dbbb9305c2d7b27b3376853f393fc10bd1184bcd89b924c4e2ca1624ac9e",
+      "factory_image_sha256": "c89326ee924f41d10921570d3da1b7caf22be13a275be7bd9bd830e0f21c8ec8",
+      "dependency_count": 6
+    }
+  ],
+  "installer": {
+    "name": "install-istoreos-beta.sh",
+    "sha256": "f71359422f8cb029f121c46b0599fd9bff6e45bd4cecb4716914d946f908de8c"
+  },
+  "source_script": "scripts/install_istoreos_beta.sh",
+  "build_script": "scripts/build_istoreos_beta.py",
+  "public_stable_sdk_verified_matrix_changed": false,
+  "automatic_enable": false,
+  "physical_device_test": "not_run",
+  "lan_dns_proxy_coexistence": "not_run",
+  "original_public_release_v0_21_5_modified": false,
+  "scope": "SHA-pinned factory-native APK artifacts, user-opt-in public beta install channel with separate release tag; not a stable certification"
+}

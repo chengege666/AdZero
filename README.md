@@ -39,6 +39,16 @@ v0.21.4 新增 LuCI 在线更新、中文菜单安装与固件 SDK 兼容判断�
 
 当前为 **v0.21.5 测试版（Pre-release）**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。
 
+### iStoreOS 独立公开测试版：一键安装
+
+**已开放 [iStoreOS 独立公开 Beta 渠道](docs/RELEASE_ISTOREOS_BETA_0.21.5.md)**，仅支持 iStoreOS **25.12.6 修订 `2026102312`** 的 x86_64、ARMSR ARM64 与原厂 R6XS Rockchip，每个目标分别打包原厂 Buildroot APK + 六个依赖。在有备份与救援方式的测试设备上以 root SSH 执行：
+
+```sh
+curl -fL --proto '=https' --proto-redir '=https' https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.1/install-istoreos-beta.sh -o /tmp/install-istoreos-beta.sh && sh /tmp/install-istoreos-beta.sh --menu
+```
+
+自动识别精确固件、下载并校验 SHA-256。中文菜单可选只读预检、一键安装（默认关闭过滤）、经确认启用及安全卸载。**公开试装 Pre-release 不代表已通过真机正式认证**。它不替换普通 v0.21.5 安装/在线更新；请在 [GitHub Issues](https://github.com/slobys/AdZero/issues) 提交脱敏的安装和 DNS/代理测试结果。
+
 ### 中文菜单式安装（推荐）
 
 以 root 登录路由器 SSH，运行下面**一条固定命令**。地址不包含版本号，不需要每次修改命令；菜单会根据已安装状态自动选择安装或升级，并使用发行版内固定的 SDK 校验清单选包：
@@ -90,13 +100,13 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 以上五种完整固件/目标组合均已具备独立 SDK 构建证据，真实路由器的网络与广告过滤效果仍待验收。ImmortalWrt 的其他版本、iStoreOS、其他架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进；安装器仍会拒绝发行清单中没有的组合。
 
-**ARM64 开发进展：**已为 OpenWrt 25.12.6 的 Rockchip/Filogic、ImmortalWrt 25.12.2 的 Rockchip/Filogic 固定各自官方 SDK SHA，并新增真实 SDK 自动构建目标；为 iStoreOS 25.12.6 的 ARMSR 和 R6XS 两种 ARM64 固件单独核验原厂构建配置、源码提交和 feeds，提供原生候选 APK 构建入口。**这些新增 ARM64 项目均处于候选阶段，未加入公开安装兼容清单，也未发布新版 APK。**完整进度与测试门槛见 [ARM64 适配计划](docs/ARM64.md)。
+**ARM64 开发进展：**已为 OpenWrt 25.12.6 的 Rockchip/Filogic、ImmortalWrt 25.12.2 的 Rockchip/Filogic 固定各自官方 SDK SHA，并新增真实 SDK 自动构建目标；为 iStoreOS 25.12.6 的 ARMSR 和 R6XS 两种 ARM64 固件单独核验原厂构建配置、源码提交和 feeds，提供原生候选 APK 构建入口。**这些组合尚未加入稳定版安装兼容清单；iStoreOS 已开通独立公开 Beta 试装渠道。**完整进度与测试门槛见 [ARM64 适配计划](docs/ARM64.md)。
 
-**iStoreOS 进度（尚未发布）：**原厂 iStoreOS 25.12.6、修订 `2026102312`、x86_64 的专用 APK 已从原厂 Buildroot 编译，并在隔离 KVM 虚拟机完成离线模拟与实际安装；六个原厂依赖均能满足，原有完整版 `tcpdump` 得以保留，安装后 AdZero 仍默认关闭。详见 [虚拟机验证证据](docs/evidence/istoreos-25.12.6/native-apk-virtual-machine-acceptance.json)。这并非实机 LAN、NaiLink 或 DNS/回滚验收，**iStoreOS 尚未列入公开一键安装包**。本次新字节不是已发布的 v0.21.5 Release 资产。
+**iStoreOS 进度（尚未发布）：**原厂 iStoreOS 25.12.6、修订 `2026102312`、x86_64 的专用 APK 已从原厂 Buildroot 编译，并在隔离 KVM 虚拟机完成离线模拟与实际安装；六个原厂依赖均能满足，原有完整版 `tcpdump` 得以保留，安装后 AdZero 仍默认关闭。详见 [虚拟机验证证据](docs/evidence/istoreos-25.12.6/native-apk-virtual-machine-acceptance.json)。这并非实机 LAN、NaiLink 或 DNS/回滚验收，**iStoreOS 尚未列入稳定安装清单；独立 Beta 提供公开一键试装**。本次新字节不是已发布的 v0.21.5 Release 资产。
 
 **iStoreOS ARM64 原厂镜像核验：**独立验证了 25.12.6-2026102312 的 ARMSR 与 R6XS 官方压缩镜像、原始文件系统 SHA-256、固件 ID/target/ABI 和预装 APK 数据库；两套固件分别预装 1,018 / 940 个包，均保留完整版 `tcpdump`。已增加严格的 ARM64 原厂 APK 递归依赖检查及反混装测试；两种固件的原厂原生 APK 编译、6 个缺失依赖闭环及 7 个 APK 离线模拟均已通过；真实软路由 LAN/DNS/代理/升级回滚验收仍需逐项完成，**当前不得在菜单或在线更新中将其当成已发布支持**。证据和构建流程见 [ARM64 适配进度](docs/ARM64.md)。
 
-**iStoreOS 下一阶段（只读预检候选包）：**增加严格绑定 ARMSR/R6XS 原厂完整修订号、target/ABI 和六个原厂依赖哈希的独立离线候选 ZIP，以及不支持安装操作的只读环境与 apk-tools 模拟预检。在对应原厂镜像数据库隔离副本上，两种目标均用真实厂商 apk-tools 通过 `--check` 和 `--solver`；**尚未实体路由器测试，不属于公开 Release，也不开放自动安装或在线更新**。详见 [iStoreOS 私有离线预检流程](docs/ISTOREOS_PILOT.md)。 新增 `--report` 严格脱敏只读设备就绪报告（只有固定布尔和资源数值，绝不复制代理订阅、密钥、节点或 IP），可在维护者机器上与原厂目标/测试包 manifest 严格比对；仍不授权安装。
+**iStoreOS 下一阶段（只读预检候选包）：**增加严格绑定 ARMSR/R6XS 原厂完整修订号、target/ABI 和六个原厂依赖哈希的独立离线候选 ZIP，以及不支持安装操作的只读环境与 apk-tools 模拟预检。在对应原厂镜像数据库隔离副本上，两种目标均用真实厂商 apk-tools 通过 `--check` 和 `--solver`；**原私有预检 ZIP 仍不属于公开安装包；新 iStoreOS Beta 通过独立发布页开放一键试装，稳定在线更新尚未开放**。详见 [iStoreOS 私有离线预检流程](docs/ISTOREOS_PILOT.md)。 新增 `--report` 严格脱敏只读设备就绪报告（只有固定布尔和资源数值，绝不复制代理订阅、密钥、节点或 IP），可在维护者机器上与原厂目标/测试包 manifest 严格比对；仍不授权安装。
 
 **安装器兼容性修正（v0.21.5）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。ImmortalWrt 增加两个 x86_64 的厂商 SDK 专属构建组合；其他 ImmortalWrt 版本及尚无专用 SDK 包的 iStoreOS，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
 
