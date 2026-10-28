@@ -16,7 +16,7 @@ base='https://github.com/slobys/AdZero/releases/download'
 job=${ADZERO_JOB_CONTEXT:-}
 installer=
 
-fail()lock_owned=0
+lock_owned=0
 
 fail() { printf 'AdZero 更新：%s\n' "$*" >&2; exit 1; }
 version_valid() { printf '%s\n' "$1" | grep -Eq '^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; }

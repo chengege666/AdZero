@@ -96,6 +96,15 @@ class UpdateTest(unittest.TestCase):
             self.assertNotEqual(out.returncode, 0, out.stdout + out.stderr)
         return out
 
+    def test_missing_downloader_fails_before_lock_with_clear_diagnostic(self):
+        # Trap cleanup must be safe even if prepare fails before acquire().
+        self.env["ADZERO_UPDATE_CURL"] = "/nonexistent/adzero-curl"
+        result = self.call("check", success=False)
+        self.assertIn("缺少 curl", result.stderr)
+        self.assertNotIn("lock_owned", result.stderr)
+        self.assertFalse((self.state / "lock").exists())
+        self.assertFalse(self.urls.exists())
+
     def test_up_to_date_never_launches_install(self):
         self.env["MOCK_TAG"] = "v0.21.3"
         reply = json.loads(self.call("check").stdout)
