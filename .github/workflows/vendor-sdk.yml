@@ -1,0 +1,65 @@
+name: Vendor SDK compatibility candidates
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'luci-app-adzero/**'
+      - 'scripts/fetch_sdk.py'
+      - 'scripts/build_sdk.py'
+      - '.github/workflows/vendor-sdk.yml'
+permissions:
+  contents: read
+
+jobs:
+  immortalwrt-x86:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release: '24.10.6'
+            format: ipk
+          - release: '25.12.2'
+            format: apk
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDK build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev zstd unzip gawk rsync file python3
+      - name: Fetch official pinned ImmortalWrt SDK and its own feeds
+        env:
+          RELEASE: ${{ matrix.release }}
+        run: |
+          set -eu
+          python3 scripts/fetch_sdk.py --firmware immortalwrt --release "$RELEASE" --target x86/64 --directory "$HOME/vendor-sdk" --cache "$HOME/vendor-sdk-cache" > /tmp/vendor-sdk.json
+          sdk=$(python3 -c "import json;print(json.load(open('/tmp/vendor-sdk.json'))['sdk'])")
+          echo "SDK_PATH=$sdk" >> "$GITHUB_ENV"
+          cd "$sdk"
+          ./scripts/feeds update base packages luci
+          ./scripts/feeds install luci-base adblock-fast rpcd-mod-file rpcd-mod-ucode ca-bundle curl ucode-mod-fs ucode-mod-uci ucode-mod-ubus ucode-mod-uloop tcpdump-mini
+      - name: Compile vendor SDK package, record exact platform and SHA-256
+        env:
+          RELEASE: ${{ matrix.release }}
+          FORMAT: ${{ matrix.format }}
+        run: |
+          set -eu
+          sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import sdk_pin;print(sdk_pin('$RELEASE','x86/64','immortalwrt')[1])")
+          python3 scripts/build_sdk.py --sdk "$SDK_PATH" --firmware immortalwrt --release "$RELEASE" --target x86/64 --format "$FORMAT" --sdk-sha256 "$sha" --output dist/vendor-sdk
+      - name: Validate emitted package files and LuCI regressions
+        env:
+          FORMAT: ${{ matrix.format }}
+        run: |
+          set -eu
+          package=$(python3 -c "import json;print(json.load(open('dist/vendor-sdk/build-manifest.json'))['package'])")
+          if [ "$FORMAT" = apk ]; then
+            python3 scripts/check_sdk_packages.py "dist/vendor-sdk/$package" --apk-tool "$SDK_PATH/staging_dir/host/bin/apk"
+          else
+            python3 scripts/check_sdk_packages.py "dist/vendor-sdk/$package"
+          fi
+          node scripts/check_luci_poll.cjs "$SDK_PATH/feeds/luci/modules/luci-base/htdocs/luci-static/resources/luci.js"
+      - name: Upload vendor SDK evidence (NOT an approved release)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adzero-candidate-immortalwrt-${{ matrix.release }}-x86_64
+          path: dist/vendor-sdk/

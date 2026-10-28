@@ -33,6 +33,25 @@ SDK 的 SHA-256 固定在 scripts/fetch_sdk.py，来源为对应 [官方版本�
 
 **新版本的 GitHub Release 必须包含新版 install.sh、releases.tsv、真实 SDK 构建产物和已核对的包 SHA-256。** 公开的 v0.21.3 仍是旧版，不应重写旧标签资产。只有构建、发布和设备验收后，当前运行 v0.21.3 的用户才能先升级到首个带在线更新按钮的版本。
 
+## 第三方发行版 SDK 构建候选
+
+ImmortalWrt x86/64 的官方独立 SDK 现在已固定精确下载地址与 SHA-256，新增 vendor-sdk.yml GitHub Actions 可执行真实厂商 SDK 编译，而不是复用 OpenWrt IPK/APK：
+
+~~~sh
+python3 scripts/fetch_sdk.py --firmware immortalwrt --release 24.10.6 --target x86/64 --directory "$HOME/vendor-sdks" --cache "$HOME/vendor-cache"
+python3 scripts/fetch_sdk.py --firmware immortalwrt --release 25.12.2 --target x86/64 --directory "$HOME/vendor-sdks" --cache "$HOME/vendor-cache"
+~~~
+
+24.10.6 使用 IPK，25.12.2 使用 APK。CI 在同一 SDK 中准备它自带的 feeds、编译 AdZero、检查实际封装文件与 LuCI UI；未构建成功的候选不会进入 sdk_verified 清单，也不能通过公开安装器冒充已支持。
+
+iStoreOS 25.12.6-2026102312 x86/64 的官方 commit/config/feeds/版本索引可运行以下只读核验：
+
+~~~sh
+python3 scripts/probe_istoreos.py
+~~~
+
+此命令**不会构建 SDK、安装任何插件或修改路由器**；它只证明官方固件的源码提交和 feeds 可追溯。缺少匹配该厂商构建的 SDK/ABI 验证之前，不发布 iStoreOS 二进制包，不跨平台借用普通 OpenWrt SDK。
+
 ## Linux / WSL 复现
 
 需要 make、gcc/g++、ncurses 开发头文件、git、gawk、rsync、file、unzip、zstd、Python 3 和 Node。SDK 放在 Linux 文件系统，避免 Windows 挂载目录的大小写与权限差异。
