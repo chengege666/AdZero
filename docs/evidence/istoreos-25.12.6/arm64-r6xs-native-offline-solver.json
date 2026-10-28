@@ -1,0 +1,67 @@
+{
+  "firmware": "istoreos",
+  "release": "25.12.6",
+  "revision": "2026102312",
+  "vendor_profile": "rockchip-r6xs",
+  "target": "rockchip/armv8",
+  "arch": "aarch64_generic",
+  "original_image_sha256": "c89326ee924f41d10921570d3da1b7caf22be13a275be7bd9bd830e0f21c8ec8",
+  "native_apk_sha256": "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52",
+  "native_source_sha256": "8df7589827fdc1adc418c3b83887097589b257a4a7654ac0dd91ddf878ee60c9",
+  "vendor_source_commit": "283d02639c740f8ae6e9425b48be8c61f152c6b8",
+  "missing_vendor_dependencies": {
+    "adblock-fast": {
+      "file": "adblock-fast-1.2.4-r4.apk",
+      "version": "1.2.4-r4",
+      "arch": "noarch",
+      "sha256": "6f1d15e45289e89c122d744fa015eaa4a212c603d34fa5a73d2424a446315921"
+    },
+    "conntrack": {
+      "file": "conntrack-1.4.8-r1.apk",
+      "version": "1.4.8-r1",
+      "arch": "aarch64_generic",
+      "sha256": "15ff484edf164ab63264d7b3e338a02ce71dae49eb573b9beb6d0830e7330e4f"
+    },
+    "coreutils-timeout": {
+      "file": "coreutils-timeout-9.9-r2.apk",
+      "version": "9.9-r2",
+      "arch": "aarch64_generic",
+      "sha256": "f540d53b8f0668d356d40725e62728b4f5a55f65453abcff338aaa9613985595"
+    },
+    "libnetfilter-cthelper0": {
+      "file": "libnetfilter-cthelper0-1.0.0-r2.apk",
+      "version": "1.0.0-r2",
+      "arch": "aarch64_generic",
+      "sha256": "8e1ca79101c2fabad9195ca909d23eb35008e5eb452b7c5a9d671648a78ebe69"
+    },
+    "libnetfilter-cttimeout1": {
+      "file": "libnetfilter-cttimeout1-1.0.0-r2.apk",
+      "version": "1.0.0-r2",
+      "arch": "aarch64_generic",
+      "sha256": "8ece9a7425f317b1c2024a77fdeb4cb4d3de5b13466b0049617d7e54da3f1257"
+    },
+    "libnetfilter-queue1": {
+      "file": "libnetfilter-queue1-1.0.5-r4.apk",
+      "version": "1.0.5-r4",
+      "arch": "aarch64_generic",
+      "sha256": "ffd139539e7d3b16f5561ed7f582921f2017950ba0274a0b16361b0a40ed4eb9"
+    }
+  },
+  "installed_packages_simulated": [
+    "adblock-fast",
+    "libnetfilter-cthelper0",
+    "libnetfilter-cttimeout1",
+    "libnetfilter-queue1",
+    "conntrack",
+    "coreutils-timeout",
+    "luci-app-adzero"
+  ],
+  "packages_simulated": 7,
+  "offline_solver": "passed_no_network",
+  "existing_firmware_package_removals": 0,
+  "original_full_tcpdump_preserved": true,
+  "original_db_unchanged": true,
+  "device_acceptance": "not_run",
+  "publishable": false,
+  "scope": "host apk-tools --simulate on disposable original firmware database; no actual router install or LAN DNS test"
+}

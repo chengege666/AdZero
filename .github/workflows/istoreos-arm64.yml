@@ -1,0 +1,54 @@
+name: iStoreOS ARM64 original-source checks
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/probe_istoreos_arm64.py'
+      - 'scripts/prepare_istoreos_source.py'
+      - 'scripts/inspect_istoreos_candidate.py'
+      - 'scripts/build_istoreos_native.py'
+      - 'scripts/inspect_istoreos_arm64_image.py'
+      - 'scripts/check_istoreos_dependencies.py'
+      - 'scripts/check_istoreos_apk_solver.py'
+      - 'tests/test_istoreos_arm64.py'
+      - 'tests/test_istoreos_arm64_image.py'
+      - 'tests/test_istoreos_dependencies.py'
+      - 'tests/test_istoreos_apk_solver.py'
+      - 'docs/evidence/istoreos-25.12.6/arm64-*.json'
+      - 'tests/test_arm64_matrix.py'
+      - 'docs/compatibility-matrix.json'
+      - '.github/workflows/istoreos-arm64.yml'
+permissions:
+  contents: read
+jobs:
+  vendor-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [armsr, rockchip-r6xs]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Audit pinned firmware-source metadata (read-only, not an SDK build)
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -eu
+          python3 scripts/probe_istoreos_arm64.py --profile "$PROFILE" > istoreos-arm64-provenance.json
+          python3 -c 'import json; p=json.load(open("istoreos-arm64-provenance.json")); assert p["sdk_build"] == "not_run" and p["publishable"] is False and p["device_acceptance"] == "not_run"'
+      - name: Validate isolated ARM64 origin/feeds/ABI and non-publication boundaries
+        run: |
+          python3 -m unittest discover -s tests -p test_istoreos_arm64.py -v
+          python3 -m unittest discover -s tests -p test_istoreos_arm64_image.py -v
+          python3 -m unittest discover -s tests -p test_istoreos_dependencies.py -v
+          python3 -m unittest discover -s tests -p test_istoreos_apk_solver.py -v
+          python3 -m unittest discover -s tests -p test_arm64_matrix.py -v
+      - name: Upload read-only firmware provenance (no installable APK)
+        uses: actions/upload-artifact@v4
+        with:
+          name: istoreos-arm64-original-metadata-${{ matrix.profile }}
+          path: istoreos-arm64-provenance.json

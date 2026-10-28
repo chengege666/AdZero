@@ -40,25 +40,31 @@ def check(directory):
             f'Release must contain all exact SDK-verified identities; '
             f'missing={set(SUPPORTED_BUILDS)-available}'
         )
-    # Maintain explicit per-platform acceptance. A future iStoreOS SDK row
-    # requires a pinned original firmware revision as well as its own package.
-    platforms = [
-        ('openwrt', '24.10.8', 'x86/64', 'x86_64', 'ipk', '24.10.8-x86_64.ipk', None),
-        ('openwrt', '25.12.5', 'x86/64', 'x86_64', 'apk', '25.12.5-x86_64.apk', None),
-        ('openwrt', '25.12.5', 'rockchip/armv8', 'aarch64_generic', 'apk', 'rockchip-armv8-aarch64_generic.apk', None),
-        ('immortalwrt', '24.10.6', 'x86/64', 'x86_64', 'ipk', 'immortalwrt-24.10.6-x86_64.ipk', None),
-        ('immortalwrt', '25.12.2', 'x86/64', 'x86_64', 'apk', 'immortalwrt-25.12.2-x86_64.apk', None),
-    ]
-    istore = ('istoreos', '25.12.6', 'x86/64', 'apk')
-    if istore in SUPPORTED_BUILDS:
-        if SUPPORTED_BUILDS[istore] != 'x86_64' or SUPPORTED_REVISIONS.get(istore) != '2026102312':
-            raise ValueError('Unknown iStoreOS build revision or ABI; refuse delivery')
-        platforms.append(
-            ('istoreos', '25.12.6', 'x86/64', 'x86_64', 'apk',
-             'istoreos-25.12.6-x86_64.apk', '2026102312')
-        )
-    if len(platforms) != len(SUPPORTED_BUILDS):
-        raise ValueError('The exact SDK-verified platform matrix lacks delivery tests')
+    # Each independently verified release identity must have a real delivered
+    # package and two isolated upgrade checks. Never silently skip a newly
+    # added ARM64 SDK target merely because an old test table listed x86 only.
+    platforms = []
+    supported_istoreos_abis = {
+        'x86/64': 'x86_64',
+        'rockchip/armv8': 'aarch64_generic',
+        'armsr/armv8': 'aarch64_generic',
+    }
+    for (firmware, version, target, fmt), arch in sorted(SUPPORTED_BUILDS.items()):
+        if firmware not in ('openwrt', 'immortalwrt', 'istoreos'):
+            raise ValueError('Unknown firmware in SDK-verified delivery matrix')
+        revision = SUPPORTED_REVISIONS.get((firmware, version, target, fmt))
+        if firmware == 'istoreos':
+            # A vendor-specific ABI and exact firmware revision must already
+            # have passed provenance checks before this future release test.
+            if (version != '25.12.6' or fmt != 'apk'
+                    or revision != '2026102312'
+                    or supported_istoreos_abis.get(target) != arch):
+                raise ValueError('Unknown iStoreOS build revision or ABI; refuse delivery')
+        elif revision is not None:
+            raise ValueError('Non-iStoreOS release has an unexpected vendor revision')
+        target_part = '' if target == 'x86/64' else target.replace('/', '-') + '-'
+        filename = f'adzero-{firmware}-{version}-{target_part}{arch}.{fmt}'
+        platforms.append((firmware, version, target, arch, fmt, filename, revision))
     results = []
     for firmware, version, target, arch, fmt, expected_suffix, revision in platforms:
         for ending in ('LF', 'CRLF'):
@@ -67,7 +73,13 @@ def check(directory):
             fixture.setUp()
             try:
                 if fmt == 'apk':
-                    fixture.arm_apk(arch='aarch64' if target == 'rockchip/armv8' else 'x86_64')
+                    # Only known target ABIs exercise the apk-tools aarch64
+                    # CPU alias. Other targets must match their package arch
+                    # literally, rather than guessing from 64-bit hardware.
+                    cpu_arch = ("aarch64" if target in (
+                        'rockchip/armv8', 'mediatek/filogic', 'armsr/armv8'
+                    ) and arch in ('aarch64_generic', 'aarch64_cortex-a53') else arch)
+                    fixture.arm_apk(arch=cpu_arch)
                 original_id = {
                     'openwrt': 'OpenWrt', 'immortalwrt': 'ImmortalWrt',
                     'istoreos': 'iStoreOS',

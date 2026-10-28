@@ -15,6 +15,8 @@ PINS = {
 }
 TARGET_PINS = {
     ("25.12.5", "rockchip/armv8"): ("openwrt-sdk-25.12.5-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst", "59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba"),
+    ("25.12.6", "rockchip/armv8"): ("openwrt-sdk-25.12.6-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst", "2a45cbfa7e6cce588d006039205afba03bd242e90d2df4dc442920716a642ce0"),
+    ("25.12.6", "mediatek/filogic"): ("openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst", "1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e"),
 }
 
 # Exact official ImmortalWrt SDK names and SHA-256 from the vendor's
@@ -27,6 +29,14 @@ IMMORTALWRT_PINS = {
     ("25.12.2", "x86/64"): (
         "immortalwrt-sdk-25.12.2-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
         "4d4631f134c2f27215a91aa7ef5bf9a01ea96c2450d3b8a5c38048c32462ac60",
+    ),
+    ("25.12.2", "rockchip/armv8"): (
+        "immortalwrt-sdk-25.12.2-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+        "732a18e11ccc2ad603762856d14e1b40f8d0b9bb217c288e7c159b639be30a98",
+    ),
+    ("25.12.2", "mediatek/filogic"): (
+        "immortalwrt-sdk-25.12.2-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+        "03c688afec12a97ab2d28daa6469a467be18a7d123da6b278002f897de66ef62",
     ),
 }
 
@@ -89,7 +99,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--firmware", choices=tuple(SDK_MIRRORS), default="openwrt")
     parser.add_argument("--release", required=True)
-    parser.add_argument("--target", choices=("x86/64", "rockchip/armv8"), default="x86/64")
+    parser.add_argument("--target", choices=("x86/64", "rockchip/armv8", "mediatek/filogic"), default="x86/64")
     parser.add_argument("--directory", required=True, type=Path)
     parser.add_argument("--cache", required=True, type=Path)
     parser.add_argument("--zstd", default=shutil.which("zstd") or "zstd")

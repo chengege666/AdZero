@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Read-only iStoreOS 25.12.6 native APK dependency closure against its real image.
+"""Read-only native iStoreOS APK dependency closure against exact vendor images.
 
-This *does not* install packages or prove runtime DNS/ABI compatibility.
-Only the original vendor-source artifacts may satisfy packages absent from the
-exact official x86/64 firmware image. All inputs are SHA-256/provenance checked.
+Supports the independently pinned original x86/64, ARM64 ARMSR and Rockchip
+R6XS firmware. Never installs anything or proves runtime LAN/DNS compatibility.
+Missing dependencies must come from the SAME original vendor build/ABI.
 """
 import argparse
 import hashlib
@@ -14,6 +14,11 @@ from pathlib import Path
 
 from inspect_istoreos_candidate import validate as validate_candidate
 from build_ipk import version as adzero_version
+from probe_istoreos_arm64 import PROFILES as ARM_PROFILES
+from inspect_istoreos_arm64_image import (
+    RAW_IMAGES as ARM_RAW_IMAGES, inspect_image as inspect_arm_image,
+)
+
 
 IMAGE_RAW_SHA256 = "833e203e667fb49b27dd69ce8a8a8176a563d5f7154ba95ac219bed0af5da3c9"
 IMAGE_OFFSET = 263168 * 512
@@ -53,8 +58,8 @@ def native_apk_info(apk_path, apk_tool, *, run=subprocess.check_output):
     return data["info"]
 
 
-def closure(source, image, *, inspect=validate_candidate, installed_reader=original_installed_db,
-            info_reader=native_apk_info):
+def closure(source, image, *, profile=None, inspect=validate_candidate,
+            installed_reader=None, info_reader=native_apk_info):
     source = Path(source)
     if source.is_symlink() or not source.is_dir():
         raise ValueError("Pinned iStoreOS Buildroot source missing or symlinked")
@@ -62,17 +67,36 @@ def closure(source, image, *, inspect=validate_candidate, installed_reader=origi
     base = inspect(source)
     if base.get("publishable") is not False or base.get("sdk_build") == "passed":
         raise ValueError("Candidate inspection unexpectedly authorized a release")
+    declared_profile = base.get("vendor_profile", "x86_64")
+    profile = declared_profile if profile is None else profile
+    if profile != declared_profile or profile not in ("x86_64", *ARM_PROFILES):
+        raise ValueError("Candidate profile does not match original firmware")
+    if profile == "x86_64":
+        target, arch, pinned_raw = "x86/64", "x86_64", IMAGE_RAW_SHA256
+    else:
+        spec = ARM_PROFILES[profile]
+        target, arch = spec["target"], spec["arch"]
+        pinned_raw = ARM_RAW_IMAGES[profile]["sha256"]
+    if (base.get("target_observed", target) != target or
+            base.get("package_arch_observed", arch) != arch):
+        raise ValueError("Candidate firmware target/architecture differs from original image")
     apk_tool = source / "staging_dir/host/bin/apk"
-    vendor_dir = source / "bin/packages/x86_64"
+    vendor_dir = source / "bin/packages" / arch
     if vendor_dir.is_symlink() or not vendor_dir.is_dir():
         raise ValueError("Native iStoreOS build package directory missing or symlinked")
     binaries = [path for path in vendor_dir.glob(
         f"*/{base['package']}"
-    ) if path.is_file() and not path.is_symlink()]
+    ) if path.is_file() and not path.is_symlink() and not path.parent.is_symlink()]
     if len(binaries) != 1:
         raise ValueError("Native AdZero candidate APK missing or ambiguous")
     binary = binaries[0]
-    installed = installed_reader(image)
+    if installed_reader is None:
+        if profile == "x86_64":
+            installed = original_installed_db(image)
+        else:
+            installed, _evidence = inspect_arm_image(image, profile)
+    else:
+        installed = installed_reader(image)
     if not isinstance(installed, set):
         raise ValueError("Invalid original firmware installed package set")
     meta = info_reader(binary, apk_tool)
@@ -112,7 +136,7 @@ def closure(source, image, *, inspect=validate_candidate, installed_reader=origi
         if len(valid) != 1:
             raise ValueError(f"Missing or ambiguous original-vendor APK dependency: {name}")
         path, entry = valid[0]
-        if entry.get("arch") not in ("noarch", "x86_64"):
+        if entry.get("arch") not in ("noarch", arch):
             raise ValueError(f"Vendor dependency {name} has wrong architecture")
         version = entry.get("version")
         if not isinstance(version, str) or not version or path.name != f"{name}-{version}.apk":
@@ -127,8 +151,9 @@ def closure(source, image, *, inspect=validate_candidate, installed_reader=origi
         }
     return {
         "firmware": "istoreos", "release": "25.12.6",
-        "revision": "2026102312",
-        "image_raw_sha256": IMAGE_RAW_SHA256,
+        "revision": "2026102312", "target": target, "arch": arch,
+        "vendor_profile": profile,
+        "image_raw_sha256": pinned_raw,
         "apk": binary.name,
         "apk_sha256": native_sha256,
         "source_sha256": base.get("source_sha256"),
@@ -149,12 +174,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--image", type=Path, required=True,
-                        help="Verified uncompressed iStoreOS x86/64 original image")
+                        help="Verified uncompressed original image for the exact vendor profile")
+    parser.add_argument("--profile", choices=("x86_64", *ARM_PROFILES),
+                        help="Optional exact firmware profile; inferred from pinned APK by default")
     parser.add_argument("--output", type=Path,
                         help="Write a new JSON evidence file (never overwrite)")
     args = parser.parse_args()
     try:
-        report = closure(args.source, args.image)
+        report = closure(args.source, args.image, profile=args.profile)
         encoded = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
         if args.output:
             if args.output.is_symlink() or args.output.exists():

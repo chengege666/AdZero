@@ -17,14 +17,21 @@ from probe_istoreos import (
 )
 import hashlib
 
+from probe_istoreos_arm64 import (
+    PROFILES as ARM_PROFILES, validate_metadata as validate_arm_metadata,
+    read_remote as read_arm_metadata,
+)
+
 FEED_LINE = re.compile(
     r"^src-git ([a-z0-9_]+) (https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+\.git)\^([a-f0-9]{40})$"
 )
 REQUIRED_FEEDS = frozenset({"packages", "luci", "routing", "telephony"})
 
 
-def parse_pinned_feeds(raw):
-    if not isinstance(raw, bytes) or hashlib.sha256(raw).hexdigest() != METADATA_SHA256["feeds.buildinfo"]:
+def parse_pinned_feeds(raw, *, expected_sha256=None, expected_count=None):
+    if expected_sha256 is None:
+        expected_sha256 = METADATA_SHA256["feeds.buildinfo"]
+    if not isinstance(raw, bytes) or hashlib.sha256(raw).hexdigest() != expected_sha256:
         raise ValueError("iStoreOS vendor feeds have changed; manual pin review required")
     seen = set()
     lines = []
@@ -39,11 +46,28 @@ def parse_pinned_feeds(raw):
         lines.append(f"src-git {name} {repo}^{commit}")
     if not REQUIRED_FEEDS.issubset(seen):
         raise ValueError("Missing core vendor feeds")
+    if expected_count is not None and len(seen) != expected_count:
+        raise ValueError("Incomplete pinned vendor feed set for firmware target")
     return "\n".join(lines) + "\n"
 
 
-def prepare(destination, *, fetch=read_remote, run=subprocess.run, check_output=subprocess.check_output):
-    evidence = validate_metadata(fetch)
+def prepare(destination, *, profile="x86_64", fetch=None,
+            run=subprocess.run, check_output=subprocess.check_output):
+    if profile == "x86_64":
+        reader = fetch if fetch is not None else read_remote
+        metadata = METADATA_SHA256
+        origin = ORIGIN
+        evidence = validate_metadata(reader)
+        feed_count = None  # Preserve the historical x86 fixture contract.
+    elif profile in ARM_PROFILES:
+        spec = ARM_PROFILES[profile]
+        reader = fetch if fetch is not None else lambda url: read_arm_metadata(profile, url)
+        evidence = validate_arm_metadata(profile, reader)
+        metadata = spec["metadata_sha256"]
+        origin = spec["origin"]
+        feed_count = spec["feeds"]
+    else:
+        raise ValueError("Unknown iStoreOS firmware profile")
     requested = Path(destination)
     if requested.is_symlink():
         raise ValueError("Vendor-source destination is a symlink; refusing to follow it")
@@ -52,11 +76,12 @@ def prepare(destination, *, fetch=read_remote, run=subprocess.run, check_output=
         raise ValueError("Vendor-source destination exists; refusing to overwrite other work")
     if not destination.parent.is_dir():
         raise ValueError("Create the parent directory first; refusing implicit source tree deletion")
-    config = fetch(ORIGIN + "config.buildinfo")
-    feeds = fetch(ORIGIN + "feeds.buildinfo")
-    if hashlib.sha256(config).hexdigest() != METADATA_SHA256["config.buildinfo"]:
+    config = reader(origin + "config.buildinfo")
+    feeds = reader(origin + "feeds.buildinfo")
+    if hashlib.sha256(config).hexdigest() != metadata["config.buildinfo"]:
         raise ValueError("Vendor config digest changed")
-    pinned_feeds = parse_pinned_feeds(feeds)
+    pinned_feeds = parse_pinned_feeds(feeds, expected_sha256=metadata["feeds.buildinfo"],
+                                      expected_count=feed_count)
     # A vendor branch can move after a firmware is published. Fetch and
     # checkout the exact commit recorded in its buildinfo, rather than
     # assuming the branch still points at that historical revision.
@@ -85,8 +110,10 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--directory", type=Path, required=True,
                    help="New, nonexisting directory for vendor source checkout")
+    p.add_argument("--profile", choices=("x86_64", *ARM_PROFILES), default="x86_64",
+                   help="Exact official vendor firmware profile; never a generic CPU alias")
     args = p.parse_args()
     try:
-        print(json.dumps(prepare(args.directory), indent=2, ensure_ascii=False))
+        print(json.dumps(prepare(args.directory, profile=args.profile), indent=2, ensure_ascii=False))
     except (ValueError, OSError, subprocess.CalledProcessError) as err:
         p.exit(1, f"iStoreOS source preparation refused: {err}\n")

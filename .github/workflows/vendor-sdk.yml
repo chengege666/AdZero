@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  immortalwrt-x86:
+  immortalwrt-sdk:
     runs-on: ubuntu-24.04
     timeout-minutes: 95
     strategy:
@@ -19,8 +19,20 @@ jobs:
       matrix:
         include:
           - release: '24.10.6'
+            target: x86/64
+            label: x86_64
             format: ipk
           - release: '25.12.2'
+            target: x86/64
+            label: x86_64
+            format: apk
+          - release: '25.12.2'
+            target: rockchip/armv8
+            label: rockchip-armv8
+            format: apk
+          - release: '25.12.2'
+            target: mediatek/filogic
+            label: mediatek-filogic
             format: apk
     steps:
       - uses: actions/checkout@v4
@@ -29,9 +41,10 @@ jobs:
       - name: Fetch official pinned ImmortalWrt SDK and its own feeds
         env:
           RELEASE: ${{ matrix.release }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -eu
-          python3 scripts/fetch_sdk.py --firmware immortalwrt --release "$RELEASE" --target x86/64 --directory "$HOME/vendor-sdk" --cache "$HOME/vendor-sdk-cache" > /tmp/vendor-sdk.json
+          python3 scripts/fetch_sdk.py --firmware immortalwrt --release "$RELEASE" --target "$TARGET" --directory "$HOME/vendor-sdk" --cache "$HOME/vendor-sdk-cache" > /tmp/vendor-sdk.json
           sdk=$(python3 -c "import json;print(json.load(open('/tmp/vendor-sdk.json'))['sdk'])")
           echo "SDK_PATH=$sdk" >> "$GITHUB_ENV"
           cd "$sdk"
@@ -41,10 +54,11 @@ jobs:
         env:
           RELEASE: ${{ matrix.release }}
           FORMAT: ${{ matrix.format }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -eu
-          sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import sdk_pin;print(sdk_pin('$RELEASE','x86/64','immortalwrt')[1])")
-          python3 scripts/build_sdk.py --sdk "$SDK_PATH" --firmware immortalwrt --release "$RELEASE" --target x86/64 --format "$FORMAT" --sdk-sha256 "$sha" --output dist/vendor-sdk
+          sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import sdk_pin;print(sdk_pin('$RELEASE','$TARGET','immortalwrt')[1])")
+          python3 scripts/build_sdk.py --sdk "$SDK_PATH" --firmware immortalwrt --release "$RELEASE" --target "$TARGET" --format "$FORMAT" --sdk-sha256 "$sha" --output dist/vendor-sdk
       - name: Validate emitted package files and LuCI regressions
         env:
           FORMAT: ${{ matrix.format }}
@@ -61,5 +75,5 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: adzero-candidate-immortalwrt-${{ matrix.release }}-x86_64
+          name: adzero-candidate-immortalwrt-${{ matrix.release }}-${{ matrix.label }}
           path: dist/vendor-sdk/

@@ -209,6 +209,100 @@ class ReleaseTest(unittest.TestCase):
         # The public trusted matrix remains unchanged outside test patches.
         self.assertNotIn(identity, build_release.SUPPORTED_BUILDS)
 
+    @unittest.skipUnless(os.name == 'posix', 'release lifecycle uses POSIX shell')
+    def test_future_four_cross_vendor_arm64_sdks_receive_delivery_checks(self):
+        """Four separately approved SDK targets must each pass LF and CRLF.
+        This is a hypothetical matrix patch, not permission to publish them.
+        """
+        from check_release_delivery import check
+        base = [
+            self.manifest('x86/64', 'x86_64', '24.10.8', 'ipk'),
+            self.manifest('x86/64', 'x86_64', '25.12.5', 'apk'),
+            self.manifest('rockchip/armv8', 'aarch64_generic', '25.12.5', 'apk'),
+        ]
+        for release, fmt in (('24.10.6', 'ipk'), ('25.12.2', 'apk')):
+            path = self.manifest('x86/64', 'x86_64', release, fmt)
+            data = json.loads(path.read_text())
+            data['firmware_declared'] = 'immortalwrt'
+            path.write_text(json.dumps(data))
+            base.append(path)
+        additions = {
+            ('openwrt', '25.12.6', 'rockchip/armv8', 'apk'): 'aarch64_generic',
+            ('openwrt', '25.12.6', 'mediatek/filogic', 'apk'): 'aarch64_cortex-a53',
+            ('immortalwrt', '25.12.2', 'rockchip/armv8', 'apk'): 'aarch64_generic',
+            ('immortalwrt', '25.12.2', 'mediatek/filogic', 'apk'): 'aarch64_cortex-a53',
+        }
+        for (firmware, release, target, fmt), arch in additions.items():
+            item = self.manifest(target, arch, release, fmt)
+            record = json.loads(item.read_text())
+            record['firmware_declared'] = firmware
+            item.write_text(json.dumps(record))
+            base.append(item)
+        with mock.patch.dict(build_release.SUPPORTED_BUILDS, additions), \
+             mock.patch.object(build_release, 'source_hash', return_value='current'):
+            build_release.bundle(base, self.output)
+            result = check(self.output)
+        self.assertEqual(result['checks'], 18)
+        self.assertEqual(
+            {row['target'] for row in result['cases']
+             if row['target'].endswith('-apk') and
+             ('25.12.6' in row['target'] or row['target'].startswith('immortalwrt-25.12.2-'))},
+            {f'{firmware}-{release}-{target}-{fmt}'
+             for firmware, release, target, fmt in additions}
+            | {'immortalwrt-25.12.2-x86/64-apk'})
+        self.assertTrue(all(row['selection_checksum_backup_restore_install'] == 'passed'
+                            for row in result['cases']))
+        self.assertFalse(any(identity in build_release.SUPPORTED_BUILDS
+                             for identity in additions))
+
+    @unittest.skipUnless(os.name == 'posix', 'release lifecycle uses POSIX shell')
+    def test_future_istoreos_arm64_release_requires_pinned_revision_and_abi(self):
+        """iStoreOS ARMSR/Rockchip cannot borrow OpenWrt SDK rows."""
+        from check_release_delivery import check
+        base = [
+            self.manifest('x86/64', 'x86_64', '24.10.8', 'ipk'),
+            self.manifest('x86/64', 'x86_64', '25.12.5', 'apk'),
+            self.manifest('rockchip/armv8', 'aarch64_generic', '25.12.5', 'apk'),
+        ]
+        for release, fmt in (('24.10.6', 'ipk'), ('25.12.2', 'apk')):
+            path = self.manifest('x86/64', 'x86_64', release, fmt)
+            info = json.loads(path.read_text())
+            info['firmware_declared'] = 'immortalwrt'
+            path.write_text(json.dumps(info))
+            base.append(path)
+        identities = {}
+        for target in ('rockchip/armv8', 'armsr/armv8'):
+            item = self.manifest(target, 'aarch64_generic', '25.12.6', 'apk')
+            record = json.loads(item.read_text())
+            record.update(firmware_declared='istoreos',
+                          revision_declared='2026102312')
+            item.write_text(json.dumps(record))
+            base.append(item)
+            identities[('istoreos', '25.12.6', target, 'apk')] = 'aarch64_generic'
+        revisions = {identity: '2026102312' for identity in identities}
+        with mock.patch.dict(build_release.SUPPORTED_BUILDS, identities), \
+             mock.patch.dict(build_release.SUPPORTED_REVISIONS, revisions), \
+             mock.patch.object(build_release, 'source_hash', return_value='current'):
+            build_release.bundle(base, self.output)
+            report = check(self.output)
+            self.assertEqual(report['checks'], 14)
+            self.assertEqual({row['target'] for row in report['cases']
+                              if row['target'].startswith('istoreos-')},
+                             {'istoreos-25.12.6-armsr/armv8-apk',
+                              'istoreos-25.12.6-rockchip/armv8-apk'})
+            manifest = self.output / 'releases.tsv'
+            self.assertEqual(sum('\tistoreos\t25.12.6\t' in line and
+                                  line.endswith('\t2026102312')
+                                  for line in manifest.read_text().splitlines()), 2)
+            # Even a hypothetical trusted row must refuse an ABI that has
+            # never been matched to the original vendor firmware image.
+            bad = ('istoreos', '25.12.6', 'armsr/armv8', 'apk')
+            build_release.SUPPORTED_BUILDS[bad] = 'aarch64_cortex-a53'
+            with self.assertRaisesRegex(ValueError, 'unsupported'):
+                check(self.output)
+        self.assertFalse(any(identity in build_release.SUPPORTED_BUILDS
+                             for identity in identities))
+
     def test_trusted_matrix_contains_only_current_sdk_verified_rows(self):
         actual = build_release.verified_builds()
         self.assertEqual(actual, {

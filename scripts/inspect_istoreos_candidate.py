@@ -18,6 +18,7 @@ from build_sdk import PACKAGE, read_config, source_hash
 from check_sdk_packages import inspect
 from probe_istoreos import SOURCE_COMMIT, METADATA_SHA256
 from prepare_istoreos_source import FEED_LINE
+from probe_istoreos_arm64 import PROFILES as ARM_PROFILES
 
 FIRMWARE_VERSION = "25.12.6"
 FIRMWARE_REVISION = "2026102312"
@@ -25,7 +26,35 @@ FIRMWARE_IMAGE_SHA256 = "48791c15b9fa7c261c519825020eaaf7792f06afbc495dd314966ff
 
 
 
-def verify_pinned_vendor_feeds(source, run):
+def expected_vendor_profile(evidence):
+    """Resolve exact firmware origin; generic aarch64 is not a trust identity."""
+    profile = evidence.get("vendor_profile", "x86_64")
+    if profile == "x86_64":
+        return {
+            "metadata": METADATA_SHA256, "feed_count": 13,
+            "target": "x86/64", "arch": "x86_64",
+            "image_sha256": FIRMWARE_IMAGE_SHA256,
+            "board": "x86", "subtarget": "64",
+        }
+    if profile not in ARM_PROFILES:
+        raise ValueError("Unknown iStoreOS vendor profile")
+    spec = ARM_PROFILES[profile]
+    if (evidence.get("target") != spec["target"]
+            or evidence.get("arch_expected_from_vendor_target") != spec["arch"]
+            or evidence.get("official_image_sha256_reference") != spec["image_sha256"]
+            or evidence.get("official_image") != spec["image"]
+            or evidence.get("vendor_feed_count") != spec["feeds"]):
+        raise ValueError("ARM64 vendor provenance does not match the exact firmware profile")
+    return {
+        "metadata": spec["metadata_sha256"], "feed_count": spec["feeds"],
+        "target": spec["target"], "arch": spec["arch"],
+        "image_sha256": spec["image_sha256"],
+        "board": spec["target"].split("/")[0],
+        "subtarget": spec["target"].split("/")[1],
+    }
+
+
+def verify_pinned_vendor_feeds(source, run, *, expected_sha256=None, expected_count=13):
     """Require the exact vendor-published feed manifest and all checked-out Git SHAs."""
     manifest = source / "feeds.conf"
     if (not manifest.is_file() or manifest.is_symlink()
@@ -33,7 +62,9 @@ def verify_pinned_vendor_feeds(source, run):
         raise ValueError("Pinned iStoreOS vendor feeds.conf is missing, oversized or a symlink")
     raw = manifest.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
-    if digest != METADATA_SHA256["feeds.buildinfo"]:
+    if expected_sha256 is None:
+        expected_sha256 = METADATA_SHA256["feeds.buildinfo"]
+    if digest != expected_sha256:
         raise ValueError("Pinned vendor feed manifest differs from original firmware")
     feed_root = source / "feeds"
     if not feed_root.is_dir() or feed_root.is_symlink():
@@ -55,7 +86,7 @@ def verify_pinned_vendor_feeds(source, run):
                      text=True).strip()
         if actual != commit:
             raise ValueError(f"Vendor feed revision drift: {name}")
-    if len(seen) != 13:
+    if len(seen) != expected_count:
         raise ValueError("Incomplete pinned iStoreOS vendor feed set")
     return {"feed_count": len(seen), "feeds_sha256": digest}
 
@@ -68,21 +99,24 @@ def validate(source, run=subprocess.check_output, package_inspector=inspect):
     if not evidence_path.is_file() or evidence_path.is_symlink():
         raise ValueError("Original pinned iStoreOS source provenance is required")
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    profile = expected_vendor_profile(evidence)
     if (evidence.get("firmware") != "istoreos" or
             evidence.get("source_commit") != SOURCE_COMMIT or
-            evidence.get("metadata_sha256") != METADATA_SHA256 or
+            evidence.get("metadata_sha256") != profile["metadata"] or
             evidence.get("sdk_build") != "not_run" or evidence.get("publishable") is not False):
         raise ValueError("Vendor source provenance differs from the pinned official build")
     actual_git_head = run(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if actual_git_head != SOURCE_COMMIT:
         raise ValueError("Git source HEAD differs from pinned iStoreOS firmware")
-    pinned_feeds = verify_pinned_vendor_feeds(source, run)
+    pinned_feeds = verify_pinned_vendor_feeds(
+        source, run, expected_sha256=profile["metadata"]["feeds.buildinfo"],
+        expected_count=profile["feed_count"])
     config = read_config(source)
     required = {
         "CONFIG_VERSION_DIST": "iStoreOS",
-        "CONFIG_TARGET_BOARD": "x86",
-        "CONFIG_TARGET_SUBTARGET": "64",
-        "CONFIG_TARGET_ARCH_PACKAGES": "x86_64",
+        "CONFIG_TARGET_BOARD": profile["board"],
+        "CONFIG_TARGET_SUBTARGET": profile["subtarget"],
+        "CONFIG_TARGET_ARCH_PACKAGES": profile["arch"],
         "CONFIG_USE_APK": "y",
         "CONFIG_PACKAGE_luci-app-adzero": "m",
     }
@@ -99,7 +133,7 @@ def validate(source, run=subprocess.check_output, package_inspector=inspect):
     if (apk_tool.is_symlink() or not apk_tool.is_file()
             or not apk_tool.stat().st_mode & 0o111):
         raise ValueError("The matching vendor APK extraction tool is missing")
-    packages_root = source / "bin/packages/x86_64"
+    packages_root = source / "bin/packages" / profile["arch"]
     if (not packages_root.is_dir() or packages_root.is_symlink()
             or packages_root.parent.is_symlink()):
         raise ValueError("Native vendor APK directory is missing or symlinked")
@@ -120,12 +154,13 @@ def validate(source, run=subprocess.check_output, package_inspector=inspect):
         "firmware_declared": "istoreos",
         "release_declared": FIRMWARE_VERSION,
         "revision_declared": FIRMWARE_REVISION,
-        "target_observed": "x86/64",
-        "package_arch_observed": "x86_64",
+        "target_observed": profile["target"],
+        "package_arch_observed": profile["arch"],
         "package_format": "apk",
-        "firmware_image_sha256_reference": FIRMWARE_IMAGE_SHA256,
+        "firmware_image_sha256_reference": profile["image_sha256"],
+        "vendor_profile": evidence.get("vendor_profile", "x86_64"),
         "vendor_source_commit": SOURCE_COMMIT,
-        "vendor_metadata_sha256": METADATA_SHA256,
+        "vendor_metadata_sha256": profile["metadata"],
         "vendor_feeds_checked": pinned_feeds,
         "source_sha256": local_sha,
         "package": binary.name,
@@ -149,7 +184,7 @@ def export(source, output, run=subprocess.check_output, package_inspector=inspec
     if output.exists():
         raise ValueError("Candidate output already exists; refusing overwrite")
     output.mkdir(parents=True)
-    source_file = next((source / "bin/packages/x86_64").glob(
+    source_file = next((source / "bin/packages" / report["package_arch_observed"]).glob(
         f"*/{report['package']}"
     ))
     artifact = output / report["package"]

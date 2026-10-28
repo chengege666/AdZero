@@ -1,0 +1,19 @@
+{
+  "firmware": "istoreos",
+  "release": "25.12.6",
+  "revision": "2026102312",
+  "vendor_profile": "rockchip-r6xs",
+  "target": "rockchip/armv8",
+  "arch": "aarch64_generic",
+  "official_image_archive": "istoreos-25.12.6-2026102312-r6xs-squashfs.img.gz",
+  "official_image_archive_sha256": "ad9098cad8728a3d50331b1b9701565271e594b57e3aff8dc3a831b951eba6d6",
+  "verified_raw_image_sha256": "c89326ee924f41d10921570d3da1b7caf22be13a275be7bd9bd830e0f21c8ec8",
+  "verified_raw_image_bytes": 354419200,
+  "squashfs_offset_bytes": 84934656,
+  "original_preinstalled_package_count": 940,
+  "preinstalled_tcpdump_full": true,
+  "provenance_check": "passed_exact_official_firmware",
+  "device_acceptance": "not_run",
+  "publishable": false,
+  "scope": "original immutable firmware image; not a device installation or LAN test"
+}

@@ -1,6 +1,8 @@
 name: Official SDK builds
 on:
   workflow_dispatch:
+  pull_request:
+    paths: ['luci-app-adzero/**', 'scripts/build_sdk.py', 'scripts/fetch_sdk.py', '.github/workflows/sdk.yml']
   push:
     branches: [main]
     paths: ['luci-app-adzero/**', 'scripts/build_sdk.py', 'scripts/fetch_sdk.py', '.github/workflows/sdk.yml']
@@ -9,7 +11,9 @@ permissions:
 jobs:
   sdk:
     runs-on: ubuntu-24.04
+    timeout-minutes: 95
     strategy:
+      fail-fast: false
       matrix:
         include:
           - release: '24.10.8'
@@ -24,6 +28,14 @@ jobs:
             format: apk
             target: rockchip/armv8
             label: rockchip-armv8
+          - release: '25.12.6'
+            format: apk
+            target: rockchip/armv8
+            label: rockchip-armv8
+          - release: '25.12.6'
+            format: apk
+            target: mediatek/filogic
+            label: mediatek-filogic
     steps:
       - uses: actions/checkout@v4
       - name: SDK host prerequisites
@@ -33,8 +45,9 @@ jobs:
           RELEASE: '${{ matrix.release }}'
           TARGET: '${{ matrix.target }}'
         run: |
-          python3 scripts/fetch_sdk.py --release "$RELEASE" --target "$TARGET" --directory "$HOME/sdks" --cache "$HOME/sdk-cache"
-          sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
+          python3 scripts/fetch_sdk.py --release "$RELEASE" --target "$TARGET" --directory "$HOME/sdks" --cache "$HOME/sdk-cache" > /tmp/openwrt-sdk.json
+          sdk=$(python3 -c "import json;print(json.load(open('/tmp/openwrt-sdk.json'))['sdk'])")
+          echo "SDK_PATH=$sdk" >> "$GITHUB_ENV"
           cd "$sdk"
           ./scripts/feeds update base packages luci
           ./scripts/feeds install luci-base adblock-fast rpcd-mod-file rpcd-mod-ucode ca-bundle curl ucode-mod-fs ucode-mod-uci ucode-mod-ubus ucode-mod-uloop tcpdump-mini
@@ -44,21 +57,19 @@ jobs:
           FORMAT: '${{ matrix.format }}'
           TARGET: '${{ matrix.target }}'
         run: |
-          sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
           sha=$(python3 -c "import sys;sys.path.insert(0,'scripts');from fetch_sdk import sdk_pin;print(sdk_pin('$RELEASE','$TARGET')[1])")
-          python3 scripts/build_sdk.py --sdk "$sdk" --firmware openwrt --release "$RELEASE" --target "$TARGET" --format "$FORMAT" --sdk-sha256 "$sha" --output dist/sdk
+          python3 scripts/build_sdk.py --sdk "$SDK_PATH" --firmware openwrt --release "$RELEASE" --target "$TARGET" --format "$FORMAT" --sdk-sha256 "$sha" --output dist/sdk
       - name: Inspect delivered files and run LuCI UI regressions
         env:
           FORMAT: '${{ matrix.format }}'
         run: |
-          sdk=$(find "$HOME/sdks" -mindepth 1 -maxdepth 1 -type d -name 'openwrt-sdk-*')
           package=$(python3 -c "import json;print(json.load(open('dist/sdk/build-manifest.json'))['package'])")
           if [ "$FORMAT" = apk ]; then
-            python3 scripts/check_sdk_packages.py "dist/sdk/$package" --apk-tool "$sdk/staging_dir/host/bin/apk"
+            python3 scripts/check_sdk_packages.py "dist/sdk/$package" --apk-tool "$SDK_PATH/staging_dir/host/bin/apk"
           else
             python3 scripts/check_sdk_packages.py "dist/sdk/$package"
           fi
-          node scripts/check_luci_poll.cjs "$sdk/feeds/luci/modules/luci-base/htdocs/luci-static/resources/luci.js"
+          node scripts/check_luci_poll.cjs "$SDK_PATH/feeds/luci/modules/luci-base/htdocs/luci-static/resources/luci.js"
       - uses: actions/upload-artifact@v4
         with:
           name: 'adzero-openwrt-${{ matrix.release }}-${{ matrix.label }}'

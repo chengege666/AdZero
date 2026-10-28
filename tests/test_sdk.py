@@ -10,6 +10,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import build_sdk
+import fetch_sdk
 
 
 class SdkBuildTest(unittest.TestCase):
@@ -24,6 +25,16 @@ class SdkBuildTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fixture")
         (self.sdk / ".config").write_text('CONFIG_TARGET_BOARD="x86"\nCONFIG_TARGET_SUBTARGET="64"\nCONFIG_TARGET_ARCH_PACKAGES="x86_64"\n')
+
+    def sdk_digest(self, release="25.12.5", target="x86/64", firmware="openwrt"):
+        filename, digest = fetch_sdk.sdk_pin(release, target, firmware)
+        (self.sdk / "adzero-sdk-origin.json").write_text(json.dumps({
+            "firmware": firmware, "release": release, "target": target,
+            "url": (f"{fetch_sdk.SDK_MIRRORS[firmware]}/releases/{release}"
+                    f"/targets/{target}/{filename}"),
+            "sha256": digest, "sdk": str(self.sdk.resolve()),
+        }))
+        return digest
 
     def compile(self, package_format):
         path = self.sdk / "bin/packages/x86_64/local" / ("luci-app-adzero_" + build_sdk.version() + "_all." + package_format)
@@ -61,10 +72,12 @@ class SdkBuildTest(unittest.TestCase):
                 if package_format == "apk":
                     with (self.sdk / ".config").open("a") as stream:
                         stream.write("CONFIG_USE_APK=y\n")
+                release = "24.10.8" if package_format == "ipk" else "25.12.5"
+                digest = self.sdk_digest(release)
                 artifact = self.compile(package_format)
                 output = self.output / package_format
                 with mock.patch.object(build_sdk.subprocess, "run") as run:
-                    report = build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", package_format, "a" * 64, output)
+                    report = build_sdk.build(self.sdk, "openwrt", release, "x86/64", package_format, digest, output)
                 self.assertEqual(run.call_count, 3)
                 self.assertIn("CONFIG_PACKAGE_luci-app-adzero=m", (self.sdk / ".config").read_text())
                 self.assertTrue(all(call.kwargs["check"] for call in run.call_args_list))
@@ -78,25 +91,54 @@ class SdkBuildTest(unittest.TestCase):
         (self.sdk / ".config").write_text("CONFIG_USE_APK=y\n")
         with mock.patch.object(build_sdk.subprocess, "run"):
             with self.assertRaisesRegex(ValueError, "package format"):
-                build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "ipk", "a" * 64, self.output)
+                build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "ipk", self.sdk_digest(), self.output)
 
     def test_missing_real_output_cannot_be_reported_as_passed(self):
         with mock.patch.object(build_sdk.subprocess, "run"):
             with self.assertRaisesRegex(ValueError, "Expected one"):
-                build_sdk.build(self.sdk, "openwrt", "24.10.8", "x86/64", "ipk", "a" * 64, self.output)
+                build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "ipk", self.sdk_digest(), self.output)
 
     def test_old_sdk_outputs_are_preserved_but_not_selected(self):
         current = self.compile("apk")
         old = current.with_name("luci-app-adzero-0.5.0-r1.apk")
         old.write_bytes(b"old-package")
         with mock.patch.object(build_sdk.subprocess, "run"):
-            report = build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "apk", "a" * 64, self.output)
+            report = build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "apk", self.sdk_digest(), self.output)
         self.assertEqual(report["package"], current.name)
         self.assertEqual(old.read_bytes(), b"old-package")
+
+    def test_arm64_abi_drift_never_produces_a_verified_candidate(self):
+        (self.sdk / '.config').write_text(
+            'CONFIG_TARGET_BOARD="mediatek"\n'
+            'CONFIG_TARGET_SUBTARGET="filogic"\n'
+            'CONFIG_TARGET_ARCH_PACKAGES="aarch64_generic"\n'
+            'CONFIG_USE_APK=y\n'
+        )
+        digest = self.sdk_digest('25.12.6', 'mediatek/filogic')
+        with mock.patch.object(build_sdk.subprocess, 'run'):
+            with self.assertRaisesRegex(ValueError, 'SDK package architecture'):
+                build_sdk.build(self.sdk, 'openwrt', '25.12.6',
+                                'mediatek/filogic', 'apk', digest, self.output)
+        self.assertFalse((self.output / 'build-manifest.json').exists())
 
     def test_archive_checksum_is_required(self):
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             build_sdk.build(self.sdk, "openwrt", "24.10.8", "x86/64", "ipk", "", self.output)
+
+    def test_unpinned_or_cross_vendor_sdk_is_rejected_before_prepare(self):
+        self.assertFalse((self.sdk / "package/luci-app-adzero").exists())
+        with self.assertRaisesRegex(ValueError, "origin metadata missing"):
+            build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "apk",
+                            fetch_sdk.sdk_pin("25.12.5")[1], self.output)
+        digest = self.sdk_digest("25.12.5")
+        with self.assertRaisesRegex(ValueError, "SDK vendor, firmware"):
+            build_sdk.build(self.sdk, "immortalwrt", "25.12.2", "x86/64", "apk",
+                            fetch_sdk.sdk_pin("25.12.2", "x86/64", "immortalwrt")[1], self.output)
+        with self.assertRaisesRegex(ValueError, "SDK vendor, firmware"):
+            build_sdk.build(self.sdk, "openwrt", "25.12.5", "x86/64", "apk",
+                            "0" * 64, self.output)
+        self.assertFalse((self.sdk / "package/luci-app-adzero").exists())
+        self.assertEqual(self.sdk_digest("25.12.5"), digest)
 
     def test_matrix_is_an_explicit_candidate_list(self):
         matrix = json.loads((ROOT / "docs/compatibility-matrix.json").read_text())

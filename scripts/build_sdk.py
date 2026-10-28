@@ -75,10 +75,48 @@ def read_config(sdk):
     return result
 
 
+def verify_vendor_sdk_origin(sdk, firmware, release, target, digest):
+    """Bind each build to the independently pinned SDK downloaded by fetch_sdk.
+
+    A matching CPU architecture or an arbitrary --sdk-sha256 value is not
+    sufficient evidence that a vendor SDK was used.
+    """
+    from fetch_sdk import sdk_pin, SDK_MIRRORS
+    filename, expected = sdk_pin(release, target, firmware)
+    expected_url = (f"{SDK_MIRRORS[firmware]}/releases/{release}"
+                    f"/targets/{target}/{filename}")
+    origin_file = sdk / "adzero-sdk-origin.json"
+    if not origin_file.is_file() or origin_file.is_symlink():
+        raise ValueError("SDK origin metadata missing or symlinked; run pinned fetch_sdk.py")
+    if origin_file.stat().st_size > 4096:
+        raise ValueError("SDK origin metadata oversized")
+    try:
+        origin = json.loads(origin_file.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("Invalid SDK origin metadata") from exc
+    if (not isinstance(origin, dict) or
+            origin != {"firmware": firmware, "release": release,
+                       "target": target, "url": expected_url,
+                       "sha256": expected, "sdk": str(sdk)} or
+            digest.lower() != expected):
+        raise ValueError("SDK vendor, firmware, target, location or SHA-256 differs from the pinned official archive")
+    return expected
+
+
+SDK_TARGET_ARCH = {
+    "x86/64": "x86_64",
+    "rockchip/armv8": "aarch64_generic",
+    "mediatek/filogic": "aarch64_cortex-a53",
+}
+
+
 def build(sdk, firmware, release, target, package_format, sdk_sha256, output):
     if not re.fullmatch(r"[a-fA-F0-9]{64}", sdk_sha256):
         raise ValueError("Provide the SHA-256 of the vendor SDK archive verified before extraction")
+    if Path(sdk).is_symlink():
+        raise ValueError("Refusing a symlinked vendor SDK directory")
     sdk = sdk.resolve()
+    verify_vendor_sdk_origin(sdk, firmware, release, target, sdk_sha256)
     destination = prepare(sdk)
     package_source_hash = source_hash(destination)
     # OpenWrt's scripts/config is Kconfig source, not Linux's scripts/config CLI.
@@ -93,11 +131,14 @@ def build(sdk, firmware, release, target, package_format, sdk_sha256, output):
     if source_hash(destination) != package_source_hash:
         raise ValueError("SDK package sources changed during the build; repeat with a stable source tree")
     actual_target = "/".join(filter(None, (config.get("CONFIG_TARGET_BOARD"), config.get("CONFIG_TARGET_SUBTARGET"))))
-    if actual_target and actual_target != target:
-        raise ValueError(f"SDK target {actual_target} differs from requested {target}")
     use_apk = config.get("CONFIG_USE_APK")
     if use_apk is not None and (use_apk == "y") != (package_format == "apk"):
         raise ValueError("SDK package format differs from requested format")
+    if actual_target != target:
+        raise ValueError(f"SDK target {actual_target or 'unknown'} differs from requested {target}")
+    actual_arch = config.get("CONFIG_TARGET_ARCH_PACKAGES")
+    if actual_arch != SDK_TARGET_ARCH.get(target):
+        raise ValueError(f"SDK package architecture {actual_arch or 'unknown'} differs from pinned {target} ABI")
     expected_version = re.escape(version())
     pattern = re.compile(r"^luci-app-adzero[_-]" + expected_version + r"(?:_[a-zA-Z0-9_+-]+)?\." + package_format + r"$")
     built = sorted(path for path in (sdk / "bin/packages").rglob("luci-app-adzero*." + package_format) if pattern.fullmatch(path.name))
@@ -117,8 +158,9 @@ def build(sdk, firmware, release, target, package_format, sdk_sha256, output):
     report = {
         "firmware_declared": firmware, "release_declared": release,
         "target_declared": target, "target_observed": actual_target or None,
-        "package_arch_observed": config.get("CONFIG_TARGET_ARCH_PACKAGES"),
+        "package_arch_observed": actual_arch,
         "package_format": package_format, "sdk_archive_sha256_supplied": sdk_sha256.lower(),
+        "vendor_sdk_origin_verified": True,
         "source_sha256": package_source_hash, "package": package.name, "sha256": sha,
         "sdk_build": "passed", "device_acceptance": "not_run",
     }
