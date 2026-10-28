@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -92,7 +93,18 @@ class ReleaseTest(unittest.TestCase):
             build_release.bundle(manifests, self.output)
         release = build_release.version().rsplit('-r', 1)[0]
         with tarfile.open(self.root / f'adzero-{release}-install.tar.gz') as archive:
-            archive.extractall(self.root / 'unpacked', filter='data')
+            # Python versions before 3.12 lack extractall(filter='data').
+            # Extract only regular files with validated paths into our fixture.
+            destination = self.root / 'unpacked'
+            for member in archive.getmembers():
+                relative = Path(member.name)
+                self.assertFalse(relative.is_absolute())
+                self.assertNotIn('..', relative.parts)
+                self.assertTrue(member.isfile(), member.name)
+                output = destination / relative
+                output.parent.mkdir(parents=True, exist_ok=True)
+                with archive.extractfile(member) as source, output.open('wb') as target:
+                    shutil.copyfileobj(source, target)
         delivered = self.root / 'unpacked' / f'adzero-{release}'
         for kind in ('ipk', 'apk-x86', 'apk-arm'):
             with self.subTest(target=kind):
@@ -113,6 +125,60 @@ class ReleaseTest(unittest.TestCase):
                     self.assertEqual(fixture.log.read_text().splitlines(),expected_ops)
                 finally:
                     fixture.doCleanups()
+
+    def test_trusted_matrix_contains_only_current_sdk_verified_rows(self):
+        actual = build_release.verified_builds()
+        self.assertEqual(actual, {
+            ("openwrt", "24.10.8", "x86/64", "ipk"): "x86_64",
+            ("openwrt", "25.12.5", "x86/64", "apk"): "x86_64",
+            ("openwrt", "25.12.5", "rockchip/armv8", "apk"): "aarch64_generic",
+        })
+        self.assertFalse(any(key[0] in ("immortalwrt", "istoreos") for key in actual))
+
+    def test_derivative_release_requires_explicit_sdk_verified_matrix_row(self):
+        manifest = self.manifest()
+        payload = json.loads(manifest.read_text())
+        payload["firmware_declared"] = "immortalwrt"
+        manifest.write_text(json.dumps(payload))
+        with mock.patch.object(build_release, "source_hash", return_value="current"):
+            with self.assertRaisesRegex(ValueError, "supported build matrix"):
+                build_release.bundle([manifest], self.output)
+
+            with mock.patch.dict(build_release.SUPPORTED_BUILDS, {
+                ("immortalwrt", "25.12.5", "rockchip/armv8", "apk"): "aarch64_generic"
+            }):
+                build_release.bundle([manifest], self.output)
+        catalog = (self.output / "releases.tsv").read_text()
+        self.assertIn("\timmortalwrt\t25.12.5\trockchip/armv8\t", catalog)
+        self.assertIn("adzero-immortalwrt-", catalog)
+        # Without the trusted matrix entry the same catalog is not releasable.
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            build_release.validate_release(self.output)
+
+    def test_invalid_and_duplicate_verified_matrix_entries_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "matrix.json"
+            data = {"schema_version": 1, "sdk_verified": [
+                {"firmware": "istoreos", "release": "24.10.8",
+                 "target": "x86/64", "format": "ipk",
+                 "arch": "x86_64", "sdk_build": "pending"}
+            ]}
+            path.write_text(json.dumps(data))
+            self.assertEqual(build_release.verified_builds(path), {})
+            data["sdk_verified"][0]["sdk_build"] = "passed"
+            path.write_text(json.dumps(data))
+            self.assertEqual(build_release.verified_builds(path), {
+                ("istoreos", "24.10.8", "x86/64", "ipk"): "x86_64"
+            })
+            data["sdk_verified"].append(dict(data["sdk_verified"][0]))
+            path.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "Duplicate verified"):
+                build_release.verified_builds(path)
+            malicious = dict(data["sdk_verified"][0], firmware="../../outside")
+            data["sdk_verified"] = [malicious]
+            path.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "Invalid verified SDK identity"):
+                build_release.verified_builds(path)
 
     def test_x86_output_cannot_be_relabelled_as_arm(self):
         with mock.patch.object(build_release, "source_hash", return_value="current"):

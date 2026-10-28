@@ -1,13 +1,13 @@
 # 安装与恢复
 
-本页适用于 v0.16.0 测试版。先查看 [兼容矩阵](COMPATIBILITY.md)，使用与固件完整版本、设备目标和包管理器对应的安装包。
+本页安装命令沿用 v0.21.3 已发布测试版；main 分支中安装器兼容性修复须等待重新打包发行才能供普通用户使用。先查看 [兼容矩阵](COMPATIBILITY.md)，使用与固件完整版本、设备目标和包管理器对应的安装包。
 
 ## 在线安装
 
 以 root 登录路由器 SSH，确保有 `curl`，执行：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
 ```
 
 安装器核对固件版本、设备目标、包架构与 SHA-256，备份配置、安装依赖，然后尝试启用保护。未匹配的固件或架构会停止安装，不要绕过检查跨版本装包。依赖从固件原有的软件源安装，不升级整套固件。
@@ -23,7 +23,7 @@ sh /tmp/adzero-install.sh --no-enable
 已有 AdZero 时使用：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.16.0/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
 ```
 
 升级器先校验安装包，暂停后台调度并等待当前任务完成，然后准备软件包依赖，通过后才备份配置和恢复记录、调用旧版关闭与恢复，最后安装并重新开启。个人规则选择、放行名单和 DNS 选择会保留。
@@ -42,7 +42,7 @@ v0.15.6 增加小型 `coreutils-timeout`，保证 PassWall 启动既有期限又
 
 ## 下载发行包安装
 
-从 [v0.16.0 发行页](https://github.com/slobys/AdZero/releases/tag/v0.16.0) 下载发行归档，在路由器上解压并进入包含 `install.sh` 的目录：
+从 [v0.21.3 发行页](https://github.com/slobys/AdZero/releases/tag/v0.21.3) 下载发行归档，在路由器上解压并进入包含 `install.sh` 的目录：
 
 ```sh
 sh install.sh --local-dir "$(pwd)"
@@ -54,6 +54,22 @@ sh install.sh --local-dir "$(pwd)"
 
 ## 常见情况
 
+### 提示“此发行版尚未通过该固件 SDK 验证”
+
+旧安装脚本在读取 /etc/openwrt_release 后，只接受 DISTRIB_ID=OpenWrt，导致 ImmortalWrt、iStoreOS 等固件还没来得及与实际安装包矩阵比对就被直接拒绝。新源码已改为以发行包内的 releases.tsv 为准：会识别发行版、完整版本、target、包格式，并选择该组合对应的唯一 SDK 包，再核对实际包架构和 SHA-256。
+
+**这不等于所有衍生固件现已支持。** 截至此版，公开 SDK 通过的包仍只有 README 中列出的三个 OpenWrt 组合。其他固件或版本如果没有经过对应 SDK 构建，仍会被安全拒绝，但报错将显示检测到的系统信息以及当前发行包支持的组合。不要通过把 /etc/openwrt_release 中的 iStoreOS/ImmortalWrt 改成 OpenWrt 来绕过检查；即使 CPU 相同，固件依赖、ABI 与网络接管逻辑也可能不同。
+
+提交适配需求时，可在路由器 SSH 中只读执行：
+
+~~~sh
+cat /etc/openwrt_release
+uname -m
+opkg print-architecture 2>/dev/null || apk --print-arch
+~~~
+
+发送输出前检查并遮盖不愿公开的设备信息；不要贴订阅、令牌或节点凭据。开发者需为该固件使用其匹配 SDK 构建并验收，明确记录到兼容矩阵后，才能在发行包中增加对应条目。**仅合并源码修复不会自动让旧版 v0.21.3 的在线安装命令改变**，需重新发布包含新版 install.sh 与对应 releases.tsv 的发行版本。
+
 ### v0.15.0 升级提示“固件软件源更新失败”
 
 旧安装器在关闭保护后执行全量 `apk update`，PassWall 等无关第三方源临时不可用也会使升级中断。若日志停在该提示、未出现 `apk add`，新包尚未安装；用 `apk list --installed luci-app-adzero` 和 `/usr/libexec/adzero/ctl status` 核对。
@@ -62,7 +78,7 @@ sh install.sh --local-dir "$(pwd)"
 
 ### v0.12.0 提示“没有唯一匹配此固件版本的 SDK 安装包”
 
-v0.12.0 的发布清单由 Windows 生成，CRLF 行尾使旧安装器无法匹配最后一列包格式，三个已支持组合均可能受影响。请使用上面的 **v0.16.0 升级命令**；本版清单固定为 LF，安装器也兼容 CRLF，固件、target、架构、唯一条目和 SHA-256 检查仍保留。
+v0.12.0 的发布清单由 Windows 生成，CRLF 行尾使旧安装器无法匹配最后一列包格式，三个已支持组合均可能受影响。请使用上面的 **v0.21.3 升级命令**；本版清单固定为 LF，安装器也兼容 CRLF，固件、target、架构、唯一条目和 SHA-256 检查仍保留。
 
 该错误发生在升级暂停调度、关闭旧版和安装软件包之前，这一次匹配失败没有改动已有配置，无需先卸载。
 

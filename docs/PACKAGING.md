@@ -2,6 +2,8 @@
 
 公开安装只使用真实 SDK 输出，不使用 build_ipk.py 的离线预览。
 
+新安装器不再内置发行版白名单；公开发行包仍必须由 `scripts/build_release.py` 校验。其允许的完整组合现在来自 `docs/compatibility-matrix.json` 的 `sdk_verified` 列表（`sdk_build=passed`），构建报告也必须具有匹配的源码哈希和实际包 SHA-256。新增 ImmortalWrt/iStoreOS 时，必须先用该厂商匹配 SDK 构建，通过验证后再增加兼容矩阵行。未验证的候选条目不会生成可安装的发布清单。
+
 | 官方 SDK | target | 格式 | 当前结果 |
 | --- | --- | --- | --- |
 | OpenWrt 24.10.8 / GCC 13.3 | x86/64 | IPK | 实际构建通过 |

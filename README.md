@@ -75,6 +75,8 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 SDK 构建与隔离测试已通过，实际设备的网络与过滤效果仍需验证。ImmortalWrt、iStoreOS、其他版本与架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进，安装器会拒绝尚未匹配的组合。
 
+**安装器兼容性修正（main 分支、待新版本发行）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。当前仍只有上表三个 SDK 构建通过的 OpenWrt 组合；没有独立验证并发布的 ImmortalWrt/iStoreOS 包，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
+
 NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。概览中的「代理接入」可展开查看：区分实际内核、已保存开关和当前接入，不把识别到插件当作已经适配。
 
 PassWall 保留原有 dnsmasq 或 ChinaDNS-NG 分流引擎，沿原生屏蔽列表接入；SSR Plus+ 也使用原生接口。会核对运行进程、配置加载路径与屏蔽规则样本，发现 DNS 子进程回收信号阻塞时单独提示。未加载时有限重试，内容未变且运行配置正常时不重复重启代理；这些检查不能代替终端效果检测。

@@ -67,6 +67,77 @@ class InstallerTest(unittest.TestCase):
             self.run_installer(success=False)
             self.assertFalse(self.log.exists())
 
+    def test_unsupported_derivative_reports_real_matrix_not_generic_sdk_error(self):
+        for vendor in ("ImmortalWrt", "iStoreOS"):
+            with self.subTest(vendor=vendor):
+                self.write("etc/openwrt_release",
+                           f"DISTRIB_ID='{vendor}'\nDISTRIB_RELEASE='24.10.8'\nDISTRIB_TARGET='x86/64'\n")
+                result = self.run_installer(success=False)
+                self.assertIn(vendor, result.stderr)
+                self.assertIn("当前发行包支持", result.stderr)
+                self.assertIn("openwrt 24.10.8", result.stderr)
+                self.assertIn("target=x86/64", result.stderr)
+                self.assertNotIn("此发行版尚未通过该固件 SDK 验证", result.stderr)
+                self.assertFalse(self.log.exists())
+                self.assertFalse((self.root / "etc/adzero-backups").exists())
+
+    def test_verified_derivative_catalog_row_can_be_selected_without_name_block(self):
+        # A local fixture models a future *separately verified* vendor SDK
+        # artifact. The public release still has no such vendor rows.
+        for vendor, canonical in (("ImmortalWrt", "immortalwrt"),
+                                  ("iStoreOS", "istoreos")):
+            with self.subTest(vendor=vendor):
+                self.write("etc/openwrt_release",
+                           f"DISTRIB_ID='{vendor}'\nDISTRIB_RELEASE='24.10.8'\n"
+                           "DISTRIB_TARGET='x86/64'\nDISTRIB_ARCH='x86_64'\n")
+                (self.release / "releases.tsv").write_text(
+                    f"{self.sum}\tadzero-test.ipk\t{canonical}\t24.10.8\tx86/64\tx86_64\tipk\n")
+                self.run_installer("--no-enable")
+                self.assertEqual(self.log.read_text().splitlines(),
+                                 ["opkg update", "opkg install"])
+                self.log.unlink()
+
+    def test_verified_future_target_requires_real_package_architecture(self):
+        self.write("etc/openwrt_release",
+                   "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='24.10.8'\n"
+                   "DISTRIB_TARGET='mediatek/filogic'\nDISTRIB_ARCH='aarch64_cortex-a53'\n")
+        (self.release / "releases.tsv").write_text(
+            f"{self.sum}\tadzero-test.ipk\topenwrt\t24.10.8\t"
+            "mediatek/filogic\taarch64_cortex-a53\tipk\n")
+        self.executable(self.bin / "opkg",
+                        '#!/bin/sh\nif [ "$1" = print-architecture ]; then echo "arch aarch64_cortex-a53 10"; '
+                        'else echo "opkg $1" >> "$MOCK_INSTALL_LOG"; fi\n')
+        self.run_installer("--no-enable")
+        self.assertEqual(self.log.read_text().splitlines(),
+                         ["opkg update", "opkg install"])
+
+    def test_derivative_must_not_reuse_openwrt_catalog_by_matching_cpu(self):
+        self.write("etc/openwrt_release",
+                   "DISTRIB_ID='iStoreOS'\nDISTRIB_RELEASE='24.10.8'\n"
+                   "DISTRIB_TARGET='x86/64'\nDISTRIB_ARCH='x86_64'\n")
+        self.run_installer(success=False)
+        self.assertFalse(self.log.exists())
+
+    def test_derivative_declared_arch_mismatch_rejected_before_install(self):
+        self.write("etc/openwrt_release",
+                   "DISTRIB_ID='ImmortalWrt'\nDISTRIB_RELEASE='24.10.8'\n"
+                   "DISTRIB_TARGET='x86/64'\nDISTRIB_ARCH='aarch64_generic'\n")
+        (self.release / "releases.tsv").write_text(
+            f"{self.sum}\tadzero-test.ipk\timmortalwrt\t24.10.8\tx86/64\tx86_64\tipk\n")
+        result = self.run_installer(success=False)
+        self.assertIn("架构", result.stderr)
+        self.assertFalse(self.log.exists())
+
+    def test_catalog_mismatch_reports_version_before_network_modification(self):
+        self.write("etc/openwrt_release",
+                   "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='24.10.99'\nDISTRIB_TARGET='x86/64'\n")
+        result = self.run_installer(success=False)
+        self.assertIn("24.10.99", result.stderr)
+        self.assertIn("24.10.8", result.stderr)
+        self.assertFalse(self.log.exists())
+        self.assertFalse((self.root / "etc/adzero-backups").exists())
+
+
     def test_corrupt_package_or_path_traversal_do_not_install(self):
         self.row(sha="0" * 64)
         self.run_installer(success=False)
