@@ -60,7 +60,44 @@ class Arm64MatrixTests(unittest.TestCase):
                 self.assertNotIn((*key, "apk"), build_release.SUPPORTED_BUILDS)
         self.assertEqual({row["sdk_build"] for row in matrix["arm64_candidates"]
                           if row["firmware"] == "istoreos"},
-                         {"native_source_metadata_verified_build_pending"})
+                         {"native_apk_offline_solver_passed_unreleased"})
+
+    def test_native_istoreos_arm64_solver_evidence_is_target_pinned_and_not_a_release(self):
+        matrix = json.loads((ROOT / "docs/compatibility-matrix.json").read_text())
+        vendor = [row for row in matrix["arm64_candidates"] if row["firmware"] == "istoreos"]
+        self.assertEqual(len(vendor), 2)
+        original_hashes, native_dep_hashes = set(), set()
+        for row in vendor:
+            with self.subTest(profile=row["vendor_profile"]):
+                original = json.loads((ROOT / "docs" / row["original_firmware_evidence"]).read_text())
+                native = json.loads((ROOT / "docs" / row["native_evidence"]).read_text())
+                closure_name = ("arm64-armsr-native-closure.json"
+                                if row["vendor_profile"] == "armsr"
+                                else "arm64-r6xs-native-closure.json")
+                closure = json.loads((ROOT / "docs/evidence/istoreos-25.12.6" /
+                                      closure_name).read_text())
+                self.assertEqual(row["sdk_build"], "native_apk_offline_solver_passed_unreleased")
+                self.assertEqual(row["target"], native["target"])
+                self.assertEqual(row["arch_expected"], native["arch"])
+                self.assertEqual(row["vendor_profile"], native["vendor_profile"])
+                self.assertEqual(row["revision"], native["revision"])
+                self.assertEqual(original["verified_raw_image_sha256"], native["original_image_sha256"])
+                self.assertEqual(native["native_apk_sha256"], closure["apk_sha256"])
+                self.assertRegex(native["native_apk_sha256"], r"^[a-f0-9]{64}$")
+                self.assertEqual(native["offline_solver"], "passed_no_network")
+                self.assertEqual(native["packages_simulated"], 7)
+                self.assertEqual(len(native["missing_vendor_dependencies"]), 6)
+                self.assertTrue(native["original_full_tcpdump_preserved"])
+                self.assertTrue(native["original_db_unchanged"])
+                self.assertEqual(native["existing_firmware_package_removals"], 0)
+                self.assertEqual(native["device_acceptance"], "not_run")
+                self.assertFalse(native["publishable"])
+                self.assertNotIn(("istoreos", row["release"], row["target"], "apk"),
+                                 build_release.SUPPORTED_BUILDS)
+                original_hashes.add(native["original_image_sha256"])
+                native_dep_hashes.add(native["missing_vendor_dependencies"]["adblock-fast"]["sha256"])
+        self.assertEqual(len(original_hashes), 2)
+        self.assertEqual(len(native_dep_hashes), 2)
 
     def test_public_matrix_still_only_has_five_original_release_rows(self):
         matrix = json.loads((ROOT / "docs/compatibility-matrix.json").read_text())
