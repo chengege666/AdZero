@@ -11,6 +11,7 @@
 - 新增中文菜单安装：一键安装/自动升级、安装后不启用、只读检查、安全卸载与退出。默认安装入口命令不需要填写版本号。
 - 修复原安装器仅因 DISTRIB_ID 不是 OpenWrt 就提前拒绝的逻辑；只接受已经通过相应 SDK 构建并出现在发行清单中的具体组合，禁止跨固件强装。
 - 修复 OpenWrt 24.10.8 官方 BusyBox 的 `tr '[:upper:]' '[:lower:]'` 转换异常，该环境可能把 OpenWrt 误转换成 OwenWrt；改用显式 ASCII 大小写转换并加入官方 ash 回归。
+- 同步 OpenWrt 官方仓库 `coreutils-timeout` 测试依赖的最新 SHA-256 固定值，已和官方 Packages.gz 索引核对；只用于隔离测试环境，不改变 AdZero 的实际过滤规则。
 
 ## 兼容范围
 

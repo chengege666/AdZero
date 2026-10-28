@@ -1,0 +1,14 @@
+{
+  "checked_at_utc": "2026-10-28",
+  "source": "OpenWrt 24.10.8 official x86_64 packages feed",
+  "package": "coreutils-timeout",
+  "version": "9.7-r1",
+  "filename": "coreutils-timeout_9.7-r1_x86_64.ipk",
+  "download_url": "https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/packages/coreutils-timeout_9.7-r1_x86_64.ipk",
+  "index_url": "https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/packages/Packages.gz",
+  "size": 19660,
+  "sha256": "145a99ab15600f4634df00d4a08c7c55ae05b274ae1d9afff3d96fed2f75f686",
+  "previous_historical_sha256": "10e721b261c393e7f30d84012c2a773f02d67adcace9b71c0a9a70312ac849f5",
+  "verification": "Compared SHA-256 of downloaded bytes with SHA256sum and Size in official Packages.gz index; both matched.",
+  "scope": "CI isolated OpenWrt runtime test dependency only; not an AdZero end-user package change"
+}
