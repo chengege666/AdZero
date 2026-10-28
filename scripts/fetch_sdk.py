@@ -6,6 +6,7 @@ import json
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
+import sys
 import urllib.request
 
 PINS = {
@@ -64,7 +65,7 @@ def fetch(release, directory, cache, zstd, target_name="x86/64", firmware="openw
                 output.write(chunk)
                 downloaded += len(chunk)
                 if downloaded % (32 * 1024 * 1024) == 0:
-                    print(f"{release}: downloaded {downloaded // 1048576} MiB", flush=True)
+                    print(f"{release}: downloaded {downloaded // 1048576} MiB", file=sys.stderr, flush=True)
         if sha256(staging) != expected:
             raise ValueError("SDK archive checksum mismatch")
         staging.replace(archive)

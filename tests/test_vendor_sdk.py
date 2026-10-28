@@ -101,6 +101,33 @@ class VendorSDKPinTests(unittest.TestCase):
                 self.assertFalse((root / "cache" / filename).exists())
                 run.assert_not_called()
 
+    def test_download_progress_is_on_stderr_not_json_stdout(self):
+        # The CLI redirects stdout to a JSON file for automatic SDK location.
+        # A 32 MiB progress event must never contaminate that file.
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            chunk = b"p" * (32 * 1024 * 1024)
+            filename = fetch_sdk.sdk_pin("24.10.6", "x86/64", "immortalwrt")[0]
+            expected_hash = hashlib.sha256(chunk).hexdigest()
+            topdir = filename.removesuffix(".tar.zst")
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with mock.patch.object(fetch_sdk, "sdk_pin", return_value=(filename, expected_hash)), \
+                 mock.patch.object(fetch_sdk.urllib.request, "urlopen") as urlopen, \
+                 mock.patch.object(fetch_sdk.subprocess, "check_output",
+                                   return_value=topdir + "/\n"), \
+                 mock.patch.object(fetch_sdk.subprocess, "run") as extraction:
+                urlopen.return_value.__enter__.return_value.read.side_effect = [chunk, b""]
+                def unpack(*_args, **_kw):
+                    (folder / "sdk" / topdir).mkdir(parents=True, exist_ok=True)
+                extraction.side_effect = unpack
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    fetch_sdk.fetch("24.10.6", folder / "sdk",
+                                    folder / "cache", "zstd", "x86/64", "immortalwrt")
+                self.assertEqual(stdout.getvalue(), "")
+                self.assertIn("downloaded 32 MiB", stderr.getvalue())
+
     def test_vendor_builds_are_not_prematurely_published(self):
         matrix = json.loads((ROOT / "docs/compatibility-matrix.json").read_text())
         actual = build_release.verified_builds()
