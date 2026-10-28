@@ -1,4 +1,4 @@
-# v0.8.1 构建、安装与发行
+# AdZero v0.21.5 构建、安装与发行
 
 公开安装只使用真实 SDK 输出，不使用 build_ipk.py 的离线预览。
 
@@ -31,7 +31,33 @@ SDK 的 SHA-256 固定在 scripts/fetch_sdk.py，来源为对应 [官方版本�
 
 有新版本时，仅从官方 HTTPS 下载已发布的 install.sh，按 GitHub asset digest 验证 SHA-256。脚本必须支持只读 --check，在真实执行 --upgrade 之前完成固件完整版本、target、包格式、架构、SDK 安装包哈希验证。更新许可 15 分钟有效、只针对用户确认的特定版本，且一次性使用；不允许因重试自动重复升级。
 
-**新版本的 GitHub Release 必须包含新版 install.sh、releases.tsv、真实 SDK 构建产物和已核对的包 SHA-256。** 公开的 v0.21.3 仍是旧版，不应重写旧标签资产。只有构建、发布和设备验收后，当前运行 v0.21.3 的用户才能先升级到首个带在线更新按钮的版本。
+**新版本的 GitHub Release 必须包含新版 install.sh、releases.tsv、真实 SDK 构建产物和已核对的包 SHA-256。** 不修改旧标签资产；现有 v0.21.4 已有在线更新功能。新增 ImmortalWrt 的 v0.21.5 必须完成本版本 SDK 编译和发布校验后，才供用户在 UI 中检查更新。
+
+## 第三方发行版独立 SDK 构建
+
+ImmortalWrt x86/64 的官方独立 SDK 现在已固定精确下载地址与 SHA-256，新增 vendor-sdk.yml GitHub Actions 可执行真实厂商 SDK 编译，而不是复用 OpenWrt IPK/APK：
+
+~~~sh
+python3 scripts/fetch_sdk.py --firmware immortalwrt --release 24.10.6 --target x86/64 --directory "$HOME/vendor-sdks" --cache "$HOME/vendor-cache"
+python3 scripts/fetch_sdk.py --firmware immortalwrt --release 25.12.2 --target x86/64 --directory "$HOME/vendor-sdks" --cache "$HOME/vendor-cache"
+~~~
+
+24.10.6 使用 IPK，25.12.2 使用 APK。GitHub CI 已用两个独立的 ImmortalWrt 官方 SDK、各自 feeds 完成 v0.21.4 代码的实际封装和 LuCI 验证；证据见 docs/evidence/v0.21.5/vendor-sdk-builds.json。v0.21.5 正式发布之前必须使用新的 v0.21.5 源码重新编译，并与三个 OpenWrt 版本一起校验完整五项发行清单；即使 SDK 通过，也不意味着已在真实设备上验证过滤和回滚。
+
+iStoreOS 25.12.6-2026102312 x86/64 的官方 commit/config/feeds/版本索引可运行以下只读核验：
+
+~~~sh
+python3 scripts/probe_istoreos.py
+~~~
+
+此命令**不会构建 SDK、安装任何插件或修改路由器**；它只证明官方固件的源码提交和 feeds 可追溯。下一步可以准备完全锁定的 iStoreOS 源码及 feeds：
+
+~~~sh
+mkdir -p "$HOME/istoreos-builds"
+python3 scripts/prepare_istoreos_source.py --directory "$HOME/istoreos-builds/istoreos-25.12.6-2026102312"
+~~~
+
+源码准备程序要求 GitHub 分支 HEAD 必须与官方 buildinfo 公布的 283d02639c740f8ae6e9425b48be8c61f152c6b8 完全相同，并使用官方 feeds.buildinfo 中的不可变提交 SHA。它不会覆盖已有目录、运行固件安装或冒充 SDK 验证。之后仍需原生 Buildroot 工具链和 SDK 编译，再核对固件 ABI、依赖和安装测试。缺少匹配该厂商构建的 SDK/ABI 验证之前，不发布 iStoreOS 二进制包，不跨平台借用普通 OpenWrt SDK。
 
 ## Linux / WSL 复现
 

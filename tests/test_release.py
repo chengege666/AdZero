@@ -144,14 +144,44 @@ class ReleaseTest(unittest.TestCase):
                 finally:
                     fixture.doCleanups()
 
+    @unittest.skipUnless(os.name == 'posix', 'actual package lifecycle uses POSIX shell')
+    def test_five_exact_sdk_platforms_assemble_and_install_safely(self):
+        """Real release selection requires both distinct vendor packages."""
+        from check_release_delivery import check
+        manifests = [
+            self.manifest("x86/64", "x86_64", "24.10.8", "ipk"),
+            self.manifest("x86/64", "x86_64", "25.12.5", "apk"),
+            self.manifest("rockchip/armv8", "aarch64_generic", "25.12.5", "apk"),
+        ]
+        for ver, fmt in (("24.10.6", "ipk"), ("25.12.2", "apk")):
+            item = self.manifest("x86/64", "x86_64", ver, fmt)
+            record = json.loads(item.read_text())
+            record["firmware_declared"] = "immortalwrt"
+            item.write_text(json.dumps(record))
+            manifests.append(item)
+        with mock.patch.object(build_release, "source_hash", return_value="current"):
+            build_release.bundle(manifests, self.output)
+        report = check(self.output)
+        self.assertEqual(report["checks"], 10)
+        self.assertTrue(all(x["selection_checksum_backup_restore_install"] == "passed"
+                            for x in report["cases"]))
+        targets = {x["target"] for x in report["cases"]}
+        self.assertIn("immortalwrt-24.10.6-x86/64-ipk", targets)
+        self.assertIn("immortalwrt-25.12.2-x86/64-apk", targets)
+        # Even with the new vendor rows, an unknown iStoreOS release cannot
+        # silently reuse the same x86_64 binary package.
+        self.assertNotIn("istoreos", (self.output / "releases.tsv").read_text())
+
     def test_trusted_matrix_contains_only_current_sdk_verified_rows(self):
         actual = build_release.verified_builds()
         self.assertEqual(actual, {
             ("openwrt", "24.10.8", "x86/64", "ipk"): "x86_64",
             ("openwrt", "25.12.5", "x86/64", "apk"): "x86_64",
             ("openwrt", "25.12.5", "rockchip/armv8", "apk"): "aarch64_generic",
+            ("immortalwrt", "24.10.6", "x86/64", "ipk"): "x86_64",
+            ("immortalwrt", "25.12.2", "x86/64", "apk"): "x86_64",
         })
-        self.assertFalse(any(key[0] in ("immortalwrt", "istoreos") for key in actual))
+        self.assertFalse(any(key[0] == "istoreos" for key in actual))
 
     def test_derivative_release_requires_explicit_sdk_verified_matrix_row(self):
         manifest = self.manifest()

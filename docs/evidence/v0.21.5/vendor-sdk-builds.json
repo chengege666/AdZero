@@ -1,0 +1,33 @@
+{
+  "checked_on_utc": "2026-10-28",
+  "github_actions_run": "https://github.com/slobys/AdZero/actions/runs/40651528970",
+  "candidate_commit": "a99b5e1febc90080f40768f2e4c1654c3dd65e46",
+  "source_sha256": "7e3a21c8c13e7382c4c8b4f9956d654454e837fface8722c6dd4485047eb0f6d",
+  "targets": [
+    {
+      "firmware": "immortalwrt",
+      "release": "24.10.6",
+      "target": "x86/64",
+      "package_format": "ipk",
+      "sdk_sha256": "709bea2ce466b7ad671ce00fdcb1eb69b2b3fa0f0921b12b620725d95cd8c0e5",
+      "package_name": "luci-app-adzero_0.21.4-r1_all.ipk",
+      "package_sha256": "3af302e78697d20b1fa6fe8e94dc6f2bbf5d55af878edd911543628f8d59947e",
+      "sdk_build": "passed",
+      "luci_checks": "passed",
+      "device_acceptance": "not_run"
+    },
+    {
+      "firmware": "immortalwrt",
+      "release": "25.12.2",
+      "target": "x86/64",
+      "package_format": "apk",
+      "sdk_sha256": "4d4631f134c2f27215a91aa7ef5bf9a01ea96c2450d3b8a5c38048c32462ac60",
+      "package_name": "luci-app-adzero-0.21.4-r1.apk",
+      "package_sha256": "d5e265f6f63284ab9b04cd533fe8b8ed7ea8908bcfa1b23b5323d8cb22bf0033",
+      "sdk_build": "passed",
+      "luci_checks": "passed",
+      "device_acceptance": "not_run"
+    }
+  ],
+  "note": "These v0.21.4 artifacts prove vendor SDK viability. Any new v0.21.5 release MUST rebuild packages and verify new source hashes; never reuse version-mismatched artifacts."
+}

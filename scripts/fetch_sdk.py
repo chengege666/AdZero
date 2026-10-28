@@ -6,6 +6,7 @@ import json
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
+import sys
 import urllib.request
 
 PINS = {
@@ -16,12 +17,34 @@ TARGET_PINS = {
     ("25.12.5", "rockchip/armv8"): ("openwrt-sdk-25.12.5-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst", "59194a023968398af64bfa7d8bc3eac322641f6dc9cdbade28a4d9dd41866eba"),
 }
 
+# Exact official ImmortalWrt SDK names and SHA-256 from the vendor's
+# releases/<version>/targets/x86/64/sha256sums, never OpenWrt SDK aliases.
+IMMORTALWRT_PINS = {
+    ("24.10.6", "x86/64"): (
+        "immortalwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst",
+        "709bea2ce466b7ad671ce00fdcb1eb69b2b3fa0f0921b12b620725d95cd8c0e5",
+    ),
+    ("25.12.2", "x86/64"): (
+        "immortalwrt-sdk-25.12.2-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+        "4d4631f134c2f27215a91aa7ef5bf9a01ea96c2450d3b8a5c38048c32462ac60",
+    ),
+}
 
-def sdk_pin(release, target="x86/64"):
+SDK_MIRRORS = {
+    "openwrt": "https://downloads.openwrt.org",
+    "immortalwrt": "https://downloads.immortalwrt.org",
+}
+
+
+def sdk_pin(release, target="x86/64", firmware="openwrt"):
     try:
-        return PINS[release] if target == "x86/64" else TARGET_PINS[(release, target)]
+        if firmware == "immortalwrt":
+            return IMMORTALWRT_PINS[(release, target)]
+        if firmware == "openwrt":
+            return PINS[release] if target == "x86/64" else TARGET_PINS[(release, target)]
     except KeyError as error:
-        raise ValueError(f"No pinned SDK for {release} {target}") from error
+        raise ValueError(f"No pinned SDK for {firmware} {release} {target}") from error
+    raise ValueError(f"No independently verified vendor SDK: {firmware} {release} {target}")
 
 
 def sha256(path):
@@ -29,9 +52,9 @@ def sha256(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def fetch(release, directory, cache, zstd, target_name="x86/64"):
-    filename, expected = sdk_pin(release, target_name)
-    url = f"https://downloads.openwrt.org/releases/{release}/targets/{target_name}/{filename}"
+def fetch(release, directory, cache, zstd, target_name="x86/64", firmware="openwrt"):
+    filename, expected = sdk_pin(release, target_name, firmware)
+    url = f"{SDK_MIRRORS[firmware]}/releases/{release}/targets/{target_name}/{filename}"
     cache.mkdir(parents=True, exist_ok=True)
     archive = cache / filename
     if not archive.exists():
@@ -42,7 +65,7 @@ def fetch(release, directory, cache, zstd, target_name="x86/64"):
                 output.write(chunk)
                 downloaded += len(chunk)
                 if downloaded % (32 * 1024 * 1024) == 0:
-                    print(f"{release}: downloaded {downloaded // 1048576} MiB", flush=True)
+                    print(f"{release}: downloaded {downloaded // 1048576} MiB", file=sys.stderr, flush=True)
         if sha256(staging) != expected:
             raise ValueError("SDK archive checksum mismatch")
         staging.replace(archive)
@@ -57,20 +80,21 @@ def fetch(release, directory, cache, zstd, target_name="x86/64"):
             if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != target.name:
                 raise ValueError("SDK archive contains an unexpected path")
         subprocess.run(["tar", "--use-compress-program", zstd, "--no-same-owner", "-xf", str(archive), "-C", str(directory)], check=True)
-    report = {"release": release, "target": target_name, "url": url, "sha256": expected, "sdk": str(target.resolve())}
+    report = {"firmware": firmware, "release": release, "target": target_name, "url": url, "sha256": expected, "sdk": str(target.resolve())}
     (target / "adzero-sdk-origin.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--release", required=True, choices=PINS)
+    parser.add_argument("--firmware", choices=tuple(SDK_MIRRORS), default="openwrt")
+    parser.add_argument("--release", required=True)
     parser.add_argument("--target", choices=("x86/64", "rockchip/armv8"), default="x86/64")
     parser.add_argument("--directory", required=True, type=Path)
     parser.add_argument("--cache", required=True, type=Path)
     parser.add_argument("--zstd", default=shutil.which("zstd") or "zstd")
     args = parser.parse_args()
-    print(json.dumps(fetch(args.release, args.directory, args.cache, args.zstd, args.target), indent=2))
+    print(json.dumps(fetch(args.release, args.directory, args.cache, args.zstd, args.target, args.firmware), indent=2))
 
 
 if __name__ == "__main__":

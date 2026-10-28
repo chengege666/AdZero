@@ -1,6 +1,6 @@
 # 兼容性与证据矩阵
 
-**当前 main 安装器修复说明（待正式发布）：** 安装器不再硬编码只接受名为 OpenWrt 的发行版，而是依据发行目录 `releases.tsv` 中的固件 ID、完整版本、target 和包格式匹配唯一包，并核对固件声明架构、包管理器实际架构及 SHA-256。`scripts/build_release.py` 仅认可 `compatibility-matrix.json` 中明确标为 `sdk_build=passed` 的完整条目；候选固件列表不能视为 SDK 验证通过。没有对应条目的 ImmortalWrt、iStoreOS 仍不能安装，须用厂商匹配 SDK 构建并验证后再添加新行。不要靠修改 `DISTRIB_ID` 或改名安装包来绕过限制。
+**当前安装器：** 安装器不再硬编码只接受名为 OpenWrt 的发行版，而是依据发行目录 `releases.tsv` 中的固件 ID、完整版本、target 和包格式匹配唯一包，并核对固件声明架构、包管理器实际架构及 SHA-256。`scripts/build_release.py` 仅认可 `compatibility-matrix.json` 中明确标为 `sdk_build=passed` 的完整条目；候选固件列表不能视为 SDK 验证通过。没有对应 SDK 条目的 ImmortalWrt 版本及 iStoreOS 仍不能安装，须用厂商匹配 SDK 构建并验证后再添加新行。不要靠修改 `DISTRIB_ID` 或改名安装包来绕过限制。
 
 v0.18.0 使用共享代码和下列 SDK 组合构建，不把旧版本的单设备证据升级为新功能的真机认证。代理识别增加配置归属核对；原生服务统一使用外部期限启动，避免受影响固件的子进程信号继承问题。功能范围、固件构建和实际 LAN 验收分别记录。
 
@@ -10,8 +10,9 @@ v0.18.0 使用共享代码和下列 SDK 组合构建，不把旧版本的单设�
 | OpenWrt 25.12.5 | x86/64 / x86_64 | APK | 通过 | 待测 | 待测 |
 | OpenWrt 25.12.5 | rockchip/armv8 / aarch64_generic | APK | 通过 | 待测 | 待测 |
 | OpenWrt 其他 24.10.x / 25.12.x | 按实际 target | 实际 OPKG/APK | 逐项推进 | 待测 | 待测 |
-| ImmortalWrt 24.10.x / 25.12.x | 按厂商 SDK | 实际 OPKG/APK | 待验证 | 待测 | 待测 |
-| iStoreOS 对应维护版本 | 按厂商 SDK / 构建号 | 按设备检测 | 待匹配 | 待测 | 待测 |
+| ImmortalWrt 24.10.6 | x86/64 / x86_64 | IPK | 独立厂商 SDK 编译与实际包验证通过 | 待测 | 待测 |
+| ImmortalWrt 25.12.2 | x86/64 / x86_64 | APK | 独立厂商 SDK 编译与实际包验证通过 | 待测 | 待测 |
+| iStoreOS 25.12.6，修订 2026102312 | x86/64 / x86_64 | APK（官方镜像已核实） | 固件源码、feeds 和原生工具链准备完成，专用 APK 未构建 | 待测 | 待测 |
 
 机器可读计划见 [compatibility-matrix.json](compatibility-matrix.json)。x86/64、rockchip/armv8 之后，按 mediatek/filogic、ipq40xx/generic、ramips/mt7621 逐项扩展；i386、MIPS/MIPS64、RISC-V 仍为候选。
 
@@ -20,6 +21,19 @@ rockchip/armv8 的官方 profiles 元数据与用户回报均为 OpenWrt 25.12.5
 2026-10-21 用户反馈：v0.5.3 已在该 Rockchip 设备启用，后端载入 66,425 条域名并完成 NaiLink API 配置同步。这是旧版特定设备的安装/配置证据；上表 v0.18.0 的设备安装与 LAN 项目仍待重新验收，不能直接继承为全部通过。
 
 本体使用 shell、ucode、LuCI JS，未捆绑特定 CPU 的 ELF。依赖、字节序、浮点 ABI、固件 feeds 和包管理器仍按目标分别处理。实际包架构优先于 CPU 位数或产品宣传名；all/noarch 不是跨固件认证。
+
+## ImmortalWrt / iStoreOS 兼容性扩展（2026-10-28）
+
+ImmortalWrt 不复用 OpenWrt 的二进制包。已从 ImmortalWrt 官方下载站核对两个 x86/64 发行目标，以及其独立 SDK SHA-256：
+
+- 24.10.6：OPKG，ImmortalWrt SDK GCC 13.3.0，SHA-256 709bea2ce466b7ad671ce00fdcb1eb69b2b3fa0f0921b12b620725d95cd8c0e5
+- 25.12.2：APK，ImmortalWrt SDK GCC 14.3.0，SHA-256 4d4631f134c2f27215a91aa7ef5bf9a01ea96c2450d3b8a5c38048c32462ac60
+
+官方 rootfs 的 /etc/openwrt_release 也已核对：DISTRIB_ID='ImmortalWrt'、完整版本、x86/64 和 x86_64 架构；相应 DISTRIB_REVISION 分别为 r33869-cf234f8de6d5 和 r38135-0c4cd0f9920a。新增 vendor-sdk.yml 已使用各自的官方 SDK、各自 feeds 完成独立编译与封装验证；构建产物 SHA-256、安装文件和 LuCI 交互测试全部通过，证据见 [vendor-sdk-builds.json](evidence/v0.21.5/vendor-sdk-builds.json)。这两个精确目标现列入 sdk_verified，但实际设备启停、DNS、代理和故障回滚仍需验收；不能扩展为全部 ImmortalWrt 版本通用。
+
+iStoreOS 最新 x86_64 25.12.6-2026102312 的官方编译元数据已经核实：源代码 istoreos/istoreos 的 istoreos-25.12 分支提交是 283d02639c740f8ae6e9425b48be8c61f152c6b8。官方另提供对应 config、feeds 和构建信息；CONFIG_VERSION_DIST="iStoreOS"。scripts/probe_istoreos.py 使用 SHA-256 固定并核对这些官方元数据；scripts/prepare_istoreos_source.py 还可从该固定提交准备原生源码与 13 个 SHA 锁定的 feeds，拒绝覆盖用户已有代码。源代码及 13 组 SHA 锁定的 feeds 准备已经实测通过，宿主构建工具链也已成功构建。进一步从官方 SHA-256 核验的完整原始镜像内，直接读取 `/etc/openwrt_release`：`DISTRIB_RELEASE=25.12.6`、`DISTRIB_REVISION=2026102312`、`DISTRIB_TARGET=x86/64`、`DISTRIB_ARCH=x86_64`；同时确认 `/lib/apk/db/installed` 存在。证据见 [istoreos-original-image.json](evidence/v0.21.5/istoreos-original-image.json)。**这些不等于已经编译成功厂商 SDK、完成软件包 ABI 验证或真机验收**。完成真正的 iStoreOS 构建以前，不得将其加入 releases.tsv。
+
+请保留系统 /etc/openwrt_release 的真实信息，不能把 ImmortalWrt / iStoreOS 伪装成 OpenWrt。所有新固件必须逐一通过 SDK 构建、包格式验证、安装备份恢复、DNS 和代理的真实设备验收。
 
 ## 代理范围
 

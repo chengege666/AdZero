@@ -1,0 +1,23 @@
+{
+  "checked_on_utc": "2026-10-28",
+  "source_url": "https://fw20.koolcenter.com/iStoreOS/x86_64/istoreos-25.12.6-2026102312-x86-64-squashfs-combined.img.gz",
+  "size": 233970067,
+  "sha256": "48791c15b9fa7c261c519825020eaaf7792f06afbc495dd314966ffb13691d32",
+  "partition_format": "DOS MBR",
+  "squashfs_partition_start_sector": 263168,
+  "sector_size": 512,
+  "actual_system_release": {
+    "DISTRIB_ID": "iStoreOS",
+    "DISTRIB_RELEASE": "25.12.6",
+    "DISTRIB_REVISION": "2026102312",
+    "DISTRIB_TARGET": "x86/64",
+    "DISTRIB_ARCH": "x86_64",
+    "DISTRIB_TAINTS": "busybox"
+  },
+  "observed_package_manager": "APK via /lib/apk/db/installed",
+  "firmware_build_source_commit": "283d02639c740f8ae6e9425b48be8c61f152c6b8",
+  "sdk_build": "not_run",
+  "device_acceptance": "not_run",
+  "publishable": false,
+  "note": "Source image successfully verified against vendor's published SHA-256, actual /etc/openwrt_release was read directly from SquashFS; exact revision must be verified separately from version for any future iStoreOS vendor build."
+}
