@@ -37,7 +37,7 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 v0.21.4 新增 LuCI 在线更新、中文菜单安装与固件 SDK 兼容判断改进。详见 [v0.21.4 更新说明](docs/RELEASE_0.21.4.md)。v0.21.3 的 NaiLink／PassWall DNS 并发修复继续保留。
 
-下一版本为 **v0.21.4 测试发行候选版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。
+下一版本为 **v0.21.5 测试发行候选版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。
 
 ### 中文菜单式安装（推荐）
 
@@ -85,10 +85,12 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 | OpenWrt 24.10.8 | x86/64 | IPK |
 | OpenWrt 25.12.5 | x86/64 | APK |
 | OpenWrt 25.12.5 | rockchip/armv8 | APK |
+| ImmortalWrt 24.10.6 | x86/64 | IPK（独立厂商 SDK 编译通过） |
+| ImmortalWrt 25.12.2 | x86/64 | APK（独立厂商 SDK 编译通过） |
 
-SDK 构建与隔离测试已通过，实际设备的网络与过滤效果仍需验证。ImmortalWrt、iStoreOS、其他版本与架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进，安装器会拒绝尚未匹配的组合。
+以上五种完整固件/目标组合均已具备独立 SDK 构建证据，真实路由器的网络与广告过滤效果仍待验收。ImmortalWrt 的其他版本、iStoreOS、其他架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进；安装器仍会拒绝发行清单中没有的组合。
 
-**安装器兼容性修正（main 分支、待新版本发行）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。当前仍只有上表三个 SDK 构建通过的 OpenWrt 组合；没有独立验证并发布的 ImmortalWrt/iStoreOS 包，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
+**安装器兼容性修正（v0.21.5）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。ImmortalWrt 增加两个 x86_64 的厂商 SDK 专属构建组合；其他 ImmortalWrt 版本及尚无专用 SDK 包的 iStoreOS，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
 
 NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。概览中的「代理接入」可展开查看：区分实际内核、已保存开关和当前接入，不把识别到插件当作已经适配。
 

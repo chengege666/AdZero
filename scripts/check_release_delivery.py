@@ -25,34 +25,59 @@ def check(directory):
     directory = directory.resolve()
     validate_release(directory)
     shell = shlex.split(os.environ.get('ADZERO_TEST_SHELL', 'sh'))
+    # Require the entire verified release matrix for distribution packages,
+    # including vendor-specific builds. Tests of single-row release catalogs
+    # deliberately use build_release.validate_release() directly instead.
+    from build_release import SUPPORTED_BUILDS
+    catalog_rows = (directory / 'releases.tsv').read_text().splitlines()
+    available = {
+        (parts[2], parts[3], parts[4], parts[6])
+        for line in catalog_rows if not line.startswith('#')
+        for parts in [line.split('\t')] if len(parts) == 7
+    }
+    if available != set(SUPPORTED_BUILDS):
+        raise ValueError(f'Release must contain all exact SDK-verified identities; missing={set(SUPPORTED_BUILDS)-available}')
+    platforms = (
+        ('openwrt', '24.10.8', 'x86/64', 'x86_64', 'ipk', '24.10.8-x86_64.ipk'),
+        ('openwrt', '25.12.5', 'x86/64', 'x86_64', 'apk', '25.12.5-x86_64.apk'),
+        ('openwrt', '25.12.5', 'rockchip/armv8', 'aarch64_generic', 'apk', 'rockchip-armv8-aarch64_generic.apk'),
+        ('immortalwrt', '24.10.6', 'x86/64', 'x86_64', 'ipk', 'immortalwrt-24.10.6-x86_64.ipk'),
+        ('immortalwrt', '25.12.2', 'x86/64', 'x86_64', 'apk', 'immortalwrt-25.12.2-x86_64.apk'),
+    )
+    assert len(platforms) == len(SUPPORTED_BUILDS)
     results = []
-    for kind in ('24.10.8-x86-ipk', '25.12.5-x86-apk', '25.12.5-rockchip-apk'):
+    for firmware, version, target, arch, fmt, expected_suffix in platforms:
         for ending in ('LF', 'CRLF'):
+            kind = f'{firmware}-{version}-{target}-{fmt}'
             fixture = InstallerTest()
             fixture.setUp()
             try:
-                if not kind.endswith('ipk'):
-                    arm = 'rockchip' in kind
-                    fixture.arm_apk(arch='aarch64' if arm else 'x86_64')
-                    if not arm:
-                        fixture.write('etc/openwrt_release', "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.5'\nDISTRIB_TARGET='x86/64'\nDISTRIB_ARCH='x86_64'\n")
+                if fmt == 'apk':
+                    fixture.arm_apk(arch='aarch64' if target == 'rockchip/armv8' else 'x86_64')
+                original_id = {'openwrt': 'OpenWrt', 'immortalwrt': 'ImmortalWrt'}[firmware]
+                fixture.write('etc/openwrt_release',
+                              f"DISTRIB_ID='{original_id}'\nDISTRIB_RELEASE='{version}'\n"
+                              f"DISTRIB_TARGET='{target}'\nDISTRIB_ARCH='{arch}'\n")
                 delivered = fixture.base / 'delivered'
                 shutil.copytree(directory, delivered)
                 if ending == 'CRLF':
                     path = delivered / 'releases.tsv'
                     path.write_bytes(path.read_bytes().replace(b'\n', b'\r\n'))
                 fixture.upgrade_fixture()
-                result = subprocess.run(shell + [str(delivered / 'install.sh'), '--local-dir', str(delivered), '--upgrade', '--no-enable'],
-                                        env=fixture.env, text=True, capture_output=True, timeout=20)
+                result = subprocess.run(shell + [
+                    str(delivered / 'install.sh'), '--local-dir', str(delivered),
+                    '--upgrade', '--no-enable',
+                ], env=fixture.env, text=True, capture_output=True, timeout=20)
                 if result.returncode:
                     raise AssertionError(kind + ' ' + ending + ': ' + result.stdout + result.stderr)
-                suffix = 'rockchip-armv8-aarch64_generic.apk' if 'rockchip' in kind else ('25.12.5-x86_64.apk' if kind.endswith('apk') else '24.10.8-x86_64.ipk')
-                assert suffix in result.stdout, result.stdout
-                manager = 'opkg' if kind.endswith('ipk') else 'apk'
-                expected=['opkg update','ctl disable','opkg install'] if manager=='opkg' else ['apk check-local','ctl disable','apk add-local']
+                assert expected_suffix in result.stdout, result.stdout
+                expected = (['opkg update', 'ctl disable', 'opkg install']
+                            if fmt == 'ipk' else
+                            ['apk check-local', 'ctl disable', 'apk add-local'])
                 assert fixture.log.read_text().splitlines() == expected
                 assert list((fixture.root / 'etc/adzero-backups').glob('*/state.tar.gz'))
-                results.append({'target': kind, 'catalog_ending': ending, 'selection_checksum_backup_restore_install': 'passed'})
+                results.append({'target': kind, 'catalog_ending': ending,
+                                'selection_checksum_backup_restore_install': 'passed'})
             finally:
                 fixture.doCleanups()
     return {'checks': len(results), 'cases': results,

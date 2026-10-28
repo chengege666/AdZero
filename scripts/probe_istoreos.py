@@ -45,6 +45,9 @@ def validate_metadata(read):
     return {
         "firmware": "istoreos",
         "version": FIRMWARE_VERSION,
+        "distrib_release_observed_from_official_image": "25.12.6",
+        "distrib_revision_observed_from_official_image": "2026102312",
+        "official_image_sha256_verified": "48791c15b9fa7c261c519825020eaaf7792f06afbc495dd314966ffb13691d32",
         "target": "x86/64",
         "firmware_id_observed": "iStoreOS",
         "source_repo": SOURCE_REPO,
@@ -53,7 +56,7 @@ def validate_metadata(read):
         "official_image": IMAGE_FILENAME,
         "metadata_sha256": METADATA_SHA256,
         "sdk_build": "not_run",
-        "package_format": "requires_actual_device_and_vendor_sdk_confirmation",
+        "package_format": "apk_observed_official_image_vendor_sdk_not_built",
         "device_acceptance": "not_run",
         "publishable": False,
     }

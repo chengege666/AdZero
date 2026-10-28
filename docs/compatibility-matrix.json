@@ -5,13 +5,15 @@
   "sdk_verified": [
     {"firmware":"openwrt", "release":"24.10.8", "target":"x86/64", "arch":"x86_64", "format":"ipk", "sdk_build":"passed", "device_acceptance":"not_run"},
     {"firmware":"openwrt", "release":"25.12.5", "target":"x86/64", "arch":"x86_64", "format":"apk", "sdk_build":"passed", "device_acceptance":"not_run"},
-    {"firmware":"openwrt", "release":"25.12.5", "target":"rockchip/armv8", "arch":"aarch64_generic", "apk_cpu_alias":"aarch64", "format":"apk", "sdk_build":"passed", "device_acceptance":"not_run"}
+    {"firmware":"openwrt", "release":"25.12.5", "target":"rockchip/armv8", "arch":"aarch64_generic", "apk_cpu_alias":"aarch64", "format":"apk", "sdk_build":"passed", "device_acceptance":"not_run"},
+    {"firmware":"immortalwrt", "release":"24.10.6", "target":"x86/64", "arch":"x86_64", "format":"ipk", "sdk_build":"passed", "device_acceptance":"not_run"},
+    {"firmware":"immortalwrt", "release":"25.12.2", "target":"x86/64", "arch":"x86_64", "format":"apk", "sdk_build":"passed", "device_acceptance":"not_run"}
   ],
   "adapters_implemented": ["nailink", "passwall", "openclash", "nikki"],
   "firmware": [
     {"id": "openwrt", "releases": ["24.10.x", "25.12.5", "25.12.6"], "package_formats": ["ipk", "apk"], "sdk_build": "pending", "device_acceptance": "pending"},
-    {"id": "immortalwrt", "releases": ["24.10.6", "25.12.2"], "package_formats": ["ipk", "apk"], "sdk_build": "official_sdk_sha256_pinned_ci_candidate", "device_acceptance": "not_run"},
-    {"id": "istoreos", "releases": ["25.12.6-2026102312 x86/64"], "package_formats": ["apk_candidate_requires_device_verification"], "sdk_build": "source_commit_and_feeds_verified_vendor_sdk_not_built", "device_acceptance": "not_run"}
+    {"id": "immortalwrt", "releases": ["24.10.6", "25.12.2"], "package_formats": ["ipk", "apk"], "sdk_build": "passed_for_exact_24.10.6_and_25.12.2_x86_only", "device_acceptance": "not_run"},
+    {"id": "istoreos", "releases": ["25.12.6 revision 2026102312 x86/64"], "package_formats": ["apk_observed_official_image_sdk_pending"], "sdk_build": "source_commit_and_feeds_verified_vendor_sdk_not_built", "device_acceptance": "not_run"}
   ],
   "architectures": ["x86_64", "i386", "aarch64", "armv7", "mips", "mipsel", "mips64", "riscv64"],
   "sdk_targets": ["x86/64", "rockchip/armv8", "mediatek/filogic", "ipq40xx/generic", "ramips/mt7621"],

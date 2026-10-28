@@ -128,16 +128,20 @@ class VendorSDKPinTests(unittest.TestCase):
                 self.assertEqual(stdout.getvalue(), "")
                 self.assertIn("downloaded 32 MiB", stderr.getvalue())
 
-    def test_vendor_builds_are_not_prematurely_published(self):
+    def test_only_actual_immortalwrt_sdk_builds_are_approved(self):
         matrix = json.loads((ROOT / "docs/compatibility-matrix.json").read_text())
         actual = build_release.verified_builds()
         for row in matrix["sdk_verified"]:
             self.assertEqual(row["sdk_build"], "passed")
+            self.assertEqual(row["device_acceptance"], "not_run")
             self.assertIn((row["firmware"], row["release"],
                            row["target"], row["format"]), actual)
-        for vendor in ("istoreos", "immortalwrt"):
-            self.assertNotIn(vendor, {identity[0] for identity in actual},
-                             "A candidate is not an SDK-verified release")
+        self.assertEqual({key for key in actual if key[0] == "immortalwrt"}, {
+            ("immortalwrt", "24.10.6", "x86/64", "ipk"),
+            ("immortalwrt", "25.12.2", "x86/64", "apk"),
+        })
+        self.assertNotIn("istoreos", {key[0] for key in actual},
+                         "iStoreOS source alone cannot authorize installation")
 
 
 if __name__ == "__main__":
