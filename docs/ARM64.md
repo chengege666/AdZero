@@ -68,6 +68,10 @@ python3 scripts/build_istoreos_native.py \
 
 它依次编译原厂 tools、toolchain、Linux target、LuCI host 和 AdZero APK，再校验 vendor 来源、target、feeds、包架构、源码、权限与导出文件 SHA。**即使编译及封装验证成功，仍只生成 `publishable=false` 的候选包**，不能直接写入公开 `releases.tsv`。
 
+## ARM64 发行包回归（暂不对外开放）
+
+发行打包工具只认 `sdk_verified` 中已经通过独立 SDK 构建验证的组合。未来一旦经证据审核新增精确 ARM64 组合，`scripts/check_release_delivery.py` 会自动遍历**全部**受信目标，并对每一组发行文件执行 LF/CRLF 两种清单的安装选包、SHA-256、升级备份和服务恢复模拟。测试已覆盖四组未来 OpenWrt/ImmortalWrt ARM64 目标，以及 iStoreOS ARMSR/Rockchip 的十位固件修订号；测试使用模拟包管理器，**不是**实际 ARM64 路由器安装证明，不能据此发布候选包。
+
 ## 发布和真机验收门槛
 
 每个目标独立检查：
