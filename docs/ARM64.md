@@ -7,12 +7,14 @@
 | 固件 | 固件版本 / target | 进度 |
 | --- | --- | --- |
 | OpenWrt | 25.12.5 / rockchip/armv8 | v0.21.5 已有对应 SDK APK，真机 LAN 尚未普遍验证 |
-| OpenWrt | 25.12.6 / rockchip/armv8 | 新官方 SDK SHA 固定，CI 构建候选 |
-| OpenWrt | 25.12.6 / mediatek/filogic | 新官方 SDK SHA 固定，CI 构建候选 |
-| ImmortalWrt | 25.12.2 / rockchip/armv8 | 独立厂商 SDK SHA 固定，CI 构建候选 |
-| ImmortalWrt | 25.12.2 / mediatek/filogic | 独立厂商 SDK SHA 固定，CI 构建候选 |
+| OpenWrt | 25.12.6 / rockchip/armv8 | 官方 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
+| OpenWrt | 25.12.6 / mediatek/filogic | 官方 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
+| ImmortalWrt | 25.12.2 / rockchip/armv8 | 独立厂商 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
+| ImmortalWrt | 25.12.2 / mediatek/filogic | 独立厂商 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
 | iStoreOS | 25.12.6-2026102312 / armsr/armv8 | 原厂配置/13 feeds/SHA 已核验，原生 APK 待编译和设备测试 |
 | iStoreOS | 25.12.6-2026102312 / rockchip/armv8（R6XS） | 原厂配置/15 feeds/SHA 已核验，原生 APK 待编译和设备测试 |
+
+四个已通过 CI 的候选包均来自提交 `61e1334`，下载后的 APK SHA-256 与相应 SDK 构建清单一致；详细记录在 [`evidence/arm64-pr10-sdk-builds.json`](evidence/arm64-pr10-sdk-builds.json)。**`ci_passed_unreleased` 只表示编译与静态交付检查成功，不允许加入 `sdk_verified` 或被菜单/在线更新选中。** 后续发布必须使用新版本号重建，不能覆盖现有 v0.21.5。
 
 Rockchip 的发行包架构常为 `aarch64_generic`，Filogic 为 `aarch64_cortex-a53`。即便 APK 运行环境显示 `aarch64` CPU，**也不能自动推断它与所有 ARM64 包兼容**。完整固件版本、target、包架构及发行版 ID 都要精确匹配。iStoreOS 还必须检查十位 `DISTRIB_REVISION`。
 
