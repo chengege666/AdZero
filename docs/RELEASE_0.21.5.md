@@ -1,6 +1,6 @@
 # AdZero v0.21.5 · ImmortalWrt 官方 SDK 扩展与 iStoreOS 独立构建
 
-**发行候选版（待 SDK v0.21.5 新构建、GitHub CI 和设备验收）**。
+**测试版（Pre-release）**：五组 v0.21.5 对应 SDK 全部完成独立编译，GitHub Windows、Linux、官方 OpenWrt ash 测试通过；实际发行文件在 10 组隔离安装/升级/恢复回归中通过。**真实路由器 DNS、代理共存与故障回滚验收仍未完成**。
 
 本版保留 v0.21.4 的 LuCI 点击在线更新、中文安装菜单、配置备份和故障恢复，新增 ImmortalWrt 的两个精确 x86_64 固件版本。所有其他版本仍需要独立 SDK 适配，不能把 x86_64 CPU 相同理解为 ABI 相同。
 
@@ -11,7 +11,7 @@
 | ImmortalWrt | 24.10.6 | x86/64 | OPKG / IPK | 厂商 SDK 独立编译和文件验证通过 |
 | ImmortalWrt | 25.12.2 | x86/64 | APK | 厂商 SDK 独立编译和文件验证通过 |
 
-首次验证使用 AdZero v0.21.4 源码，两个 SDK 产物经 GitHub Actions、LuCI 页面交互与独立封装校验成功，见 docs/evidence/v0.21.5/vendor-sdk-builds.json。**v0.21.5 发布须从新版本源码分别重建所有五个 SDK 安装包，并重新核对版本和 SHA-256；禁止直接复用旧 v0.21.4 文件。**
+最初使用 AdZero v0.21.4 源码验证两个厂商 SDK 能够独立编译，证据见 docs/evidence/v0.21.5/vendor-sdk-builds.json。正式 v0.21.5 已使用更新后的同一份源码在五套匹配 SDK 上全部重新编译、生成独立安装包并校验 SHA-256，**没有复用 v0.21.4 二进制文件**。
 
 ## iStoreOS 进展
 
