@@ -1,0 +1,23 @@
+{
+  "firmware": "istoreos",
+  "profile": "rockchip-r6xs",
+  "release": "25.12.6",
+  "revision": "2026102312",
+  "target": "rockchip/armv8",
+  "arch": "aarch64_generic",
+  "official_image_sha256": "c89326ee924f41d10921570d3da1b7caf22be13a275be7bd9bd830e0f21c8ec8",
+  "original_installed_packages_examined": 940,
+  "vendor_host_apk_sha256": "5898c2001f68da209679e6a14cde92979d7630c92fe9d23f09eb03f8ad9a04d8",
+  "pilot_manifest_sha256": "8eb387bc0e58319b64f29d20d289bd497f76783bfe5ed188833a0967f3ea592f",
+  "preflight_checks": {
+    "--check": "passed",
+    "--solver": "passed"
+  },
+  "original_db_snapshot": true,
+  "used_real_vendor_apk_solver": true,
+  "network_access_allowed": false,
+  "host_or_router_packages_installed": false,
+  "device_acceptance": "not_run",
+  "publishable": false,
+  "scope": "official original firmware snapshot and real host apk --simulate; not physical router, LAN or recovery"
+}
