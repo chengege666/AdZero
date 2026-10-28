@@ -31,7 +31,7 @@ ImmortalWrt 不复用 OpenWrt 的二进制包。已从 ImmortalWrt 官方下载�
 
 官方 rootfs 的 /etc/openwrt_release 也已核对：DISTRIB_ID='ImmortalWrt'、完整版本、x86/64 和 x86_64 架构；相应 DISTRIB_REVISION 分别为 r33869-cf234f8de6d5 和 r38135-0c4cd0f9920a。新增 vendor-sdk.yml 通过各自的官方 SDK、各自 feeds 独立构建并验证安装内容，不能拿 OpenWrt SDK 包冒充兼容。只有编译、安装包 SHA-256 和 LuCI 检查全部通过后，才能把候选纳入上面的 sdk_verified 列表。
 
-iStoreOS 最新 x86_64 25.12.6-2026102312 的官方编译元数据已经核实：源代码 istoreos/istoreos 的 istoreos-25.12 分支提交是 283d02639c740f8ae6e9425b48be8c61f152c6b8。官方另提供对应 config、feeds 和构建信息；CONFIG_VERSION_DIST="iStoreOS"。scripts/probe_istoreos.py 使用 SHA-256 固定并核对这些官方元数据，**只证明构建来源可追溯，不等于拥有与该固件匹配的 SDK，或者已经完成软件包 ABI 验证**。完成真正的 iStoreOS 构建以前，不得将其加入 releases.tsv。
+iStoreOS 最新 x86_64 25.12.6-2026102312 的官方编译元数据已经核实：源代码 istoreos/istoreos 的 istoreos-25.12 分支提交是 283d02639c740f8ae6e9425b48be8c61f152c6b8。官方另提供对应 config、feeds 和构建信息；CONFIG_VERSION_DIST="iStoreOS"。scripts/probe_istoreos.py 使用 SHA-256 固定并核对这些官方元数据；scripts/prepare_istoreos_source.py 还可从该固定提交准备原生源码与 13 个 SHA 锁定的 feeds，拒绝覆盖用户已有代码。源代码准备已经实测通过，**但不等于已经编译成功厂商 SDK、完成软件包 ABI 验证或真机验收**。完成真正的 iStoreOS 构建以前，不得将其加入 releases.tsv。
 
 请保留系统 /etc/openwrt_release 的真实信息，不能把 ImmortalWrt / iStoreOS 伪装成 OpenWrt。所有新固件必须逐一通过 SDK 构建、包格式验证、安装备份恢复、DNS 和代理的真实设备验收。
 

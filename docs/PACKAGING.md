@@ -50,7 +50,14 @@ iStoreOS 25.12.6-2026102312 x86/64 的官方 commit/config/feeds/版本索引可
 python3 scripts/probe_istoreos.py
 ~~~
 
-此命令**不会构建 SDK、安装任何插件或修改路由器**；它只证明官方固件的源码提交和 feeds 可追溯。缺少匹配该厂商构建的 SDK/ABI 验证之前，不发布 iStoreOS 二进制包，不跨平台借用普通 OpenWrt SDK。
+此命令**不会构建 SDK、安装任何插件或修改路由器**；它只证明官方固件的源码提交和 feeds 可追溯。下一步可以准备完全锁定的 iStoreOS 源码及 feeds：
+
+~~~sh
+mkdir -p "$HOME/istoreos-builds"
+python3 scripts/prepare_istoreos_source.py --directory "$HOME/istoreos-builds/istoreos-25.12.6-2026102312"
+~~~
+
+源码准备程序要求 GitHub 分支 HEAD 必须与官方 buildinfo 公布的 283d02639c740f8ae6e9425b48be8c61f152c6b8 完全相同，并使用官方 feeds.buildinfo 中的不可变提交 SHA。它不会覆盖已有目录、运行固件安装或冒充 SDK 验证。之后仍需原生 Buildroot 工具链和 SDK 编译，再核对固件 ABI、依赖和安装测试。缺少匹配该厂商构建的 SDK/ABI 验证之前，不发布 iStoreOS 二进制包，不跨平台借用普通 OpenWrt SDK。
 
 ## Linux / WSL 复现
 
