@@ -1,0 +1,23 @@
+{
+  "firmware": "istoreos",
+  "release": "25.12.6",
+  "revision": "2026102312",
+  "vendor_profile": "rockchip-r6xs",
+  "target": "rockchip/armv8",
+  "arch": "aarch64_generic",
+  "official_image": "istoreos-25.12.6-2026102312-r6xs-squashfs.img.gz",
+  "official_image_gzip_sha256": "ad9098cad8728a3d50331b1b9701565271e594b57e3aff8dc3a831b951eba6d6",
+  "official_raw_image_sha256": "c89326ee924f41d10921570d3da1b7caf22be13a275be7bd9bd830e0f21c8ec8",
+  "source": "official_image_gzip_trailing_metadata_version_1.1",
+  "vendor_board": "fastrhino_r6xs",
+  "supported_devices": [
+    "fastrhino,r6xs",
+    "lunzn,fastrhino-r66s",
+    "lunzn,fastrhino-r68s",
+    "fastrhino,r66s",
+    "fastrhino,r68s"
+  ],
+  "scope": "Firmware image supported_devices metadata only; no physical board or device identity attestation",
+  "device_acceptance": "not_run",
+  "publishable": false
+}

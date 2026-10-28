@@ -8,6 +8,7 @@
 - [ ] 确认有本地管理/救援方式，并备份网络、DNS、代理、AdBlock 配置（敏感原文不公开）；记录初始外网与 LAN 基线。
 - [ ] 仅运行 `preflight.sh --check`，核实固件与 APK SHA、预装完整 `tcpdump`、无重复 OPKG 数据库，修改一字节或 target 时必须拒绝。
 - [ ] 执行 `preflight.sh --solver`，必须无联网、无实际安装、无卸载/升级原包；涉及已安装 AdZero/所有权记录时停止试装。
+- [ ] 执行 `preflight.sh --report` 采集固定字段的脱敏只读状态；维护者用 `scripts/validate_istoreos_readiness.py` 与相同目标私有包校验，不上传订阅/密钥/IP/MAC/原始 UCI。资源不足或多个 DNS/代理进程出现仅标记人工核对，不能证明过滤成功。
 - [ ] 获得单独实机安装授权与回滚方案后，先验证完整离线包管理器事务、Lua/rpcd/LuCI 加载、AdZero 默认关闭；无网络变更时仍可 SSH。
 - [ ] 分别测试启停、正常域名解析、广告规则内外 IPv4/IPv6 + UDP/TCP、NaiLink/PassWall/无代理、多 DNS 情况，异常必须回滚。
 - [ ] 验证重启、再次进入 LuCI、升级/卸载、网络故障与错误依赖时恢复原配置，确认可保持路由器访问；所有实机证据保留脱敏记录。

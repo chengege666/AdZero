@@ -144,6 +144,8 @@ def bundle(source, image, profile, output, *, solver=verify_solver):
             "For the exact iStoreOS 25.12.6 revision 2026102312 target only.\n"
             "Run sh preflight.sh --check to verify identity, files and ABI.\n"
             "Optionally run sh preflight.sh --solver for OFFLINE simulated solver.\n"
+            "Run sh preflight.sh --report for fixed-schema REDACTED readiness JSON.\n"
+            "Report only includes safe boolean/numeric observations, no raw configs.\n"
             "Neither command installs, upgrades, changes DNS or reboots.\n"
             "Do not manually run apk add before separately approved device trials,\n"
             "network recovery readiness and configuration backups.\n",

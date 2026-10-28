@@ -17,6 +17,7 @@ import tempfile
 from check_istoreos_apk_solver import DATABASE
 from inspect_istoreos_arm64_image import RAW_IMAGES, inspect_image
 from probe_istoreos_arm64 import PROFILES
+from validate_istoreos_readiness import validate as validate_readiness
 
 
 def sha256(path):
@@ -69,15 +70,26 @@ def snapshot_check(source, image, profile, pilot):
                "PATH": str(tools) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
                "ADZERO_PILOT_ROOT": str(root)}
         observations = {}
-        for mode in ("--check", "--solver"):
-            result = subprocess.run(["sh", str(pilot / "preflight.sh"), mode],
+        shell = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "sh"))
+        if not shell:
+            raise ValueError("Offline snapshot preflight shell not specified")
+        for mode in ("--check", "--solver", "--report"):
+            result = subprocess.run(shell + [str(pilot / "preflight.sh"), mode],
                                     text=True, capture_output=True, timeout=120, env=env)
             if result.returncode:
                 raise ValueError(f"Pilot {mode} against official system failed: {result.stderr[-700:]}")
-            if ("预检通过" not in result.stdout or
-                    (mode == "--solver" and "离线依赖模拟通过" not in result.stdout)):
-                raise ValueError("Pilot did not produce the expected readonly verification")
-            observations[mode] = "passed"
+            if mode == "--report":
+                payload = json.loads(result.stdout)
+                verified = validate_readiness(payload, pilot)
+                if (verified["installation_authorized"] is not False
+                        or verified["redacted_report_only"] is not True):
+                    raise ValueError("Readiness report cannot authorize installation")
+                observations[mode] = "passed_strict_redacted_schema"
+            else:
+                if ("预检通过" not in result.stdout or
+                        (mode == "--solver" and "离线依赖模拟通过" not in result.stdout)):
+                    raise ValueError("Pilot did not produce the expected readonly verification")
+                observations[mode] = "passed"
     return {
         "firmware": "istoreos", "profile": profile, "release": "25.12.6",
         "revision": "2026102312", "target": PROFILES[profile]["target"],

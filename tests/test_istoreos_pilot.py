@@ -251,5 +251,151 @@ echo 'OK: 520 MiB in 1025 packages'
         self.assertEqual(self.image.read_bytes(), b"mock-original-firmware")
 
 
+    def test_privacy_safe_readiness_report_and_host_strict_validation(self):
+        from validate_istoreos_readiness import validate_files
+        output, _ = self.generate("armsr")
+        proc = self.router / "proc"
+        (proc / "130").mkdir(parents=True)
+        (proc / "131").mkdir()
+        (proc / "130/comm").write_text("dnsmasq\n")
+        (proc / "131/comm").write_text("mihomo\n")
+        (proc / "meminfo").write_text("MemTotal: 524288 kB\nMemAvailable: 196608 kB\n")
+        config = self.router / "etc/config"
+        config.mkdir()
+        secret = "SECRET_PRIVATE_PROXY_TOKEN_192.168.55.66"
+        (config / "passwall").write_text("password=" + secret + "\n")
+        (config / "openclash").write_text("subscription=" + secret + "\n")
+        result = self.preflight(output, "--report")
+        self.assertFalse(self.apk_log.exists())
+        self.assertTrue(result.stdout.startswith("{"))
+        self.assertNotIn(secret, result.stdout)
+        self.assertNotIn("192.168", result.stdout)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["report_type"], "adzero_istoreos_readonly_readiness")
+        self.assertEqual(data["vendor_profile"], "armsr")
+        self.assertEqual(data["board_check"], "not_applicable")
+        self.assertEqual(data["memory_available_kib"], 196608)
+        self.assertIsNone(data["overlay_available_kib"])
+        self.assertTrue(data["dns_process_presence"]["dnsmasq"])
+        self.assertFalse(data["dns_process_presence"]["smartdns"])
+        self.assertTrue(data["proxy_core_presence"]["mihomo"])
+        self.assertTrue(data["proxy_config_presence"]["passwall"])
+        self.assertTrue(data["proxy_config_presence"]["openclash"])
+        self.assertFalse(data["installation_authorized"])
+        self.assertFalse(data["publishable"])
+        report_path = self.root / "readonly-report.json"
+        report_path.write_text(result.stdout)
+        checked = validate_files(report_path, output)
+        self.assertFalse(checked["installation_authorized"])
+        self.assertFalse(checked["lan_dns_verified"])
+        self.assertIn("multiple_proxy_configs_present", checked["cautions"])
+        self.assertIn("proxy_core_process_present_review_dns_path", checked["cautions"])
+
+    def test_readiness_report_is_fail_closed_for_malicious_or_fake_fields(self):
+        from validate_istoreos_readiness import validate_files
+        output, _ = self.generate("rockchip-r6xs")
+        result = self.preflight(output, "--report")
+        original = json.loads(result.stdout)
+        report_path = self.root / "report.json"
+        for name, value in (
+            ("publishable", True),
+            ("installation_authorized", True),
+            ("revision", "2026102313"),
+            ("target", "armsr/armv8"),
+            ("memory_available_kib", -5),
+            ("checked_local_apks", True),
+            ("dns_process_presence", {"dnsmasq": True, "secret_subscription": "SECRET"}),
+        ):
+            with self.subTest(field=name):
+                bad = {**original, name: value}
+                report_path.write_text(json.dumps(bad))
+                with self.assertRaises(ValueError):
+                    validate_files(report_path, output)
+        # Other injected keys, duplicate JSON keys, or a changed pilot must fail.
+        report_path.write_text(json.dumps({**original, "dns_upstream": "8.8.8.8"}))
+        with self.assertRaisesRegex(ValueError, "unexpected fields"):
+            validate_files(report_path, output)
+        report_path.write_text(result.stdout.replace(
+            '"schema_version": 1,', '"schema_version": 1, "schema_version": 1,'))
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            validate_files(report_path, output)
+        report_path.write_text(result.stdout)
+        other, _ = self.generate("armsr")
+        with self.assertRaises(ValueError):
+            validate_files(report_path, other)
+        alias = self.root / "report-symlink.json"
+        alias.symlink_to(report_path)
+        with self.assertRaisesRegex(ValueError, "symlinked"):
+            validate_files(alias, output)
+
+    def test_readiness_report_wrong_firmware_and_corrupted_payload_stop_before_output(self):
+        output, _ = self.generate("armsr")
+        package = next((output / "packages").glob("*.apk"))
+        package.write_bytes(b"evil")
+        rejected = self.preflight(output, "--report", success=False)
+        self.assertEqual(rejected.stdout, "")
+        self.assertFalse(self.apk_log.exists())
+
+
+    def test_pinned_original_firmware_readiness_snapshot_remains_unapproved(self):
+        for profile, filename, count in (
+            ("armsr", "armsr-readiness-snapshot.json", 1018),
+            ("rockchip-r6xs", "r6xs-readiness-snapshot.json", 940),
+        ):
+            with self.subTest(profile=profile):
+                path = ROOT / "docs/evidence/istoreos-25.12.6" / filename
+                proof = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(proof["profile"], profile)
+                self.assertEqual(proof["target"], PROFILES[profile]["target"])
+                self.assertEqual(proof["original_installed_packages_examined"], count)
+                self.assertEqual(proof["official_image_sha256"], RAW_IMAGES[profile]["sha256"])
+                self.assertEqual(proof["preflight_checks"], {
+                    "--check": "passed", "--solver": "passed",
+                    "--report": "passed_strict_redacted_schema",
+                })
+                self.assertFalse(proof["network_access_allowed"])
+                self.assertFalse(proof["host_or_router_packages_installed"])
+                self.assertEqual(proof["device_acceptance"], "not_run")
+                self.assertFalse(proof["publishable"])
+
+
+    def test_r6xs_official_supported_board_ids_and_unrecognized_board(self):
+        from validate_istoreos_readiness import validate_files
+        boards = json.loads((ROOT / "docs/evidence/istoreos-25.12.6" /
+                             "r6xs-official-supported-boards.json").read_text())
+        self.assertEqual(boards["official_image_gzip_sha256"], PROFILES["rockchip-r6xs"]["image_sha256"])
+        self.assertEqual(boards["official_raw_image_sha256"], RAW_IMAGES["rockchip-r6xs"]["sha256"])
+        self.assertEqual(boards["supported_devices"], [
+            "fastrhino,r6xs", "lunzn,fastrhino-r66s", "lunzn,fastrhino-r68s",
+            "fastrhino,r66s", "fastrhino,r68s",
+        ])
+        self.assertEqual(boards["device_acceptance"], "not_run")
+        self.assertFalse(boards["publishable"])
+        output, _ = self.generate("rockchip-r6xs")
+        before = json.loads(self.preflight(output, "--report").stdout)
+        self.assertEqual(before["board_check"], "unavailable")
+        report = self.root / "board-report.json"
+        report.write_text(json.dumps(before))
+        reviewed = validate_files(report, output)
+        self.assertIn("r6xs_board_identity_unverified", reviewed["cautions"])
+        board = self.router / "tmp/sysinfo/board_name"
+        board.parent.mkdir(parents=True)
+        for name in ("fastrhino,r6xs", "lunzn,fastrhino-r66s",
+                     "lunzn,fastrhino-r68s", "fastrhino,r66s", "fastrhino,r68s"):
+            with self.subTest(board=name):
+                board.write_text(name + "\n")
+                result = self.preflight(output, "--report")
+                self.assertNotIn(name, result.stdout)
+                observed = json.loads(result.stdout)
+                self.assertEqual(observed["board_check"], "matched")
+                report.write_text(result.stdout)
+                self.assertNotIn("r6xs_board_identity_unverified",
+                                 validate_files(report, output)["cautions"])
+        board.write_text("some-other-rockchip,unrelated\n")
+        rejected = self.preflight(output, "--report", success=False)
+        self.assertEqual(rejected.stdout, "")
+        self.assertFalse(self.apk_log.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

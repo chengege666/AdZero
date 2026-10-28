@@ -4,8 +4,8 @@ set -eu
 set -f
 LC_ALL=C; export LC_ALL
 fail() { printf 'AdZero iStoreOS 预检拒绝：%s\n' "$*" >&2; exit 1; }
-[ "$#" -eq 1 ] || fail '仅支持 --check 或 --solver。'
-case "$1" in --check|--solver) mode=$1 ;; *) fail '不支持安装操作。' ;; esac
+[ "$#" -eq 1 ] || fail '仅支持 --check、--solver 或 --report。'
+case "$1" in --check|--solver|--report) mode=$1 ;; *) fail '不支持安装操作。' ;; esac
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd -P) || fail '离线包目录不可用。'
 root=${ADZERO_PILOT_ROOT:-}
 [ -r "$root/etc/openwrt_release" ] || fail '缺少固件身份文件。'
@@ -63,6 +63,22 @@ command -v sha256sum >/dev/null 2>&1 || fail '缺少 sha256sum。'
 cpu=$(apk --print-arch) || fail '无法读取 APK 架构。'
 case "$cpu" in aarch64|aarch64_generic) ;; *) fail "APK CPU 架构不一致：$cpu" ;; esac
 
+board_check=not_applicable
+if [ "$profile" = rockchip-r6xs ]; then
+    # The exact five compatible board identifiers come from the SHA-pinned
+    # vendor R6XS image's supported_devices trailer. Never print board IDs.
+    board_check=unavailable
+    board_file="$root/tmp/sysinfo/board_name"
+    if [ -r "$board_file" ] && [ ! -L "$board_file" ]; then
+        board_name=
+        IFS= read -r board_name < "$board_file" || :
+        case "$board_name" in
+            fastrhino,r6xs|lunzn,fastrhino-r66s|lunzn,fastrhino-r68s|fastrhino,r66s|fastrhino,r68s)
+                board_check=matched ;;
+            *) fail '设备板型不在官方 R6XS 固件支持列表，拒绝候选包预检。' ;;
+        esac
+    fi
+fi
 set +f
 set -- "$dir"/packages/*.apk
 set -f
@@ -70,6 +86,72 @@ set -f
 for file do
     [ -f "$file" ] && [ ! -L "$file" ] || fail '发现不可用或符号链接安装包。'
 done
+if [ "$mode" = --report ]; then
+    # Whitelisted status only; no UCI values, proxy credentials, IPs or MACs.
+    has_comm() (
+        set +f
+        for f in "$root"/proc/[0-9]*/comm; do
+            [ -r "$f" ] || continue
+            IFS= read -r comm < "$f" || :
+            [ "$comm" = "$1" ] && exit 0
+        done
+        exit 1
+    )
+    has_config() {
+        [ -f "$root/etc/config/$1" ] && [ ! -L "$root/etc/config/$1" ]
+    }
+    as_bool() {
+        if "$@"; then printf true; else printf false; fi
+    }
+    mem=null
+    if [ -r "$root/proc/meminfo" ] && [ ! -L "$root/proc/meminfo" ]; then
+        available=$(awk '$1=="MemAvailable:" && $2 ~ /^[0-9]+$/ {print $2;exit}' "$root/proc/meminfo")
+        case "$available" in ''|*[!0-9]*) ;; *) mem=$available ;; esac
+    fi
+    overlay=null
+    # Test roots must not accidentally query the developer host filesystem.
+    if [ -z "$root" ] && [ -d /overlay ]; then
+        free_kib=$(df -Pk /overlay 2>/dev/null | awk 'NR==2 {print $4}') || free_kib=
+        case "$free_kib" in ''|*[!0-9]*) ;; *) overlay=$free_kib ;; esac
+    fi
+    manifest_sha=$(sha256sum "$dir/pilot-manifest.json" | awk '{print $1}')
+    case "$manifest_sha" in
+      '') fail '缺少 pilot manifest SHA。' ;;
+      *[!a-f0-9]*) fail '无效 pilot manifest SHA。' ;;
+    esac
+    [ "${#manifest_sha}" -eq 64 ] || fail 'Pilot manifest SHA 无效。'
+    printf '{\n'
+    printf '  "schema_version": 1,\n'
+    printf '  "report_type": "adzero_istoreos_readonly_readiness",\n'
+    printf '  "firmware": "%s", "release": "%s", "revision": "%s",\n' "$fw" "$release" "$revision"
+    printf '  "vendor_profile": "%s", "target": "%s", "arch": "%s", "apk_cpu": "%s",\n' "$profile" "$target" "$arch" "$cpu"
+    printf '  "pilot_manifest_sha256": "%s",\n' "$manifest_sha"
+    printf '  "checked_local_apks": 7,\n'
+    printf '  "board_check": "%s",\n' "$board_check"
+    printf '  "original_full_tcpdump": true, "luci_base_present": true, "rpcd_present": true,\n'
+    printf '  "memory_available_kib": %s, "overlay_available_kib": %s,\n' "$mem" "$overlay"
+    printf '  "dns_process_presence": {\n'
+    printf '    "dnsmasq": %s, "smartdns": %s, "unbound": %s, "adguardhome": %s\n' \
+        "$(as_bool has_comm dnsmasq)" "$(as_bool has_comm smartdns)" \
+        "$(as_bool has_comm unbound)" "$(as_bool has_comm AdGuardHome)"
+    printf '  },\n'
+    printf '  "proxy_config_presence": {\n'
+    printf '    "nailink": %s, "passwall": %s, "openclash": %s, "nikki": %s, "homeproxy": %s\n' \
+        "$(as_bool has_config nailink)" "$(as_bool has_config passwall)" \
+        "$(as_bool has_config openclash)" "$(as_bool has_config nikki)" \
+        "$(as_bool has_config homeproxy)"
+    printf '  },\n'
+    printf '  "proxy_core_presence": {\n'
+    printf '    "mihomo": %s, "clash": %s, "sing_box": %s, "xray": %s\n' \
+        "$(as_bool has_comm mihomo)" "$(as_bool has_comm clash)" \
+        "$(as_bool has_comm sing-box)" "$(as_bool has_comm xray)"
+    printf '  },\n'
+    printf '  "network_dns_test": "not_run", "proxy_coexistence_test": "not_run",\n'
+    printf '  "device_acceptance": "not_run", "installation_authorized": false,\n'
+    printf '  "public_release": false, "publishable": false\n'
+    printf '}\n'
+    exit 0
+fi
 printf 'AdZero iStoreOS 只读预检通过：%s %s revision=%s target=%s arch=%s（7 个 APK）\n' "$fw" "$release" "$revision" "$target" "$arch"
 [ "$mode" = --solver ] || {
     printf '%s\n' '未执行任何安装、重启、UCI、DNS 或代理修改。'

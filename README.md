@@ -96,7 +96,7 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 **iStoreOS ARM64 原厂镜像核验：**独立验证了 25.12.6-2026102312 的 ARMSR 与 R6XS 官方压缩镜像、原始文件系统 SHA-256、固件 ID/target/ABI 和预装 APK 数据库；两套固件分别预装 1,018 / 940 个包，均保留完整版 `tcpdump`。已增加严格的 ARM64 原厂 APK 递归依赖检查及反混装测试；两种固件的原厂原生 APK 编译、6 个缺失依赖闭环及 7 个 APK 离线模拟均已通过；真实软路由 LAN/DNS/代理/升级回滚验收仍需逐项完成，**当前不得在菜单或在线更新中将其当成已发布支持**。证据和构建流程见 [ARM64 适配进度](docs/ARM64.md)。
 
-**iStoreOS 下一阶段（只读预检候选包）：**增加严格绑定 ARMSR/R6XS 原厂完整修订号、target/ABI 和六个原厂依赖哈希的独立离线候选 ZIP，以及不支持安装操作的只读环境与 apk-tools 模拟预检。在对应原厂镜像数据库隔离副本上，两种目标均用真实厂商 apk-tools 通过 `--check` 和 `--solver`；**尚未实体路由器测试，不属于公开 Release，也不开放自动安装或在线更新**。详见 [iStoreOS 私有离线预检流程](docs/ISTOREOS_PILOT.md)。
+**iStoreOS 下一阶段（只读预检候选包）：**增加严格绑定 ARMSR/R6XS 原厂完整修订号、target/ABI 和六个原厂依赖哈希的独立离线候选 ZIP，以及不支持安装操作的只读环境与 apk-tools 模拟预检。在对应原厂镜像数据库隔离副本上，两种目标均用真实厂商 apk-tools 通过 `--check` 和 `--solver`；**尚未实体路由器测试，不属于公开 Release，也不开放自动安装或在线更新**。详见 [iStoreOS 私有离线预检流程](docs/ISTOREOS_PILOT.md)。 新增 `--report` 严格脱敏只读设备就绪报告（只有固定布尔和资源数值，绝不复制代理订阅、密钥、节点或 IP），可在维护者机器上与原厂目标/测试包 manifest 严格比对；仍不授权安装。
 
 **安装器兼容性修正（v0.21.5）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。ImmortalWrt 增加两个 x86_64 的厂商 SDK 专属构建组合；其他 ImmortalWrt 版本及尚无专用 SDK 包的 iStoreOS，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
 
