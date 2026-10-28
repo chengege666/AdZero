@@ -34,7 +34,7 @@ class IstoreBuildCommandTests(unittest.TestCase):
         self.report = {"publishable": False,
                        "sdk_build": "native_vendor_source_candidate_not_sdk_verified"}
         self.feed_patch = mock.patch.object(builder, "verify_pinned_vendor_feeds",
-                                           side_effect=lambda *_: self.events.append("feeds"))
+                                           side_effect=lambda *_, **_kw: self.events.append("feeds"))
         self.feed_patch.start()
         self.addCleanup(self.feed_patch.stop)
 

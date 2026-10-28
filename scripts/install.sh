@@ -405,12 +405,19 @@ if [ "$PM" = opkg ]; then
 	opkg print-architecture | awk -v arch="$ARCH" '$2==arch {found=1} END {exit !found}' || fail "OPKG 可安装架构中没有 SDK 包要求的 $ARCH，已拒绝安装。"
 else
 	ACTUAL_APK_ARCH=$(apk --print-arch)
-	# Only this explicitly verified OpenWrt rockchip/armv8 matrix row
-	# accepts the aarch64_generic vs aarch64 repository/CPU alias.
+	# Only explicitly enumerated firmware, *exact version*, target and package
+	# ABI combinations may use the APK CPU alias aarch64. The catalog must
+	# already contain a verified exact row; this is not cross-vendor approval.
 	if [ "$ACTUAL_APK_ARCH" != "$ARCH" ]; then
-		case "$FIRMWARE:$TARGET:$ARCH:$ACTUAL_APK_ARCH" in
-			openwrt:rockchip/armv8:aarch64_generic:aarch64) ;;
-			*) fail "APK 架构 $ACTUAL_APK_ARCH 与已发布的 $FIRMWARE $TARGET SDK 包架构 $ARCH 不匹配。" ;;
+		case "$FIRMWARE:$VERSION:$TARGET:$ARCH:$ACTUAL_APK_ARCH" in
+			openwrt:25.12.5:rockchip/armv8:aarch64_generic:aarch64|\
+			openwrt:25.12.6:rockchip/armv8:aarch64_generic:aarch64|\
+			openwrt:25.12.6:mediatek/filogic:aarch64_cortex-a53:aarch64|\
+			immortalwrt:25.12.2:rockchip/armv8:aarch64_generic:aarch64|\
+			immortalwrt:25.12.2:mediatek/filogic:aarch64_cortex-a53:aarch64|\
+			istoreos:25.12.6:rockchip/armv8:aarch64_generic:aarch64|\
+			istoreos:25.12.6:armsr/armv8:aarch64_generic:aarch64) ;;
+			*) fail "APK 架构 $ACTUAL_APK_ARCH 与已发布的 $FIRMWARE $VERSION $TARGET SDK 包架构 $ARCH 不匹配。" ;;
 		esac
 	fi
 fi

@@ -9,6 +9,14 @@
     {"firmware":"immortalwrt", "release":"24.10.6", "target":"x86/64", "arch":"x86_64", "format":"ipk", "sdk_build":"passed", "device_acceptance":"not_run"},
     {"firmware":"immortalwrt", "release":"25.12.2", "target":"x86/64", "arch":"x86_64", "format":"apk", "sdk_build":"passed", "device_acceptance":"not_run"}
   ],
+  "arm64_candidates": [
+    {"firmware":"openwrt", "release":"25.12.6", "target":"rockchip/armv8", "arch_expected":"aarch64_generic", "format":"apk", "sdk_archive_sha256":"2a45cbfa7e6cce588d006039205afba03bd242e90d2df4dc442920716a642ce0", "sdk_build":"pending", "device_acceptance":"not_run"},
+    {"firmware":"openwrt", "release":"25.12.6", "target":"mediatek/filogic", "arch_expected":"aarch64_cortex-a53", "format":"apk", "sdk_archive_sha256":"1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e", "sdk_build":"pending", "device_acceptance":"not_run"},
+    {"firmware":"immortalwrt", "release":"25.12.2", "target":"rockchip/armv8", "arch_expected":"aarch64_generic", "format":"apk", "sdk_archive_sha256":"732a18e11ccc2ad603762856d14e1b40f8d0b9bb217c288e7c159b639be30a98", "sdk_build":"pending", "device_acceptance":"not_run"},
+    {"firmware":"immortalwrt", "release":"25.12.2", "target":"mediatek/filogic", "arch_expected":"aarch64_cortex-a53", "format":"apk", "sdk_archive_sha256":"03c688afec12a97ab2d28daa6469a467be18a7d123da6b278002f897de66ef62", "sdk_build":"pending", "device_acceptance":"not_run"},
+    {"firmware":"istoreos", "release":"25.12.6", "revision":"2026102312", "target":"armsr/armv8", "arch_expected":"aarch64_generic", "format":"apk", "vendor_profile":"armsr", "sdk_build":"native_source_metadata_verified_build_pending", "device_acceptance":"not_run"},
+    {"firmware":"istoreos", "release":"25.12.6", "revision":"2026102312", "target":"rockchip/armv8", "arch_expected":"aarch64_generic", "format":"apk", "vendor_profile":"rockchip-r6xs", "sdk_build":"native_source_metadata_verified_build_pending", "device_acceptance":"not_run"}
+  ],
   "adapters_implemented": ["nailink", "passwall", "openclash", "nikki"],
   "firmware": [
     {"id": "openwrt", "releases": ["24.10.x", "25.12.5", "25.12.6"], "package_formats": ["ipk", "apk"], "sdk_build": "pending", "device_acceptance": "pending"},

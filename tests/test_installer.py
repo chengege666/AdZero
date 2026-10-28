@@ -310,6 +310,47 @@ exit "${MOCK_APK_INSTALL_FAIL:-0}"
         self.run_installer("--no-enable")
         self.assertEqual(self.log.read_text().splitlines(), ["apk check-local", "apk add-local"])
 
+    def test_arm64_cpu_aliases_are_scoped_to_exact_vendor_target_and_revision(self):
+        # Candidate release rows are mock data only; the public release
+        # generator still refuses these unverified ARM64 firmware identities.
+        cases = [
+            ("OpenWrt", "25.12.6", "rockchip/armv8", "aarch64_generic", ""),
+            ("OpenWrt", "25.12.6", "mediatek/filogic", "aarch64_cortex-a53", ""),
+            ("ImmortalWrt", "25.12.2", "rockchip/armv8", "aarch64_generic", ""),
+            ("ImmortalWrt", "25.12.2", "mediatek/filogic", "aarch64_cortex-a53", ""),
+            ("iStoreOS", "25.12.6", "armsr/armv8", "aarch64_generic", "2026102312"),
+            ("iStoreOS", "25.12.6", "rockchip/armv8", "aarch64_generic", "2026102312"),
+        ]
+        for vendor, release, target, arch, revision in cases:
+            with self.subTest(vendor=vendor, target=target):
+                self.write("usr/lib/opkg/status", "fixture")
+                self.arm_apk(arch="aarch64", declared=arch)
+                self.write("etc/openwrt_release",
+                           f"DISTRIB_ID='{vendor}'\nDISTRIB_RELEASE='{release}'\n"
+                           f"DISTRIB_TARGET='{target}'\nDISTRIB_ARCH='{arch}'\n"
+                           + (f"DISTRIB_REVISION='{revision}'\n" if revision else ""))
+                sha = hashlib.sha256((self.release / "arm-test.apk").read_bytes()).hexdigest()
+                self.release.joinpath("releases.tsv").write_text(
+                    f"{sha}\tarm-test.apk\t{vendor.lower()}\t{release}\t{target}\t{arch}\tapk"
+                    + (f"\t{revision}" if revision else "") + "\n")
+                check = self.run_installer("--check")
+                self.assertIn("通过 SHA-256 校验", check.stdout)
+                self.assertFalse(self.log.exists())
+                # A different firmware version/revision cannot reuse its row.
+                self.write("etc/openwrt_release",
+                           f"DISTRIB_ID='{vendor}'\nDISTRIB_RELEASE='25.12.9'\n"
+                           f"DISTRIB_TARGET='{target}'\nDISTRIB_ARCH='{arch}'\n"
+                           + (f"DISTRIB_REVISION='{revision}'\n" if revision else ""))
+                self.run_installer("--check", success=False)
+                self.assertFalse(self.log.exists())
+                if revision:
+                    self.write("etc/openwrt_release",
+                               f"DISTRIB_ID='{vendor}'\nDISTRIB_RELEASE='{release}'\n"
+                               f"DISTRIB_TARGET='{target}'\nDISTRIB_ARCH='{arch}'\n"
+                               "DISTRIB_REVISION='2026102313'\n")
+                    self.run_installer("--check", success=False)
+                    self.assertFalse(self.log.exists())
+
     def test_rockchip_mismatched_apk_cpu_is_rejected_before_install(self):
         self.arm_apk(arch="x86_64")
         self.run_installer(success=False)

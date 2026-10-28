@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  immortalwrt-x86:
+  immortalwrt-sdk:
     runs-on: ubuntu-24.04
     timeout-minutes: 95
     strategy:

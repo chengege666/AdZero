@@ -16,6 +16,8 @@ v0.18.0 使用共享代码和下列 SDK 组合构建，不把旧版本的单设�
 
 机器可读计划见 [compatibility-matrix.json](compatibility-matrix.json)。x86/64、rockchip/armv8 之后，按 mediatek/filogic、ipq40xx/generic、ramips/mt7621 逐项扩展；i386、MIPS/MIPS64、RISC-V 仍为候选。
 
+**2026-10-28 ARM64 新一轮开发（候选，非正式支持）：**OpenWrt 25.12.6 新增 rockchip/armv8、mediatek/filogic 两组官方 SDK 哈希及 CI 构建；ImmortalWrt 25.12.2 新增相同两个 target 的**独立厂商** SDK 哈希及 CI 构建；iStoreOS 25.12.6-2026102312 预先锁定 ARMSR（13 组 feeds）与 R6XS Rockchip（15 组 feeds）原厂固件配置及镜像 SHA，并扩展原生构建/候选 APK 检查。机器可读的六个待验组合单独记在 `arm64_candidates`，与 `sdk_verified` 完全隔离。**编译或测试证据不足之前，所有新增组合均不能被菜单安装或在线更新选中。**参见 [ARM64 适配进度与门槛](ARM64.md)。
+
 rockchip/armv8 的官方 profiles 元数据与用户回报均为 OpenWrt 25.12.5 r33051-f5dae5ece4，SDK 的 CONFIG_TARGET_ARCH_PACKAGES 为 aarch64_generic，CONFIG_ARCH 为 aarch64。安装器区分固件包 ABI 与 APK 的 CPU 名，接受该目标上 --print-arch 返回 aarch64 或 aarch64_generic；其他 ABI/CPU 组合仍拒绝。不能把这一别名扩展为任意 ARM64 固件兼容。
 
 2026-10-21 用户反馈：v0.5.3 已在该 Rockchip 设备启用，后端载入 66,425 条域名并完成 NaiLink API 配置同步。这是旧版特定设备的安装/配置证据；上表 v0.18.0 的设备安装与 LAN 项目仍待重新验收，不能直接继承为全部通过。

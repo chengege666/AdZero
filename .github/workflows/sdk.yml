@@ -1,6 +1,8 @@
 name: Official SDK builds
 on:
   workflow_dispatch:
+  pull_request:
+    paths: ['luci-app-adzero/**', 'scripts/build_sdk.py', 'scripts/fetch_sdk.py', '.github/workflows/sdk.yml']
   push:
     branches: [main]
     paths: ['luci-app-adzero/**', 'scripts/build_sdk.py', 'scripts/fetch_sdk.py', '.github/workflows/sdk.yml']
@@ -9,7 +11,9 @@ permissions:
 jobs:
   sdk:
     runs-on: ubuntu-24.04
+    timeout-minutes: 95
     strategy:
+      fail-fast: false
       matrix:
         include:
           - release: '24.10.8'

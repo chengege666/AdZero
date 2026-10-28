@@ -14,7 +14,7 @@ import subprocess
 
 from build_sdk import PACKAGE, prepare as prepare_package
 from inspect_istoreos_candidate import (
-    export as export_candidate, verify_pinned_vendor_feeds,
+    export as export_candidate, verify_pinned_vendor_feeds, expected_vendor_profile,
 )
 from probe_istoreos import SOURCE_COMMIT, METADATA_SHA256
 
@@ -43,8 +43,9 @@ def build(source, output, jobs=4, *, run=subprocess.run,
     if not meta_file.is_file() or meta_file.is_symlink():
         raise ValueError("Missing pinned official source provenance")
     evidence = json.loads(meta_file.read_text(encoding="utf-8"))
+    profile = expected_vendor_profile(evidence)
     if (evidence.get("source_commit") != SOURCE_COMMIT or
-            evidence.get("metadata_sha256") != METADATA_SHA256 or
+            evidence.get("metadata_sha256") != profile["metadata"] or
             evidence.get("firmware") != "istoreos" or
             evidence.get("publishable") is not False):
         raise ValueError("Vendor provenance differs from official iStoreOS firmware")
@@ -52,7 +53,9 @@ def build(source, output, jobs=4, *, run=subprocess.run,
                     text=True).strip()
     if head != SOURCE_COMMIT:
         raise ValueError("Vendor Git checkout differs from exact official firmware")
-    verify_pinned_vendor_feeds(source, read_git)
+    verify_pinned_vendor_feeds(
+        source, read_git, expected_sha256=profile["metadata"]["feeds.buildinfo"],
+        expected_count=profile["feed_count"])
     install_source(source, PACKAGE)
     config = source / ".config"
     data = config.read_text(encoding="utf-8")
