@@ -101,7 +101,7 @@ function reset(overrides = {}) {
   app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
 	app.enhanceOpen=false;app.enhanceData=null;app.enhanceDraft=null;app.enhanceError=null;
 	enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[]},runtime:{state:'waiting',reason:'disabled'}};
-	updateFixture={ok:true,current:'v0.21.3',latest:'v0.21.4',available:true,compatible:true};
+	updateFixture={ok:true,current:'v0.21.4',latest:'v0.21.5',available:true,compatible:true};
 	updateFailure=false;app.updateOpen=false;app.updateData=null;app.updateError=null;app.updateBusy=null;app.updateConfirm=false;app.updateComplete=false;app.updateChecked=false;
   observationFixture={available:false,verification:{state:'idle'}};observationFailure=false;
   app.observation=null;app.observationReading=false;app.observationBusy=false;app.verificationCommands='';app.verificationNotice=null;app.networkOpen=false;
@@ -128,12 +128,12 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(brandLogo.attrs.alt===''&&brandLogo.attrs.draggable==='false','adjacent brand text names the logo without duplicate screen reader output');
   check(brandLogo.attrs.width==='44'&&brandLogo.attrs.height==='44','brand image reserves a square before loading');
   const brand=nodes(root,n=>n.attrs?.class==='az-brand')[0];
-  check(!!nodes(brand,n=>n.id==='az-version').length && text(brand).includes('v0.21.3'), 'clickable version now sits beside the top-left logo');
+  check(!!nodes(brand,n=>n.id==='az-version').length && text(brand).includes('v0.21.4'), 'clickable version now sits beside the top-left logo');
   check(!nodes(root,n=>n.attrs?.class==='az-page-eyebrow').length, 'old version text is removed from overview title');
   check(!find('az-update-panel'), 'update details are initially collapsed');
   await find('az-version').events.click();
   check(commands.includes('update_check') && find('az-update-panel'), 'version button opens online update check');
-  check(find('az-upgrade-ready') && text(find('az-upgrade-ready')).includes('v0.21.4'), 'compatible release offers an upgrade');
+  check(find('az-upgrade-ready') && text(find('az-upgrade-ready')).includes('v0.21.5'), 'compatible release offers an upgrade');
   check(nodes(brand,n=>n.id==='az-version').length===1, 'version button identity stays stable');
   await find('az-upgrade-ready').events.click();
   check(find('az-upgrade-confirm') && find('az-upgrade-cancel'), 'upgrade requires a second explicit confirmation');
@@ -144,11 +144,11 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(commands.includes('update_start') && app.updateComplete, 'confirmed upgrade follows the detached job and completes');
   check(find('az-update-reload'), 'successful upgrade prompts a fresh UI load for version verification');
   reset();
-  updateFixture={ok:true,current:'v0.21.3',latest:'v0.21.3',available:false,compatible:true};
+  updateFixture={ok:true,current:'v0.21.4',latest:'v0.21.4',available:false,compatible:true};
   await find('az-version').events.click();
   check(text(find('az-update-panel')).includes('已是当前发布通道的最新版本')&&!find('az-upgrade-ready'), 'up-to-date state never offers package mutation');
   reset();
-  updateFixture={ok:true,current:'v0.21.3',latest:'v0.21.4',available:true,compatible:false,message:'SDK target unsupported'};
+  updateFixture={ok:true,current:'v0.21.4',latest:'v0.21.5',available:true,compatible:false,message:'SDK target unsupported'};
   await find('az-version').events.click();
   check(!find('az-upgrade-ready') && text(find('az-update-panel')).includes('SDK target unsupported'), 'incompatible firmware cannot click upgrade');
   reset(); updateFailure=true;

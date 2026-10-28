@@ -4,7 +4,7 @@
 <p>其他版本、架构、ImmortalWrt 和 iStoreOS 按兼容矩阵逐步推进。安装器拒绝未匹配组合时，不要强制安装其他机型包。<a href="https://github.com/slobys/AdZero/blob/main/docs/COMPATIBILITY.md">查看详细兼容矩阵</a>。</p>
 <h2 id="install">首次安装</h2>
 <p>以 root 登录路由器 SSH，确认网络可用，执行：</p>
-<pre><code>curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/$release/scripts/install.sh -o /tmp/adzero-install.sh &amp;&amp; sh /tmp/adzero-install.sh</code></pre>
+<pre><code>curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/$release/scripts/install.sh -o /tmp/adzero-install.sh &amp;&amp; sh /tmp/adzero-install.sh --menu</code></pre>
 <p>安装器核对固件与包校验值、准备依赖并备份配置。完成后进入 <strong>服务 → AdZero</strong>。也可在 <a href="https://github.com/slobys/AdZero/releases/tag/$release">发行页面</a> 下载匹配的包；手动安装与恢复见 <a href="https://github.com/slobys/AdZero/blob/main/docs/INSTALLATION.md">详细安装说明</a>。</p>
 <h2 id="upgrade">升级已有安装</h2>
 <pre><code>curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/$release/scripts/install.sh -o /tmp/adzero-install.sh &amp;&amp; sh /tmp/adzero-install.sh --upgrade</code></pre>

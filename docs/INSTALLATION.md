@@ -1,6 +1,6 @@
 # 安装与恢复
 
-本页面向当前 v0.21.3 测试发行版及后续菜单安装器。先查看 [兼容矩阵](COMPATIBILITY.md)；菜单不要求用户手填版本或包名，但仍只选择与固件完整版本、设备目标和包管理器匹配的已验证安装包。
+本页面向 v0.21.4 新版安装菜单与在线更新，正式发行前仍以 GitHub Releases 中实际已发布的安装包为准。先查看 [兼容矩阵](COMPATIBILITY.md)；菜单不要求用户手填版本或包名，但仍只选择与固件完整版本、设备目标和包管理器匹配的已验证安装包。
 
 ## 在线中文菜单安装与升级（推荐）
 
@@ -23,6 +23,8 @@ sh /tmp/adzero-install.sh --install --no-enable
 ```
 
 ### LuCI 页面内在线更新（无需 SSH）
+
+旧版 v0.21.3 尚未包含在线更新代码；首次升级到带有此功能的 v0.21.4 或更新版本时仍须使用 SSH 菜单。仅 SDK 构建和 GitHub Release 发布完成之后，才可在页面内操作。
 
 安装**包含此功能的新版本**后，版本号会显示在左上角 AdZero Logo 旁。点击版本号即可检查 GitHub 官方发布版本；有匹配的新版本时显示目标版本、兼容性结果和「立即更新」，再次确认后启动后台升级任务。升级完成后刷新页面核对版本。网页打开时也会静默检查一次，GitHub 不可用不会阻断现有广告过滤。
 
@@ -74,6 +76,22 @@ sh install.sh --menu --local-dir "$(pwd)"
 ### 为什么菜单提示当前固件不支持？
 
 菜单**不会因为名称接近就将 iStoreOS、ImmortalWrt 或其他 OpenWrt 版本当成某个官方 SDK 已验证目标**。选项 3 会给出当前固件、设备目标、包架构或 SHA-256 不匹配的具体错误，不会改变现有 DNS 或代理。当前公开发行的 SDK 组合见 [兼容矩阵](COMPATIBILITY.md)；缺少对应 SDK 包时，请提供经过脱敏的 `/etc/openwrt_release`、`opkg print-architecture` 或 `apk --print-arch` 以申请适配，不要修改系统的固件 ID 来绕过安全检查。
+
+### 提示“此发行版尚未通过该固件 SDK 验证”
+
+旧安装脚本在读取 /etc/openwrt_release 后，只接受 DISTRIB_ID=OpenWrt，导致 ImmortalWrt、iStoreOS 等固件还没来得及与实际安装包矩阵比对就被直接拒绝。新源码已改为以发行包内的 releases.tsv 为准：会识别发行版、完整版本、target、包格式，并选择该组合对应的唯一 SDK 包，再核对实际包架构和 SHA-256。
+
+**这不等于所有衍生固件现已支持。** 截至此版，公开 SDK 通过的包仍只有 README 中列出的三个 OpenWrt 组合。其他固件或版本如果没有经过对应 SDK 构建，仍会被安全拒绝，但报错将显示检测到的系统信息以及当前发行包支持的组合。不要通过把 /etc/openwrt_release 中的 iStoreOS/ImmortalWrt 改成 OpenWrt 来绕过检查；即使 CPU 相同，固件依赖、ABI 与网络接管逻辑也可能不同。
+
+提交适配需求时，可在路由器 SSH 中只读执行：
+
+~~~sh
+cat /etc/openwrt_release
+uname -m
+opkg print-architecture 2>/dev/null || apk --print-arch
+~~~
+
+发送输出前检查并遮盖不愿公开的设备信息；不要贴订阅、令牌或节点凭据。开发者需为该固件使用其匹配 SDK 构建并验收，明确记录到兼容矩阵后，才能在发行包中增加对应条目。**仅合并源码修复不会自动让旧版 v0.21.3 的在线安装命令改变**，需重新发布包含新版 install.sh 与对应 releases.tsv 的发行版本。
 
 ### v0.15.0 升级提示“固件软件源更新失败”
 

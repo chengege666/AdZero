@@ -3,7 +3,7 @@
 set -eu
 set -f
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.21.3}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.21.4}
 LOCAL_DIR=
 ENABLE=1
 UPGRADE=0
@@ -214,17 +214,20 @@ if [ "$MENU" = 1 ] || [ "$CLI_REQUESTED" = 0 ]; then
 	exit 0
 fi
 FIRMWARE=$(release_value DISTRIB_ID)
+FIRMWARE_LABEL=$(release_value DISTRIB_ID)
 VERSION=$(release_value DISTRIB_RELEASE)
 TARGET=$(release_value DISTRIB_TARGET)
 DECLARED_ARCH=$(release_value DISTRIB_ARCH)
-case "$FIRMWARE" in OpenWrt) FIRMWARE=openwrt ;; *) fail '此发行版尚未通过该固件 SDK 验证，请等待兼容矩阵扩展。' ;; esac
+# The release catalog, not a hard-coded distro name, is authoritative.
+# Normalizing a distro ID does NOT imply another firmware SDK is compatible.
+case "$FIRMWARE_LABEL" in ''|*[!a-zA-Z0-9._+-]*) fail '固件 DISTRIB_ID 缺失或无效，请检查 /etc/openwrt_release。' ;; esac
+case "$VERSION" in ''|*[!a-zA-Z0-9._+-]*) fail '固件 DISTRIB_RELEASE 缺失或无效，请检查 /etc/openwrt_release。' ;; esac
 case "$TARGET" in
-	x86/64) ARCH=x86_64; APK_MACHINE_ARCH=x86_64 ;;
-	rockchip/armv8) ARCH=aarch64_generic; APK_MACHINE_ARCH=aarch64 ;;
 	'') fail '固件信息中缺少 DISTRIB_TARGET，无法选择安装包。请提供 /etc/openwrt_release、uname -m 和软件包架构输出。尚未安装或修改网络配置。' ;;
-	*) fail "检测到固件 target=$TARGET；此发行版未提供该目标安装包（已支持 x86/64、rockchip/armv8）。请提供固件版本及软件包架构以继续适配。尚未安装或修改网络配置。" ;;
+	*[!a-zA-Z0-9._/-]*) fail '固件 DISTRIB_TARGET 包含无效字符，请检查 /etc/openwrt_release。' ;;
 esac
-[ -z "$DECLARED_ARCH" ] || [ "$DECLARED_ARCH" = "$ARCH" ] || fail "固件声明架构 $DECLARED_ARCH 与目标 $TARGET 的 SDK 架构 $ARCH 不一致。"
+case "$DECLARED_ARCH" in *[!a-zA-Z0-9._+-]*) fail '固件 DISTRIB_ARCH 包含无效字符，请检查 /etc/openwrt_release。' ;; esac
+FIRMWARE=$(printf '%s' "$FIRMWARE_LABEL" | tr '[:upper:]' '[:lower:]')
 PM=
 if command -v opkg >/dev/null 2>&1 && [ -r "$ROOT/usr/lib/opkg/status" ]; then PM=opkg; fi
 if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then
@@ -232,16 +235,7 @@ if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then
 	PM=apk
 fi
 [ -n "$PM" ] || fail '无法确定软件包管理器。'
-if [ "$PM" = opkg ]; then
-	opkg print-architecture | awk -v arch="$ARCH" '$2==arch {found=1} END {exit !found}' || fail '软件包架构不匹配。'
-	EXT=ipk
-else
-	# apk's compiled CPU name can differ from the OpenWrt repository/SDK ABI name.
-	# Accept only the explicit alias for this verified target, never a CPU guess.
-	ACTUAL_APK_ARCH=$(apk --print-arch)
-	[ "$ACTUAL_APK_ARCH" = "$ARCH" ] || [ "$ACTUAL_APK_ARCH" = "$APK_MACHINE_ARCH" ] || fail "APK 架构 $ACTUAL_APK_ARCH 与目标 $TARGET 不匹配。"
-	EXT=apk
-fi
+if [ "$PM" = opkg ]; then EXT=ipk; else EXT=apk; fi
 command -v sha256sum >/dev/null 2>&1 || fail '缺少 sha256sum。'
 [ "$CHECK_ONLY" = 1 ] || [ "$UPGRADE" = 1 ] || [ ! -e "$ROOT/etc/adzero/adapter.json" ] || fail '请使用 --upgrade 自动准备升级，或先在现有版本中关闭保护；保留原有恢复记录。'
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/adzero-install.XXXXXX") || fail '无法创建临时目录。'
@@ -367,11 +361,34 @@ prepare_package() {
 	fi
 }
 fetch releases.tsv "$TMP/releases.tsv"
-# A Windows-authored catalog may use CRLF. Remove only the line terminator;
-# retain exact firmware/target/ABI/format matching and duplicate rejection.
-ROW=$(awk -F '\t' -v fw="$FIRMWARE" -v ver="$VERSION" -v target="$TARGET" -v arch="$ARCH" -v ext="$EXT" '{ sub(/\r$/, "", $0) } NF==7 && $3==fw && $4==ver && $5==target && $6==arch && $7==ext {print $1 " " $2; n++} END {if(n!=1) exit 1}' "$TMP/releases.tsv") || fail "没有唯一匹配此固件版本的 SDK 安装包（$FIRMWARE $VERSION，target=$TARGET，架构=$ARCH，格式=$EXT）。"
+# A Windows-authored catalog may use CRLF. Remove only the line terminator.
+# Match the exact distributor, release, target and package format. Architecture
+# comes from the verified catalog row and must match the target package manager.
+ROW=$(awk -F '\t' -v fw="$FIRMWARE" -v ver="$VERSION" -v target="$TARGET" -v ext="$EXT" '{ sub(/\r$/, "", $0) } NF==7 && $3==fw && $4==ver && $5==target && $7==ext {print $1 " " $2 " " $6; n++} END {if(n!=1) exit 1}' "$TMP/releases.tsv") || {
+	# Show a bounded list of valid catalog identities. Never print remote
+	# package contents, arbitrary URLs, tokens or downloaded shell scripts.
+	AVAILABLE=$(awk -F '\t' '{sub(/\r$/, "", $0)} NF==7 && $3 ~ /^[a-z0-9._+-]+$/ && $4 ~ /^[a-zA-Z0-9._+-]+$/ && $5 ~ /^[a-zA-Z0-9._\/-]+$/ && $6 ~ /^[a-zA-Z0-9._+-]+$/ && ($7=="ipk" || $7=="apk") { if (++n<=8) printf "%s%s %s target=%s arch=%s (%s)", n==1?"":"; ",$3,$4,$5,$6,$7 } END {if(n>8) printf "; ..."}' "$TMP/releases.tsv")
+	fail "未找到唯一匹配的已发布 SDK 安装包：检测到 $FIRMWARE_LABEL $VERSION，target=$TARGET，格式=$EXT。当前发行包支持：${AVAILABLE:-无有效条目}。请勿跨固件强制安装；提供 /etc/openwrt_release 和 opkg print-architecture / apk --print-arch 以便扩展兼容矩阵。尚未停止保护或修改网络配置。"
+}
 SUM=${ROW%% *}
-FILE=${ROW#* }
+REST=${ROW#* }
+FILE=${REST%% *}
+ARCH=${REST#* }
+case "$ARCH" in ''|*[!a-zA-Z0-9._+-]*) fail '发行清单中的架构字段无效。' ;; esac
+[ -z "$DECLARED_ARCH" ] || [ "$DECLARED_ARCH" = "$ARCH" ] || fail "固件声明架构 $DECLARED_ARCH 与所选 SDK 包架构 $ARCH 不一致。"
+if [ "$PM" = opkg ]; then
+	opkg print-architecture | awk -v arch="$ARCH" '$2==arch {found=1} END {exit !found}' || fail "OPKG 可安装架构中没有 SDK 包要求的 $ARCH，已拒绝安装。"
+else
+	ACTUAL_APK_ARCH=$(apk --print-arch)
+	# Only this explicitly verified OpenWrt rockchip/armv8 matrix row
+	# accepts the aarch64_generic vs aarch64 repository/CPU alias.
+	if [ "$ACTUAL_APK_ARCH" != "$ARCH" ]; then
+		case "$FIRMWARE:$TARGET:$ARCH:$ACTUAL_APK_ARCH" in
+			openwrt:rockchip/armv8:aarch64_generic:aarch64) ;;
+			*) fail "APK 架构 $ACTUAL_APK_ARCH 与已发布的 $FIRMWARE $TARGET SDK 包架构 $ARCH 不匹配。" ;;
+		esac
+	fi
+fi
 [ "${#SUM}" = 64 ] || fail '校验清单格式错误。'
 case "$SUM" in *[!0-9a-f]*) fail '校验清单格式错误。' ;; esac
 case "$FILE" in ''|*[!a-zA-Z0-9._+-]*|.*) fail '不安全的安装包文件名。' ;; esac
