@@ -24,6 +24,14 @@ class VendorSDKPinTests(unittest.TestCase):
             ("25.12.2", "x86/64"): (
                 "immortalwrt-sdk-25.12.2-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
                 "4d4631f134c2f27215a91aa7ef5bf9a01ea96c2450d3b8a5c38048c32462ac60"
+            ),
+            ("25.12.2", "rockchip/armv8"): (
+                "immortalwrt-sdk-25.12.2-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+                "732a18e11ccc2ad603762856d14e1b40f8d0b9bb217c288e7c159b639be30a98"
+            ),
+            ("25.12.2", "mediatek/filogic"): (
+                "immortalwrt-sdk-25.12.2-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+                "03c688afec12a97ab2d28daa6469a467be18a7d123da6b278002f897de66ef62"
             )
         }
         self.assertEqual(fetch_sdk.IMMORTALWRT_PINS, known)
@@ -38,7 +46,8 @@ class VendorSDKPinTests(unittest.TestCase):
             ("immortalwrt", "25.12.5", "x86/64"),
             ("istoreos", "25.12.6", "x86/64"),
             ("istoreos", "24.10.8", "x86/64"),
-            ("immortalwrt", "25.12.2", "rockchip/armv8"),
+            ("immortalwrt", "24.10.6", "rockchip/armv8"),
+            ("immortalwrt", "25.12.6", "mediatek/filogic"),
             ("openwrt", "24.10.6", "x86/64"),
             ("other", "25.12.2", "x86/64"),
         ):
@@ -51,6 +60,14 @@ class VendorSDKPinTests(unittest.TestCase):
                          fetch_sdk.PINS["24.10.8"])
         self.assertEqual(fetch_sdk.sdk_pin("25.12.5", "rockchip/armv8"),
                          fetch_sdk.TARGET_PINS[("25.12.5", "rockchip/armv8")])
+        for target in ("rockchip/armv8", "mediatek/filogic"):
+            self.assertEqual(fetch_sdk.sdk_pin("25.12.6", target),
+                             fetch_sdk.TARGET_PINS[("25.12.6", target)])
+            self.assertNotEqual(fetch_sdk.sdk_pin("25.12.6", target),
+                                fetch_sdk.sdk_pin("25.12.2", target, "immortalwrt"))
+        with self.assertRaisesRegex(ValueError, "No pinned SDK"):
+            fetch_sdk.sdk_pin("25.12.6", "x86/64")
+
 
     def test_download_source_and_manifest_provenance_come_from_selected_vendor(self):
         with tempfile.TemporaryDirectory() as directory:
