@@ -15,7 +15,7 @@ from test_observe import dns
 def main():
  archive=ROOT/'artifacts/runtime/openwrt-24.10.8-x86-64-rootfs.tar.gz'
  helper=ROOT/'artifacts/upstream/PassWall/helper_dnsmasq.lua';api=ROOT/'artifacts/upstream/PassWall/api.lua'
- deps={'lua_5.1.5-r11_x86_64.ipk':'164795e16b225d71e776a5aa584f6b3af239a0012724da63de58dd808f6a3165','liblua5.1.5_5.1.5-r11_x86_64.ipk':'53875655f43c24dc00fe3f94a1a9e15294be48b80ee32d9fd5d6cddc65b01a70','coreutils-timeout_9.7-r1_x86_64.ipk':'10e721b261c393e7f30d84012c2a773f02d67adcace9b71c0a9a70312ac849f5'}
+ deps={'lua_5.1.5-r11_x86_64.ipk':'164795e16b225d71e776a5aa584f6b3af239a0012724da63de58dd808f6a3165','liblua5.1.5_5.1.5-r11_x86_64.ipk':'53875655f43c24dc00fe3f94a1a9e15294be48b80ee32d9fd5d6cddc65b01a70','coreutils-timeout_9.7-r1_x86_64.ipk':'145a99ab15600f4634df00d4a08c7c55ae05b274ae1d9afff3d96fed2f75f686'}
  if '--inside' not in sys.argv:
   if os.geteuid()!=0:raise SystemExit('Run in Linux/WSL as root')
   prepare_socket(ROOT,None)
