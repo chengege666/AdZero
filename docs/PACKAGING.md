@@ -19,6 +19,18 @@
 
 SDK 的 SHA-256 固定在 scripts/fetch_sdk.py，来源为对应 [官方版本目录](https://downloads.openwrt.org/releases/)。构建保留 SDK 自带 feeds.conf.default；不能用另一固件的 feeds 代替。
 
+## 在线更新的 SDK / Release 发布要求
+
+本项目新增三个安装文件：
+
+- /usr/libexec/adzero/update：只对官方发行源执行版本检查和一次性升级。
+- /usr/libexec/adzero/update-check.uc：解析 GitHub Releases API 的数字版本与 install.sh 的 SHA-256 digest。
+- /usr/share/adzero/version：必须与 Makefile 的 PKG_VERSION 及 LuCI 页头显示的版本保持一致。
+
+有新版本时，仅从官方 HTTPS 下载已发布的 install.sh，按 GitHub asset digest 验证 SHA-256。脚本必须支持只读 --check，在真实执行 --upgrade 之前完成固件完整版本、target、包格式、架构、SDK 安装包哈希验证。更新许可 15 分钟有效、只针对用户确认的特定版本，且一次性使用；不允许因重试自动重复升级。
+
+**新版本的 GitHub Release 必须包含新版 install.sh、releases.tsv、真实 SDK 构建产物和已核对的包 SHA-256。** 公开的 v0.21.3 仍是旧版，不应重写旧标签资产。只有构建、发布和设备验收后，当前运行 v0.21.3 的用户才能先升级到首个带在线更新按钮的版本。
+
 ## Linux / WSL 复现
 
 需要 make、gcc/g++、ncurses 开发头文件、git、gawk、rsync、file、unzip、zstd、Python 3 和 Node。SDK 放在 Linux 文件系统，避免 Windows 挂载目录的大小写与权限差异。

@@ -7,7 +7,7 @@ ctl=${ADZERO_JOB_CTL:-$(dirname "$0")/ctl}
 case "$1" in
  start)
 	shift
-	case "$1" in enable|disable|refresh|reload|allow|revoke|temporary|pause|resume|routing-on|routing-off|source-add|source-toggle|source-remove|source-refresh|source-verify|settings-apply|controls-apply|enhance-save|dns-test) ;; *) exit 1 ;; esac
+	case "$1" in enable|disable|refresh|reload|allow|revoke|temporary|pause|resume|routing-on|routing-off|source-add|source-toggle|source-remove|source-refresh|source-verify|settings-apply|controls-apply|enhance-save|dns-test|self-upgrade) ;; *) exit 1 ;; esac
 	[ ! -L "$jobs" ] || exit 1
 	mkdir -p "$jobs" || exit 1
 	id=$(cat /proc/sys/kernel/random/uuid) || exit 1
@@ -34,7 +34,11 @@ case "$1" in
 	export ADZERO_JOB_CONTEXT="$jobs/$id"
 	printf '%s\n' "$$" > "$jobs/$id/worker"
 	code=0
-	"$ctl" "$@" || code=$?
+	if [ "$1" = self-upgrade ]; then
+		/usr/libexec/adzero/update upgrade "$2" || code=$?
+	else
+		"$ctl" "$@" || code=$?
+	fi
 	case "$1" in settings-apply|controls-apply|enhance-save) rm -f "$jobs/$id/input" ;; esac
 	date +%s > "$jobs/$id/finished"
 	[ -L "$jobs/$id/timeline" ] || printf '%s finished\n' "$(cat "$jobs/$id/finished")" >> "$jobs/$id/timeline"

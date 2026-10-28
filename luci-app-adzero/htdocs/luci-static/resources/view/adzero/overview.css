@@ -624,6 +624,43 @@
 .az-root .az-dns-validation:not(:empty){padding:8px 10px;border-left:3px solid var(--az-warning,#a97925);background:var(--az-soft);font-size:12px;line-height:1.5;margin:8px 0}.az-root .az-dns-validation:empty{display:none}
 .az-root #az-detail-dns-tests > .az-help-body{max-width:none}
 
+
+/* Clickable version and updater immediately beside the brand, never in the
+   overview heading. Small inline control avoids crowding docs/community links. */
+.az-root .az-brand { min-width: 0; }
+.az-root .az-version-button {
+  display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+  min-height: 32px; padding: 5px 8px; border: 1px solid var(--az-line);
+  border-radius: 9px; background: var(--az-card); color: var(--az-muted);
+  font-size: 11px; font-variant-numeric: tabular-nums; cursor: pointer;
+  white-space: nowrap;
+}
+.az-root .az-version-button:hover:not(:disabled) {
+  border-color: var(--az-accent); color: var(--az-accent); background: var(--az-soft);
+}
+.az-root .az-version-button.has-update { border-color: var(--az-accent); color: var(--az-accent); }
+.az-root .az-version-button .az-icon { width: 13px; height: 13px; }
+.az-root .az-update-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--az-accent); }
+.az-root .az-update-panel { padding: 14px 18px; margin-bottom: 12px; }
+.az-root .az-update-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.az-root .az-update-panel-heading p, .az-root .az-update-footnote {
+  color: var(--az-muted); font-size: 12px; line-height: 1.55;
+}
+.az-root .az-update-panel-heading p { margin-top: 3px; }
+.az-root .az-update-panel > p { margin-top: 10px; }
+.az-root .az-update-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.az-root .az-update-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.az-root .az-update-success { color: var(--az-accent); font-weight: 600; }
+.az-root .az-update-panel button { margin-top: 8px; }
+@media (max-width: 760px) {
+  .az-root .az-brand { flex-wrap: wrap; gap: 7px; }
+  .az-root .az-version-button { margin-left: 0; }
+}
+@media (max-width: 480px) {
+  .az-root .az-version-button { font-size: 10px; min-height: 34px; }
+  .az-root .az-update-panel { padding: 12px; }
+  .az-root .az-update-panel-heading { flex-wrap: wrap; }
+}
 /* Shared interaction feedback. CSS only; no pointer polling or layout animation. */
 .az-root { --az-motion: 160ms; --az-ease: cubic-bezier(.2,.7,.2,1); }
 .az-root .az-card, .az-root .az-source-row, .az-root .az-control-row, .az-root .az-recent-row,

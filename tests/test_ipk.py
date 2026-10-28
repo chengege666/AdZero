@@ -108,6 +108,9 @@ class IpkPackagingTest(unittest.TestCase):
             "usr/libexec/adzero/cache-curl.uc",
             "usr/libexec/adzero/cache-curl/curl",
             "usr/libexec/adzero/job",
+            "usr/libexec/adzero/update",
+            "usr/libexec/adzero/update-check.uc",
+            "usr/share/adzero/version",
             "usr/share/rpcd/ucode/adzero",
             "etc/config/adzero",
             "usr/libexec/adzero/ctl",
@@ -133,7 +136,7 @@ class IpkPackagingTest(unittest.TestCase):
         self.assertEqual(installed["usr/libexec/adzero/ctl"][0].mode & 0o777, 0o755)
         self.assertEqual(installed["usr/libexec/adzero/probe"][0].mode & 0o777, 0o755)
         for name, (member, data) in installed.items():
-            if name not in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/dns-native", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "etc/init.d/adzero", "etc/init.d/adzero-dns", "usr/libexec/adzero/dns-guard"}:
+            if name not in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/dns-native", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/update", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "etc/init.d/adzero", "etc/init.d/adzero-dns", "usr/libexec/adzero/dns-guard"}:
                 self.assertEqual(member.mode & 0o777, 0o644)
             self.assertTrue(data)
 

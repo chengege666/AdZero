@@ -16,7 +16,8 @@
           "source_list",
           "job_status",
           "observation",
-          "enhance_status"
+          "enhance_status",
+          "update_check"
         ]
       },
       "uci": [
@@ -49,7 +50,8 @@
           "stats_reset",
           "controls_apply",
           "enhance_save",
-          "dns_test"
+          "dns_test",
+          "update_start"
         ]
       },
       "uci": [
