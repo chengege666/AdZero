@@ -2,6 +2,15 @@
 
 公开安装只使用真实 SDK 输出，不使用 build_ipk.py 的离线预览。
 
+## 安装菜单与发行一致性
+
+推荐的用户入口不再包含版本号：从 `https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh` 下载脚本后运行 `sh /tmp/adzero-install.sh --menu`。该入口的默认 `BASE_URL` 由维护者指向当前**已发布且具备 SDK 包的发行标签**；用户无需选择版本或手动判断 IPK/APK。菜单只是交互包装，安装和升级仍调用原有的 SHA-256 核对与备份恢复流程。
+
+`build_release.py` 必须将同一版本的 `install.sh` 和 `releases.tsv` 一并放进发行归档，并在 `INSTALL.txt` 指引用户执行 `sh install.sh --menu --local-dir "$(pwd)"`。菜单的“环境检查”使用 `--check`，只下载和校验匹配安装包、不运行软件包安装或后端恢复。无交互任务可以显式传 `--install`、`--upgrade`、`--no-enable`；不带参数默认进入菜单，避免在自动化/输入结束时无意触发安装。
+
+不要把主分支尚未发布的菜单脚本与不同版本的 SDK 构建产物混合宣称为一个已验收发行版；新菜单上线仍需经 release 的原始字节校验和真实设备升级/卸载测试。
+
+
 | 官方 SDK | target | 格式 | 当前结果 |
 | --- | --- | --- | --- |
 | OpenWrt 24.10.8 / GCC 13.3 | x86/64 | IPK | 实际构建通过 |

@@ -37,17 +37,19 @@ AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。�
 
 本版补充 NaiLink／PassWall 并发 DNS 的实际 TCP 与 SOCKS 路径检查，避免仅因监听就绪就接入无应答入口；更正 NaiLink 的推荐设置和本机 SOCKS 条件。详见 [更新说明](docs/RELEASE_0.21.3.md)。
 
-当前为 **v0.21.3 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。先确认固件属于下方兼容范围，再以 root 登录路由器 SSH，执行：
+当前为 **v0.21.3 测试版**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。
+
+### 中文菜单式安装（推荐）
+
+以 root 登录路由器 SSH，运行下面**一条固定命令**。地址不包含版本号，不需要每次修改命令；菜单会根据已安装状态自动选择安装或升级，并使用发行版内固定的 SDK 校验清单选包：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --menu
 ```
 
-已有 AdZero，使用升级命令：
+菜单包含「一键安装/自动升级」「安装但不自动开启」「只读环境与安装包校验」「安全卸载」「退出」。**不会要求手填 OpenWrt 版本、目标架构、IPK/APK 文件名或 GitHub 发布版本**；默认使用仓库安装器当前固定的已发布版本，维护者发布新版时更新该默认来源。下载后也可以再次运行 `sh /tmp/adzero-install.sh --menu` 打开菜单。
 
-```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/v0.21.3/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --upgrade
-```
+安装/升级仍会严格检查固件完整版本、target、软件包架构和 SHA-256；不在兼容矩阵内的设备会停止，不会强装。环境检查只下载并核对安装包，不改变路由器服务。普通用户推荐菜单；已有自动化脚本仍可用 `--install`、`--upgrade`、`--no-enable` 和 `--local-dir` 进行非交互操作。
 
 安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
 

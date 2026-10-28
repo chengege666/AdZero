@@ -2,6 +2,9 @@
 import hashlib
 import json
 import os
+import shlex
+import shutil
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -43,6 +46,8 @@ class ReleaseTest(unittest.TestCase):
         self.assertIn("rockchip/armv8\taarch64_generic\tapk", rows)
         release = build_release.version().rsplit('-r', 1)[0]
         self.assertTrue((self.root / f"adzero-{release}-install.tar.gz").exists())
+        instructions = (self.output / 'INSTALL.txt').read_text()
+        self.assertIn('sh install.sh --menu --local-dir "$(pwd)"', instructions)
 
     def test_windows_defaults_cannot_put_crlf_in_delivered_text_or_archive(self):
         original = Path.write_text
@@ -92,7 +97,18 @@ class ReleaseTest(unittest.TestCase):
             build_release.bundle(manifests, self.output)
         release = build_release.version().rsplit('-r', 1)[0]
         with tarfile.open(self.root / f'adzero-{release}-install.tar.gz') as archive:
-            archive.extractall(self.root / 'unpacked', filter='data')
+            # Python 3.11 lacks tarfile.extractall(filter='data'). Validate
+            # every member and copy only ordinary files into our test root.
+            destination = self.root / 'unpacked'
+            for member in archive.getmembers():
+                relative = Path(member.name)
+                self.assertFalse(relative.is_absolute())
+                self.assertNotIn('..', relative.parts)
+                self.assertTrue(member.isfile(), member.name)
+                output = destination / relative
+                output.parent.mkdir(parents=True, exist_ok=True)
+                with archive.extractfile(member) as source, output.open('wb') as target:
+                    shutil.copyfileobj(source, target)
         delivered = self.root / 'unpacked' / f'adzero-{release}'
         for kind in ('ipk', 'apk-x86', 'apk-arm'):
             with self.subTest(target=kind):
@@ -105,6 +121,20 @@ class ReleaseTest(unittest.TestCase):
                             fixture.write('etc/openwrt_release', "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.5'\nDISTRIB_TARGET='x86/64'\nDISTRIB_ARCH='x86_64'\n")
                     fixture.release = delivered
                     fixture.upgrade_fixture()
+                    # Test the exact installer script included in the release,
+                    # not merely the current source-tree script. Checking must
+                    # leave the previously installed version fully untouched.
+                    shell = shlex.split(os.environ.get('ADZERO_TEST_SHELL', 'sh'))
+                    result = subprocess.run(
+                        shell + [str(delivered / 'install.sh'), '--menu',
+                                 '--local-dir', str(delivered)],
+                        input='3\n0\n', env=fixture.env, text=True,
+                        capture_output=True, timeout=20
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn('通过 SHA-256 校验', result.stdout)
+                    self.assertFalse(fixture.log.exists())
+                    self.assertTrue((fixture.root / 'etc/adzero/adapter.json').is_file())
                     reply = fixture.run_installer('--upgrade', '--no-enable')
                     expected = 'rockchip-armv8-aarch64_generic.apk' if kind == 'apk-arm' else ('25.12.5-x86_64.apk' if kind == 'apk-x86' else '24.10.8-x86_64.ipk')
                     self.assertIn(expected, reply.stdout)
