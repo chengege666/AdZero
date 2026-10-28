@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shlex
 from pathlib import Path
 import shutil
 import subprocess
@@ -108,7 +109,8 @@ echo 'OK: 520 MiB in 1025 packages'
                "MOCK_APK_LOG": str(self.apk_log),
                "ADZERO_PILOT_ROOT": str(root or self.router)}
         env.update(extra_env or {})
-        check = subprocess.run(["sh", str(output / "preflight.sh"), mode],
+        shell = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "sh"))
+        check = subprocess.run(shell + [str(output / "preflight.sh"), mode],
                                env=env, text=True, capture_output=True, timeout=18)
         self.assertEqual(check.returncode == 0, success, check.stdout + check.stderr)
         return check
