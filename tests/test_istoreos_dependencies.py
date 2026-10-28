@@ -160,6 +160,13 @@ class OriginalFirmwareClosureTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Missing or ambiguous"):
             self.call()
 
+    def test_symlinked_vendor_apk_directory_does_not_authorize_candidate(self):
+        actual = self.base / "offsite-native-feed-data"
+        self.folder.rename(actual)
+        self.folder.symlink_to(actual, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "candidate APK missing or ambiguous"):
+            self.call()
+
     def test_ambiguous_binaries_fail_closed(self):
         alternate = self.folder.parent / "duplicate"
         alternate.mkdir()
@@ -206,6 +213,67 @@ class OriginalFirmwareClosureTest(unittest.TestCase):
                     self.image,
                     run=lambda _: ("P:other\n" * 256).encode()
                 )
+
+
+    def test_arm64_profiles_keep_original_image_and_abi_separate(self):
+        for profile, target in (("armsr", "armsr/armv8"),
+                                ("rockchip-r6xs", "rockchip/armv8")):
+            with self.subTest(profile=profile):
+                folder = self.source / "bin/packages/aarch64_generic/vendor"
+                folder.mkdir(parents=True, exist_ok=True)
+                for path in self.folder.glob("*.apk"):
+                    (folder / path.name).write_bytes(path.read_bytes())
+                for value in self.meta.values():
+                    if value["arch"] != "noarch":
+                        value["arch"] = "aarch64_generic"
+                def inspected(_source):
+                    return {"publishable": False, "sdk_build": "candidate",
+                            "vendor_profile": profile, "target_observed": target,
+                            "package_arch_observed": "aarch64_generic",
+                            "package": self.adzero.name,
+                            "sha256": hashlib.sha256((folder / self.adzero.name).read_bytes()).hexdigest()}
+                def info(path, _tool):
+                    key = next(n for n in sorted(self.meta, key=len, reverse=True)
+                               if path.name.startswith(n + "-"))
+                    return self.meta[key]
+                with mock.patch.object(closure, "inspect_arm_image",
+                                       return_value=(self.installed | {"tcpdump"}, {})) as read:
+                    report = closure.closure(self.source, self.image,
+                                             inspect=inspected, info_reader=info)
+                    read.assert_called_once_with(self.image, profile)
+                self.assertEqual(report["vendor_profile"], profile)
+                self.assertEqual(report["target"], target)
+                self.assertEqual(report["arch"], "aarch64_generic")
+                self.assertEqual(set(report["missing_from_original_firmware"]),
+                                 {"adblock-fast", "conntrack", "libnetfilter-cthelper0"})
+                self.assertFalse(report["publishable"])
+                wrong = "rockchip-r6xs" if profile == "armsr" else "armsr"
+                with self.assertRaisesRegex(ValueError, "Candidate profile"):
+                    closure.closure(self.source, self.image, profile=wrong,
+                                    inspect=inspected, info_reader=info)
+                self.meta["conntrack"]["arch"] = "x86_64"
+                with mock.patch.object(closure, "inspect_arm_image",
+                                       return_value=(self.installed | {"tcpdump"}, {})):
+                    with self.assertRaisesRegex(ValueError, "wrong architecture"):
+                        closure.closure(self.source, self.image,
+                                        inspect=inspected, info_reader=info)
+                self.meta["conntrack"]["arch"] = "aarch64_generic"
+
+    def test_arm64_wrong_vendor_target_or_arch_is_refused(self):
+        folder = self.source / "bin/packages/aarch64_generic/vendor"
+        folder.mkdir(parents=True, exist_ok=True)
+        for path in self.folder.glob("*.apk"):
+            (folder / path.name).write_bytes(path.read_bytes())
+        for target, arch in (("rockchip/armv8", "aarch64_generic"),
+                             ("armsr/armv8", "x86_64")):
+            with self.subTest(target=target, arch=arch):
+                def forged(_source):
+                    return {"publishable": False, "sdk_build": "candidate",
+                            "vendor_profile": "armsr", "target_observed": target,
+                            "package_arch_observed": arch, "package": self.adzero.name}
+                with self.assertRaisesRegex(ValueError, "target/architecture"):
+                    closure.closure(self.source, self.image, inspect=forged,
+                                    installed_reader=lambda _: self.installed)
 
 
 if __name__ == "__main__":

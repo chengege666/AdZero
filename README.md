@@ -94,6 +94,8 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 
 **iStoreOS 进度（尚未发布）：**原厂 iStoreOS 25.12.6、修订 `2026102312`、x86_64 的专用 APK 已从原厂 Buildroot 编译，并在隔离 KVM 虚拟机完成离线模拟与实际安装；六个原厂依赖均能满足，原有完整版 `tcpdump` 得以保留，安装后 AdZero 仍默认关闭。详见 [虚拟机验证证据](docs/evidence/istoreos-25.12.6/native-apk-virtual-machine-acceptance.json)。这并非实机 LAN、NaiLink 或 DNS/回滚验收，**iStoreOS 尚未列入公开一键安装包**。本次新字节不是已发布的 v0.21.5 Release 资产。
 
+**iStoreOS ARM64 原厂镜像核验：**独立验证了 25.12.6-2026102312 的 ARMSR 与 R6XS 官方压缩镜像、原始文件系统 SHA-256、固件 ID/target/ABI 和预装 APK 数据库；两套固件分别预装 1,018 / 940 个包，均保留完整版 `tcpdump`。已增加严格的 ARM64 原厂 APK 递归依赖检查及反混装测试；原生 APK 编译和真实软路由 LAN/DNS/代理/升级回滚验收仍需逐项完成，**当前不得在菜单或在线更新中将其当成已发布支持**。证据和构建流程见 [ARM64 适配进度](docs/ARM64.md)。
+
 **安装器兼容性修正（v0.21.5）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。ImmortalWrt 增加两个 x86_64 的厂商 SDK 专属构建组合；其他 ImmortalWrt 版本及尚无专用 SDK 包的 iStoreOS，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
 
 NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。概览中的「代理接入」可展开查看：区分实际内核、已保存开关和当前接入，不把识别到插件当作已经适配。

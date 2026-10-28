@@ -70,6 +70,12 @@ python3 scripts/build_istoreos_native.py \
 
 它依次编译原厂 tools、toolchain、Linux target、LuCI host 和 AdZero APK，再校验 vendor 来源、target、feeds、包架构、源码、权限与导出文件 SHA。**即使编译及封装验证成功，仍只生成 `publishable=false` 的候选包**，不能直接写入公开 `releases.tsv`。
 
+### iStoreOS 原厂 ARM64 固件内容核验（2026-10-28）
+
+从官方镜像 SHA-256 固定的 ARMSR 与 R6XS 原始文件中只读提取了 `/etc/openwrt_release` 和 `/lib/apk/db/installed`。两者均为 `iStoreOS 25.12.6`、修订 `2026102312`、包架构 `aarch64_generic`，但实际 target 不同（`armsr/armv8` / `rockchip/armv8`），原有 APK 分别登记 **1,018** / **940** 个包，均包含原版 `tcpdump`、`luci-base`、`rpcd`。参见 [ARMSR 镜像证据](evidence/istoreos-25.12.6/arm64-armsr-original-image.json) 与 [R6XS 镜像证据](evidence/istoreos-25.12.6/arm64-r6xs-original-image.json)。R6XS 下载文件含厂商附加尾部元数据，必须核对原始压缩包哈希并单独校验 gzip 流后提取，不能误判为普通损坏镜像。
+
+可在 Linux 上使用 `python3 scripts/inspect_istoreos_arm64_image.py --profile armsr --image /path/to/official.img` 复查固件 ABI。对**已真正编译成功的同一原厂目标 APK**，使用 `python3 scripts/check_istoreos_dependencies.py --source /path/to/pinned-buildroot --image /path/to/official.img --profile armsr` 做只读递归依赖检查。R6XS 使用 `--profile rockchip-r6xs` 及其独立源码/镜像。**仅完成镜像核验不意味着原生 APK 编译、实机网络过滤或安装验收成功。**
+
 ## ARM64 发行包回归（暂不对外开放）
 
 发行打包工具只认 `sdk_verified` 中已经通过独立 SDK 构建验证的组合。未来一旦经证据审核新增精确 ARM64 组合，`scripts/check_release_delivery.py` 会自动遍历**全部**受信目标，并对每一组发行文件执行 LF/CRLF 两种清单的安装选包、SHA-256、升级备份和服务恢复模拟。测试已覆盖四组未来 OpenWrt/ImmortalWrt ARM64 目标，以及 iStoreOS ARMSR/Rockchip 的十位固件修订号；测试使用模拟包管理器，**不是**实际 ARM64 路由器安装证明，不能据此发布候选包。
