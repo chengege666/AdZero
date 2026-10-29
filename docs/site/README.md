@@ -13,6 +13,7 @@ python -m http.server 4173 --directory .build/docs-site --bind 127.0.0.1
 
 - `site.json`：版本、发行标签、页面及侧栏顺序。与 Makefile、安装器保持一致。
 - `compatibility.html`、`installation.html` 分别介绍三种公开安装渠道；常规 v0.21.5 与独立 ARM64 / iStoreOS Beta 各有单独发行链接，避免误当成全架构稳定支持。维护者新增公测时，需要同步更新 `README.md`、`site.json`、内容页与 `tests/docs/test_site.py`。
+- `scripts/install-auto.sh` 是公开的一条命令安装入口。每次调整常规版或 Beta 下载的安装脚本，必须核对并同步维护其中固定 SHA-256；文档首页只展示这一个入口，三种渠道的版本范围保留在支持表。
 - `content/*.html`：面向用户的正文，二、三级标题需有唯一 `id`。站内链接使用 `page.html#anchor`。
 - `$version`、`$release` 在构建时替换；正文中的美元符号写 `$$`。
 - `template.html`、`site.css`、`site.js`：布局、中文搜索、复制、主题和手机目录。
