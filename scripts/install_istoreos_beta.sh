@@ -74,9 +74,8 @@ if [ "$PROFILE" = rockchip-r6xs ]; then
         *) fail '非原厂 R6XS 兼容板型，禁止跨设备安装。' ;;
     esac
 fi
-[ ! -e "$ROOT/usr/lib/opkg/status" ] || fail '存在 OPKG 包数据库，拒绝混用 APK。'
-DB="$ROOT/lib/apk/db/installed"
-[ -r "$DB" ] || fail '找不到固件 APK 软件包数据库。'
+# An inactive OPKG status file is not evidence that OPKG is still running.
+# APK's own installed-inventory query works even with overlayfs DB relocation.
 command -v apk >/dev/null 2>&1 || fail '缺少 apk-tools。'
 command -v sha256sum >/dev/null 2>&1 || fail '缺少 SHA-256 工具。'
 ACTUAL_ARCH=$(apk --print-arch) || fail '无法读取实际 APK CPU 架构。'
@@ -84,13 +83,17 @@ case "$PROFILE:$ACTUAL_ARCH" in
     x86_64:x86_64|armsr:aarch64|armsr:aarch64_generic|rockchip-r6xs:aarch64|rockchip-r6xs:aarch64_generic) ;;
     *) fail "固件包 ABI 与 APK CPU 架构 $ACTUAL_ARCH 不匹配。" ;;
 esac
-for pkg in tcpdump luci-base rpcd; do
-    grep -qx "P:$pkg" "$DB" || fail "原系统完整版软件 $pkg 缺失，不尝试替换。"
+for pkg in base-files tcpdump luci-base rpcd; do
+    apk --root "${ROOT:-/}" --arch "$ARCH" info -e "$pkg" >/dev/null 2>&1 ||
+        fail "APK 已安装包查询未确认原厂组件 $pkg；拒绝替换系统依赖。"
 done
 CTL="$ROOT/usr/libexec/adzero/ctl"
 MARKDIR="$ROOT/etc/adzero-beta"
 MARKER="$MARKDIR/installed"
-installed() { grep -qx 'P:luci-app-adzero' "$DB" || [ -e "$ROOT/etc/config/adzero" ] || [ -e "$CTL" ]; }
+installed() {
+    apk --root "${ROOT:-/}" --arch "$ARCH" info -e luci-app-adzero >/dev/null 2>&1 ||
+        [ -e "$ROOT/etc/config/adzero" ] || [ -e "$CTL" ]
+}
 ensure_root() {
     [ "$(id -u)" -eq 0 ] || [ "${ADZERO_BETA_TEST_MODE:-}" = 1 ] ||
         fail '安装与卸载需以 root SSH 运行。'
@@ -259,9 +262,11 @@ do_uninstall() (
     ensure_root
     [ -f "$MARKER" ] && [ ! -L "$MARKER" ] ||
         fail '未找到本测试版安装标记，拒绝卸载其他 AdZero 版本。'
-    # Keep the original beta.1 users able to uninstall via beta.2.
+    # Keep both previously released beta.1 and beta.2 installs safely
+    # uninstallable after the launcher moves to beta.3.
     { grep -Fxq "tag=$TAG" "$MARKER" ||
-      grep -Fxq 'tag=v0.21.5-istoreos-beta.1' "$MARKER"; } &&
+      grep -Fxq 'tag=v0.21.5-istoreos-beta.1' "$MARKER" ||
+      grep -Fxq 'tag=v0.21.5-istoreos-beta.2' "$MARKER"; } &&
         grep -Fxq "profile=$PROFILE" "$MARKER" &&
         grep -Fxq "target=$TARGET" "$MARKER" ||
         fail '安装记录与当前固件、目标或已知测试版不匹配，拒绝卸载。'

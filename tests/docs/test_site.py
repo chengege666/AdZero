@@ -60,7 +60,7 @@ class Handbook(unittest.TestCase):
         self.assertNotIn('install-istoreos-beta.sh -o', readme)
         self.assertIn('--detect', install)
         self.assertIn('--check', install)
-        for tag in ('v0.21.5-arm64-beta.2', 'v0.21.5-istoreos-beta.2'):
+        for tag in ('v0.21.5-arm64-beta.2', 'v0.21.5-istoreos-beta.3'):
             self.assertIn(tag, install)
         self.assertIn('https://slobys.github.io/AdZero/compatibility.html', readme)
         self.assertNotIn('iStoreOS 进度（尚未发布）', readme)
@@ -79,7 +79,7 @@ class Handbook(unittest.TestCase):
         self.assertIn('修订号 2026102312', page)
         self.assertIn('aarch64_cortex-a53', page)
         for release_tag in ('v0.21.5', 'v0.21.5-arm64-beta.2',
-                            'v0.21.5-istoreos-beta.2'):
+                            'v0.21.5-istoreos-beta.3'):
             self.assertIn(release_tag, page)
         search = json.loads((self.output / 'search-index.json').read_text(encoding='utf-8'))
         self.assertTrue(any(item['url'].startswith('compatibility.html')
