@@ -1,20 +1,20 @@
 # AdZero：三种固件 ARM64 适配与验收
 
-> 开发分支上的目标均为**候选**，不意味着公开发布或实体设备已经通过。公开安装器只读取 `docs/compatibility-matrix.json` 的 `sdk_verified`，不会使用本页候选清单。
+> 本页 ARM64 新目标仍是**未完成实体设备认证的候选**；其中四组 OpenWrt/ImmortalWrt ARM64 与两组 iStoreOS ARM64 已分别通过**独立公开 Beta** 提供用户自愿试装。常规稳定安装器仍只接受 `docs/compatibility-matrix.json` 的 `sdk_verified`，不会选择 Beta 候选。
 
 ## 当前目标
 
 | 固件 | 固件版本 / target | 进度 |
 | --- | --- | --- |
 | OpenWrt | 25.12.5 / rockchip/armv8 | v0.21.5 已有对应 SDK APK，真机 LAN 尚未普遍验证 |
-| OpenWrt | 25.12.6 / rockchip/armv8 | 官方 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
-| OpenWrt | 25.12.6 / mediatek/filogic | 官方 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
-| ImmortalWrt | 25.12.2 / rockchip/armv8 | 独立厂商 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
-| ImmortalWrt | 25.12.2 / mediatek/filogic | 独立厂商 SDK 编译、APK/LuCI 检查通过（PR #10）；未发布、真机待测 |
-| iStoreOS | 25.12.6-2026102312 / armsr/armv8 | 原生 APK 编译通过；6 个依赖闭环、7 包离线模拟成功；真机待测，未发布 |
-| iStoreOS | 25.12.6-2026102312 / rockchip/armv8（R6XS） | 原生 APK 编译通过；6 个依赖闭环、7 包离线模拟成功；真机待测，未发布 |
+| OpenWrt | 25.12.6 / rockchip/armv8 | 官方 SDK 编译、APK/LuCI 检查通过；独立 ARM64 Beta 公开试装，真机待测 |
+| OpenWrt | 25.12.6 / mediatek/filogic | 官方 SDK 编译、APK/LuCI 检查通过；独立 ARM64 Beta 公开试装，真机待测 |
+| ImmortalWrt | 25.12.2 / rockchip/armv8 | 独立厂商 SDK 编译、APK/LuCI 检查通过；独立 ARM64 Beta 公开试装，真机待测 |
+| ImmortalWrt | 25.12.2 / mediatek/filogic | 独立厂商 SDK 编译、APK/LuCI 检查通过；独立 ARM64 Beta 公开试装，真机待测 |
+| iStoreOS | 25.12.6-2026102312 / armsr/armv8 | 原生 APK 编译通过；6 依赖闭环、7 包离线模拟通过；独立 iStoreOS Beta 已公开，真机待测 |
+| iStoreOS | 25.12.6-2026102312 / rockchip/armv8（R6XS） | 原生 APK 编译通过；6 依赖闭环、7 包离线模拟通过；独立 iStoreOS Beta 已公开，真机待测 |
 
-四个已通过 CI 的候选包均来自提交 `61e1334`，下载后的 APK SHA-256 与相应 SDK 构建清单一致；详细记录在 [`evidence/arm64-pr10-sdk-builds.json`](evidence/arm64-pr10-sdk-builds.json)。**`ci_passed_unreleased` 只表示编译与静态交付检查成功，不允许加入 `sdk_verified` 或被菜单/在线更新选中。** 后续发布必须使用新版本号重建，不能覆盖现有 v0.21.5。
+四个已通过 CI 的候选包均来自提交 `61e1334`，下载后的 APK SHA-256 与相应 SDK 构建清单一致；详细记录在 [`evidence/arm64-pr10-sdk-builds.json`](evidence/arm64-pr10-sdk-builds.json)。**`ci_passed_unreleased` 仍只表示 SDK 编译与静态检查，不能直接成为稳定 `sdk_verified`**。这些原生 APK 通过 [独立 Beta 安装渠道](RELEASE_ARM64_BETA_0.21.5.md) 公开供自愿测试者使用：4 个固件专用包哈希固定，默认不启用过滤，依赖来自对应官方 HTTPS 源；不覆盖已发布 v0.21.5，也不会出现在稳定版的普通 LuCI 在线更新中。
 
 Rockchip 的发行包架构常为 `aarch64_generic`，Filogic 为 `aarch64_cortex-a53`。即便 APK 运行环境显示 `aarch64` CPU，**也不能自动推断它与所有 ARM64 包兼容**。完整固件版本、target、包架构及发行版 ID 都要精确匹配。iStoreOS 还必须检查十位 `DISTRIB_REVISION`。
 
