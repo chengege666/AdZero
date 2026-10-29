@@ -1,19 +1,24 @@
-<div class="callout"><strong>刚开始使用？</strong>先确认固件兼容，再选规则、开启保护，最后从电脑做一次效果检测。</div>
-<h2 id="start">从这里开始</h2>
-<ol><li><a href="installation.html">安装与升级</a>：核对固件、设备目标和软件包。</li><li><a href="quick-start.html">第一次使用</a>：完成第一次过滤验证。</li><li><a href="rules.html">过滤规则</a>：平时重用已有规则，需要新内容时才更新订阅。</li></ol>
-<h2 id="daily">按需要找功能</h2>
+<div class="callout"><strong>第一次使用 AdZero？</strong>先<a href="compatibility.html">查自己的固件是否支持</a>，再<a href="installation.html">打开对应的中文安装菜单</a>。公测版建议先安装但不启用，确认网络正常后再开启过滤。</div>
+<h2 id="start">三步开始使用</h2>
+<ol>
+<li><a href="compatibility.html">确认固件与设备架构</a>：分别查看常规版、ARM64 公测和 iStoreOS 公测支持范围。</li>
+<li><a href="installation.html">安装或升级</a>：以 root SSH 运行对应的一条命令，安装器自动选包。</li>
+<li><a href="quick-start.html">开启并验证过滤</a>：选规则、应用，在连接路由器的电脑上做 DNS 效果检测。</li>
+</ol>
+<h2 id="daily">按需求找功能</h2>
 <table><thead><tr><th>我想做什么</th><th>打开哪里</th></tr></thead><tbody>
-<tr><td>看拦截数、清零、暂停保护</td><td><a href="dashboard.html">运行概览</a></td></tr>
-<tr><td>找出哪个规则拦了网站，临时或长期放行</td><td><a href="access-control.html">访问控制</a></td></tr>
-<tr><td>修改国内、国外 DNS</td><td><a href="dns.html">DNS 与分流</a></td></tr>
-<tr><td>测试上游，给设备添加规则</td><td><a href="enhancements.html">DNS 增强</a></td></tr>
-<tr><td>切换 NaiLink、PassWall 或 OpenClash</td><td><a href="proxies.html">代理兼容与切换</a></td></tr>
-<tr><td>遇到错误、无法联网或想卸载</td><td><a href="troubleshooting.html">常见问题</a> · <a href="maintenance.html">备份与卸载</a></td></tr>
+<tr><td>核对 OpenWrt、ImmortalWrt、iStoreOS 的版本和 CPU</td><td><a href="compatibility.html">支持的固件</a></td></tr>
+<tr><td>看拦截数、清零、临时暂停</td><td><a href="dashboard.html">运行概览</a></td></tr>
+<tr><td>添加订阅、更新规则、处理网站误拦截</td><td><a href="rules.html">过滤规则</a> · <a href="access-control.html">拦截与放行</a></td></tr>
+<tr><td>修改国内、国外 DNS，测试备用地址</td><td><a href="dns.html">DNS 与分流</a></td></tr>
+<tr><td>为设备添加规则、检查 CNAME 过滤</td><td><a href="enhancements.html">DNS 增强</a></td></tr>
+<tr><td>切换 NaiLink、PassWall、OpenClash、Nikki</td><td><a href="proxies.html">代理兼容与切换</a></td></tr>
+<tr><td>无法联网、安装失败、想卸载</td><td><a href="troubleshooting.html">常见问题</a> · <a href="maintenance.html">备份与卸载</a></td></tr>
 </tbody></table>
-<h2 id="scope">先了解过滤范围</h2>
-<p>AdZero 是 OpenWrt 上的 DNS 域名过滤插件，集成在 LuCI，使用 adblock-fast 处理列表，并与受支持的代理协作。无需额外登录或安装 AdGuard Home。</p>
-<p>它能阻止广告、追踪域名的解析；无法去除与正文共用域名的视频广告，也不能像浏览器扩展那样隐藏网页空白。设备直接使用加密 DNS 或绕过路由器时，可能不经过这里。</p>
-<div class="callout"><strong>版本与验证范围：</strong>本手册对应 v$version 测试版。构建和隔离测试通过不等于所有固件、代理版本和真实终端都已验证。<a href="installation.html#compatibility">查看支持范围</a>。</div>
+<h2 id="scope">AdZero 是做什么的？</h2>
+<p>AdZero 是装在软路由上的<strong> DNS 域名广告过滤插件</strong>，直接从 LuCI 管理。它用 adblock-fast 处理过滤列表，也可以配合受支持的代理，无需另外登录或安装管理 App。</p>
+<p>它擅长拦广告、追踪域名的解析，不等于浏览器广告扩展：与内容共用域名的视频广告、设备自己的加密 DNS 或绕过路由器的流量，未必能拦截。页面显示的 DNS 请求拦截占比，也不是网页广告拦截率。</p>
+<div class="callout"><strong>发行和测试：</strong>常规渠道是 v$version；OpenWrt / ImmortalWrt ARM64 与 iStoreOS 各有<a href="compatibility.html#channels">独立公开 Beta</a>。已经编译或可以下载安装，不代表每台真实路由器的 LAN DNS、代理与回滚都完成了验收。</div>
 <h2 id="community">文档与社区</h2>
-<p><a href="https://www.youtube.com/@naiyou">YouTube 频道</a> · <a href="https://t.me/naiyous">Telegram 群组</a> · <a href="https://github.com/slobys/AdZero">GitHub 源码与发行包</a></p>
-<p>搜索框支持中文关键词，按 Ctrl K 或 ⌘ K 可快速打开；正文和目录无需启用 JavaScript 即可阅读。分享反馈时请遮盖节点、订阅令牌和密码。</p>
+<p><a href="https://github.com/slobys/AdZero">GitHub 源码</a> · <a href="https://github.com/slobys/AdZero/releases">下载发行包</a> · <a href="https://github.com/slobys/AdZero/issues">反馈问题</a> · <a href="https://www.youtube.com/@naiyou">YouTube</a> · <a href="https://t.me/naiyous">Telegram</a></p>
+<p>搜索框支持中文关键词，按 Ctrl K 或 ⌘ K 可以快速打开。反馈前请遮盖代理订阅、节点和私人配置。</p>

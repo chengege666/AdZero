@@ -26,12 +26,13 @@ class Handbook(unittest.TestCase):
         self.assertEqual(config['release'], 'v' + config['version'])
         self.assertIn('/download/' + config['release'], (REPO / 'scripts/install.sh').read_text(encoding='utf-8'))
         body = (self.output / 'installation.html').read_text(encoding='utf-8')
-        self.assertIn('/' + config['release'] + '/scripts/install.sh', body)
+        self.assertIn('https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh', body)
+        self.assertIn('/releases/tag/' + config['release'], body)
         self.assertNotIn('$release', body)
 
     def test_only_public_assets_and_navigation_are_published(self):
         pages = list(self.output.glob('*.html'))
-        self.assertEqual(len(pages), 12)
+        self.assertEqual(len(pages), 13)
         self.assertEqual([p.name for p in (self.output / 'assets').iterdir()], ['adzero-logo.png'])
         approved=(REPO / 'docs/images/adzero-logo.png').read_bytes()
         self.assertEqual((self.output / 'assets/adzero-logo.png').read_bytes(),approved)
@@ -46,6 +47,47 @@ class Handbook(unittest.TestCase):
         workflow = (REPO / '.github/workflows/docs.yml').read_text(encoding='utf-8')
         self.assertIn('path: .build/docs-site', workflow)
         self.assertNotIn('path: .\n', workflow)
+
+    def test_readme_stays_short_and_install_commands_match_handbook(self):
+        readme = (REPO / 'README.md').read_text(encoding='utf-8')
+        self.assertLessEqual(len(readme.splitlines()), 90, 'README should be beginner-friendly, not an exhaustive handbook')
+        install = (self.output / 'installation.html').read_text(encoding='utf-8')
+        for name in ('scripts/install.sh', 'install-arm64-beta.sh',
+                     'install-istoreos-beta.sh'):
+            self.assertIn(name, readme)
+            self.assertIn(name, install)
+        for tag in ('v0.21.5-arm64-beta.1', 'v0.21.5-istoreos-beta.1'):
+            self.assertIn(tag, readme)
+            self.assertIn(tag, install)
+        self.assertIn('https://slobys.github.io/AdZero/compatibility.html', readme)
+        self.assertNotIn('iStoreOS 进度（尚未发布）', readme)
+
+    def test_public_firmware_table_and_search_are_current(self):
+        matrix = json.loads((REPO / 'docs/compatibility-matrix.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(matrix['sdk_verified']), 5)
+        self.assertEqual(len(matrix['arm64_candidates']), 6)
+        page = (self.output / 'compatibility.html').read_text(encoding='utf-8')
+        for row in matrix['sdk_verified'] + matrix['arm64_candidates']:
+            with self.subTest(firmware=row['firmware'], target=row['target']):
+                self.assertIn(row['release'], page)
+                self.assertIn(row['target'], page)
+        for target in ('x86/64', 'armsr/armv8', 'rockchip/armv8', 'mediatek/filogic'):
+            self.assertIn(target, page)
+        self.assertIn('修订号 2026102312', page)
+        self.assertIn('aarch64_cortex-a53', page)
+        for release_tag in ('v0.21.5', 'v0.21.5-arm64-beta.1',
+                            'v0.21.5-istoreos-beta.1'):
+            self.assertIn(release_tag, page)
+        search = json.loads((self.output / 'search-index.json').read_text(encoding='utf-8'))
+        self.assertTrue(any(item['url'].startswith('compatibility.html')
+                            and ('iStoreOS' in item['text'] or 'Rockchip' in item['text'])
+                            for item in search))
+        self.assertIn('href="compatibility.html">支持的固件',
+                      (self.output / 'index.html').read_text(encoding='utf-8'))
+        self.assertIn('installation.html#istoreos-beta',
+                      (self.output / 'maintenance.html').read_text(encoding='utf-8'))
+        self.assertIn('compatibility.html',
+                      (self.output / 'troubleshooting.html').read_text(encoding='utf-8'))
 
     def test_broken_link_and_anchor_are_rejected(self):
         file = self.output / 'index.html'

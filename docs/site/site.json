@@ -5,8 +5,9 @@
   "release": "v0.21.5",
   "groups": [
     {"title": "开始使用", "pages": [
-      {"id":"index","title":"使用文档","description":"从开启保护到日常设置，按需使用 AdZero。"},
-      {"id":"installation","title":"安装与升级","description":"确认固件兼容范围，安装、备份与升级。"},
+      {"id":"index","title":"使用文档","description":"从确认固件、安装到日常广告过滤。"},
+      {"id":"installation","title":"安装与升级","description":"三个安装渠道、一键安装、备份和升级操作。"},
+      {"id":"compatibility","title":"支持的固件","description":"确认 OpenWrt、ImmortalWrt、iStoreOS 的精确版本及 Beta 范围。"},
       {"id":"quick-start","title":"第一次使用","description":"选择规则、开启保护，并从电脑验证效果。"}
     ]},
     {"title": "日常设置", "pages": [
