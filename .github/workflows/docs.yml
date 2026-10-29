@@ -2,9 +2,9 @@ name: Online documentation
 on:
   push:
     branches: [main]
-    paths: ['docs/site/**', 'tests/docs/**', '.github/workflows/docs.yml', 'luci-app-adzero/Makefile', 'scripts/install.sh']
+    paths: ['docs/site/**', 'tests/docs/**', '.github/workflows/docs.yml', 'luci-app-adzero/Makefile', 'scripts/install.sh', 'scripts/install-auto.sh']
   pull_request:
-    paths: ['docs/site/**', 'tests/docs/**', '.github/workflows/docs.yml']
+    paths: ['docs/site/**', 'tests/docs/**', 'scripts/install-auto.sh', '.github/workflows/docs.yml']
   workflow_dispatch:
 permissions:
   contents: read

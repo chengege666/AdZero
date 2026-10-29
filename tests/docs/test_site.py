@@ -26,7 +26,7 @@ class Handbook(unittest.TestCase):
         self.assertEqual(config['release'], 'v' + config['version'])
         self.assertIn('/download/' + config['release'], (REPO / 'scripts/install.sh').read_text(encoding='utf-8'))
         body = (self.output / 'installation.html').read_text(encoding='utf-8')
-        self.assertIn('https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh', body)
+        self.assertIn('https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install-auto.sh', body)
         self.assertIn('/releases/tag/' + config['release'], body)
         self.assertNotIn('$release', body)
 
@@ -52,12 +52,15 @@ class Handbook(unittest.TestCase):
         readme = (REPO / 'README.md').read_text(encoding='utf-8')
         self.assertLessEqual(len(readme.splitlines()), 90, 'README should be beginner-friendly, not an exhaustive handbook')
         install = (self.output / 'installation.html').read_text(encoding='utf-8')
-        for name in ('scripts/install.sh', 'install-arm64-beta.sh',
-                     'install-istoreos-beta.sh'):
-            self.assertIn(name, readme)
-            self.assertIn(name, install)
+        self.assertIn('scripts/install-auto.sh', readme)
+        self.assertIn('scripts/install-auto.sh', install)
+        self.assertEqual(readme.count('```sh'), 1, 'README must show exactly one installation command')
+        self.assertEqual(install.count('<pre><code>'), 1, 'Online installation page must show one installation command')
+        self.assertNotIn('install-arm64-beta.sh -o', readme)
+        self.assertNotIn('install-istoreos-beta.sh -o', readme)
+        self.assertIn('--detect', install)
+        self.assertIn('--check', install)
         for tag in ('v0.21.5-arm64-beta.1', 'v0.21.5-istoreos-beta.1'):
-            self.assertIn(tag, readme)
             self.assertIn(tag, install)
         self.assertIn('https://slobys.github.io/AdZero/compatibility.html', readme)
         self.assertNotIn('iStoreOS 进度（尚未发布）', readme)
@@ -84,7 +87,7 @@ class Handbook(unittest.TestCase):
                             for item in search))
         self.assertIn('href="compatibility.html">支持的固件',
                       (self.output / 'index.html').read_text(encoding='utf-8'))
-        self.assertIn('installation.html#istoreos-beta',
+        self.assertIn('installation.html#install',
                       (self.output / 'maintenance.html').read_text(encoding='utf-8'))
         self.assertIn('compatibility.html',
                       (self.output / 'troubleshooting.html').read_text(encoding='utf-8'))

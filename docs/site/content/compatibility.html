@@ -1,11 +1,11 @@
-<div class="callout"><strong>不知道自己的固件能不能装？</strong>先看下面的三个渠道。安装器会检查固件版本、设备目标（target）和软件包架构；不匹配就停止，不能只凭“是 ARM64”强行安装。</div>
-<h2 id="channels">三种安装渠道，有什么区别？</h2>
+<div class="callout"><strong>不知道自己的固件能不能装？</strong>直接使用<a href="installation.html#install">统一安装命令</a>，它会自动读取固件版本、设备 target 和包架构，并选择正确的发行渠道。不需要手动选 CPU；不支持的组合会明确拒绝。</div>
+<h2 id="channels">安装助手会自动选择的三种渠道</h2>
 <table><thead><tr><th>渠道</th><th>适合谁</th><th>下载入口</th></tr></thead><tbody>
 <tr><td>常规版 v0.21.5</td><td>下表五组已有 SDK 编译包的固件</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5">常规版发行页</a></td></tr>
 <tr><td>ARM64 公测</td><td>OpenWrt / ImmortalWrt 的四种 ARM64 新目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-arm64-beta.1">ARM64 Beta 发行页</a></td></tr>
 <tr><td>iStoreOS 公测</td><td>对应原厂版本的 iStoreOS 三种目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-beta.1">iStoreOS Beta 发行页</a></td></tr>
 </tbody></table>
-<p>三种渠道都可以从<a href="installation.html">安装与升级</a>找到中文菜单命令。<strong>常规版表示有指定 SDK 构建包，不代表所有实体路由器已经验收；Beta 表示可以自愿安装测试，不等于稳定认证。</strong></p>
+<p>你只要执行<a href="installation.html#install">同一条一键安装命令</a>，不用从三个渠道里手动挑。下方表格只是解释每个渠道的精确支持范围。<strong>常规版有 SDK 编译包，但不等于全部实机认证；Beta 可以公开试装，也不代表稳定认证。</strong></p>
 <h2 id="regular">常规安装：5 组已编译目标</h2>
 <table><thead><tr><th>固件</th><th>版本</th><th>设备目标 / CPU</th><th>格式</th></tr></thead><tbody>
 <tr><td>OpenWrt</td><td>24.10.8</td><td>x86/64 · x86_64</td><td>IPK</td></tr>

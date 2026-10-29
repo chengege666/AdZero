@@ -23,37 +23,25 @@ AdZero 是一款运行在 **OpenWrt、ImmortalWrt、iStoreOS** 软路由上的�
 
 > **注意**：DNS 过滤不是浏览器广告扩展。同域名视频广告、App 自带加密 DNS 或绕过路由器的流量，不一定能拦截。页面统计也不等于网页广告拦截率。
 
-## 安装：先选自己的固件
+## 一键安装：自动识别固件
 
-| 安装渠道 | 对应固件和设备 | 当前状态 |
-| --- | --- | --- |
-| **常规安装 v0.21.5** | OpenWrt 24.10.8 / 25.12.5、ImmortalWrt 24.10.6 / 25.12.2 的**指定 x86_64 目标**，以及 **OpenWrt 25.12.5 Rockchip ARM64** | 已提供匹配 SDK 包 |
-| **ARM64 公测** | OpenWrt **25.12.6**、ImmortalWrt **25.12.2** 的 **Rockchip ARMv8 / MediaTek Filogic** | 公开 Beta |
-| **iStoreOS 公测** | iStoreOS **25.12.6（修订 2026102312）** 的 **x86_64 / ARM64 ARMSR / Rockchip R6XS** | 公开 Beta |
-
-**必须匹配完整固件版本、设备 target 和包架构**，不是所有 ARM64 或同系列固件都通用。详细名单见 [支持的固件](https://slobys.github.io/AdZero/compatibility.html)。
-
-以 **root 身份登录软路由 SSH**，复制对应的一条命令，即可进入中文安装菜单。
-
-### ① OpenWrt / ImmortalWrt 常规安装
+**不用选择安装版本或 CPU 架构。** 以 **root 身份登录软路由 SSH**，运行这一条命令：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --menu
+curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install-auto.sh -o /tmp/adzero-install-auto.sh && sh /tmp/adzero-install-auto.sh --menu
 ```
 
-### ② OpenWrt / ImmortalWrt ARM64 公测
+安装助手会自动检测 **OpenWrt / ImmortalWrt / iStoreOS** 的固件版本、设备 target、包架构和安装格式，再打开对应的中文菜单：
 
-```sh
-curl -fL --proto '=https' --proto-redir '=https' https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.1/install-arm64-beta.sh -o /tmp/install-arm64-beta.sh && sh /tmp/install-arm64-beta.sh --menu
-```
+| 自动选择的渠道 | 适用范围 |
+| --- | --- |
+| **常规安装** | OpenWrt 24.10.8 / 25.12.5，ImmortalWrt 24.10.6 / 25.12.2 的指定目标 |
+| **ARM64 公测** | OpenWrt 25.12.6、ImmortalWrt 25.12.2 的 Rockchip / MediaTek Filogic |
+| **iStoreOS 公测** | iStoreOS 25.12.6（修订 2026102312）的 x86_64 / ARMSR / R6XS |
 
-### ③ iStoreOS 公测
+匹配不到就会**拒绝安装并说明原因**，不会强装其他架构的软件包。下载的安装脚本还会经过 SHA-256 校验。[查看完整固件兼容表](https://slobys.github.io/AdZero/compatibility.html)。
 
-```sh
-curl -fL --proto '=https' --proto-redir '=https' https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.1/install-istoreos-beta.sh -o /tmp/install-istoreos-beta.sh && sh /tmp/install-istoreos-beta.sh --menu
-```
-
-安装器会检查固件和安装包。**公测版首次建议选择「安装但不启用过滤」**：先确认 SSH、LuCI 和正常上网没问题，再手动开启。测试前请备份路由器配置，并准备本地恢复方式。
+**建议首次选择「安装但不启用过滤」**，先确认 SSH、LuCI、正常上网与原有代理没问题，再手动开启。公测版仍需更多真实设备测试，请先备份配置并准备本地恢复方式。
 
 ## 装好以后怎么用？
 
