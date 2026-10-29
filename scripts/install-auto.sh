@@ -9,11 +9,11 @@ LC_ALL=C
 export LC_ALL
 
 REGULAR_URL='https://raw.githubusercontent.com/slobys/AdZero/eecd25ff3d7911530fdea1dfded5f3a399aee777/scripts/install.sh'
-ARM64_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.1/install-arm64-beta.sh'
-ISTOREOS_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.1/install-istoreos-beta.sh'
+ARM64_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh'
+ISTOREOS_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.2/install-istoreos-beta.sh'
 PIN_REGULAR='85b1a1b80bfc5c7b05bfd220ebd368739053f2b5bcf0cfb0b973014d5565c333'
-PIN_ARM64='784c07795a4e75833368d802905225758c3cf93ca0682625ed25d5da46e59455'
-PIN_ISTOREOS='f71359422f8cb029f121c46b0599fd9bff6e45bd4cecb4716914d946f908de8c'
+PIN_ARM64='77f6ff5e6cccaca1895d6d24092ea89e80f8f0a90bc399af4fa8569c093900ed'
+PIN_ISTOREOS='664b29e27c74c7cf12a7daabd2048edc82ddadd3150e5fb2fa606b15d0dd64d4'
 
 fail() {
     printf 'AdZero 安装助手：%s\n' "$*" >&2
@@ -127,11 +127,11 @@ case "$CHANNEL" in
         URL=$REGULAR_URL
         EXPECTED_SHA=$PIN_REGULAR ;;
     arm64)
-        DESCRIPTION='OpenWrt / ImmortalWrt ARM64 公测（v0.21.5-arm64-beta.1）'
+        DESCRIPTION='OpenWrt / ImmortalWrt ARM64 公测（v0.21.5-arm64-beta.2）'
         URL=$ARM64_URL
         EXPECTED_SHA=$PIN_ARM64 ;;
     istoreos)
-        DESCRIPTION='iStoreOS 公测（v0.21.5-istoreos-beta.1）'
+        DESCRIPTION='iStoreOS 公测（v0.21.5-istoreos-beta.2）'
         URL=$ISTOREOS_URL
         EXPECTED_SHA=$PIN_ISTOREOS ;;
 esac

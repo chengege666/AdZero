@@ -64,7 +64,10 @@ case "$EXPECTED" in *[!0-9a-f]*) fail '安装包摘要无效。' ;; esac
 [ "${#EXPECTED}" = 64 ] || fail '安装包摘要长度无效。'
 if [ "$PROFILE" = rockchip-r6xs ]; then
     board=
-    [ ! -r "$ROOT/tmp/sysinfo/board_name" ] || IFS= read -r board < "$ROOT/tmp/sysinfo/board_name" || :
+    board_file="$ROOT/tmp/sysinfo/board_name"
+    [ -r "$board_file" ] && [ -f "$board_file" ] && [ ! -L "$board_file" ] ||
+        fail 'R6XS 原厂板型标识不可用或是符号链接，拒绝安装。'
+    IFS= read -r board < "$board_file" || :
     case "$board" in
         fastrhino,r6xs|lunzn,fastrhino-r66s|lunzn,fastrhino-r68s|fastrhino,r66s|fastrhino,r68s) ;;
         '') fail '缺少官方 R6XS 板型标识，请反馈设备型号核实支持情况。' ;;
@@ -256,8 +259,12 @@ do_uninstall() (
     ensure_root
     [ -f "$MARKER" ] && [ ! -L "$MARKER" ] ||
         fail '未找到本测试版安装标记，拒绝卸载其他 AdZero 版本。'
-    grep -qx "tag=$TAG" "$MARKER" && grep -qx "profile=$PROFILE" "$MARKER" ||
-        fail '安装标记与本机测试版/目标不一致。'
+    # Keep the original beta.1 users able to uninstall via beta.2.
+    { grep -Fxq "tag=$TAG" "$MARKER" ||
+      grep -Fxq 'tag=v0.21.5-istoreos-beta.1' "$MARKER"; } &&
+        grep -Fxq "profile=$PROFILE" "$MARKER" &&
+        grep -Fxq "target=$TARGET" "$MARKER" ||
+        fail '安装记录与当前固件、目标或已知测试版不匹配，拒绝卸载。'
     [ -x "$CTL" ] && [ ! -L "$CTL" ] || fail '控制程序不可用，拒绝卸载。'
     [ ! -e "$ROOT/tmp/adzero.lock" ] && [ ! -L "$ROOT/tmp/adzero.lock" ] ||
         fail '存在保护任务锁，拒绝并发卸载。'

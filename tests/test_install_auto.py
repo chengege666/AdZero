@@ -84,8 +84,8 @@ echo "$url" >> "$MOCK_CURL_LOG"
 [ "$MOCK_CURL_ERROR" != 1 ] || exit 22
 case "$url" in
     https://raw.githubusercontent.com/slobys/AdZero/*/scripts/install.sh) base=install.sh ;;
-    https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.1/install-arm64-beta.sh) base=install-arm64-beta.sh ;;
-    https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.1/install-istoreos-beta.sh) base=install-istoreos-beta.sh ;;
+    https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh) base=install-arm64-beta.sh ;;
+    https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.2/install-istoreos-beta.sh) base=install-istoreos-beta.sh ;;
     *) echo wrong-provenance >&2; exit 74 ;;
 esac
 cp "$MOCK_INSTALLERS/$base" "$out" || exit 73
@@ -260,8 +260,8 @@ printf '%s\\n' "$MOCK_APK_ARCH"
         sha_from = lambda name: re.search(rf"{name}='([a-f0-9]{{64}})'", source).group(1)
         self.assertEqual(sha_from("PIN_REGULAR"), sha(REPO/"scripts/install.sh"))
         for name,path in (
-            ("PIN_ARM64", "docs/evidence/arm64-public-beta-0.21.5-assets.json"),
-            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-assets.json")
+            ("PIN_ARM64", "docs/evidence/arm64-public-beta-0.21.5-beta2-assets.json"),
+            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta2-assets.json")
         ):
             metadata = json.loads((REPO/path).read_text(encoding="utf-8"))
             self.assertEqual(sha_from(name),metadata["installer"]["sha256"])

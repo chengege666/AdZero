@@ -81,29 +81,50 @@ installed() {
         [ -e "$ROOT/etc/config/adzero" ] || [ -e "$CTL" ]
 }
 read_packages() {
-    [ -f "$ROOT/etc/apk/repositories.d/distfeeds.list" ] &&
-        [ ! -L "$ROOT/etc/apk/repositories.d/distfeeds.list" ] ||
-        return 1
     FEEDS="$ROOT/etc/apk/repositories.d/distfeeds.list"
-    count=0
-    # Only the exact vendor's official HTTPS repositories. Custom feeds and
-    # non-official mirrors need explicit user repair, never silent trust.
+    [ -f "$FEEDS" ] && [ ! -L "$FEEDS" ] || return 1
+    target_count=0
+    architecture_count=0
+    repo_series=
+    # Accept the firmware vendor's own HTTPS repository and USTC's documented
+    # mirror of that vendor. Do not modify the user's distfeeds.list.
+    # OpenWrt/ImmortalWrt 25.12 may ship '25.12' rolling feeds, or exact
+    # patch-version feeds. Never mix versions or accept another patch version.
     while IFS= read -r feed || [ -n "$feed" ]; do
         case "$feed" in ''|'#'*) continue ;; esac
         case "$FW:$feed" in
-            openwrt:https://downloads.openwrt.org/releases/25.12/*/packages.adb|\
-            openwrt:https://downloads.openwrt.org/releases/25.12.*/*/packages.adb|\
-            immortalwrt:https://downloads.immortalwrt.org/releases/25.12/*/packages.adb|\
-            immortalwrt:https://downloads.immortalwrt.org/releases/25.12.*/*/packages.adb) ;;
+            openwrt:https://downloads.openwrt.org/releases/*|\
+            openwrt:https://mirrors.ustc.edu.cn/openwrt/releases/*|\
+            immortalwrt:https://downloads.immortalwrt.org/releases/*|\
+            immortalwrt:https://mirrors.ustc.edu.cn/immortalwrt/releases/*) ;;
             *) return 1 ;;
         esac
-        case "$feed" in
-            */packages/"$ARCH"/*/packages.adb|*/targets/"$TARGET"/*/packages.adb) ;;
+        suffix=${feed#*/releases/}
+        case "$suffix" in
+            "$VER"/*) current_series=$VER; relative=${suffix#"$VER"/} ;;
+            25.12/*) current_series=25.12; relative=${suffix#25.12/} ;;
             *) return 1 ;;
         esac
-        count=$((count+1))
+        if [ -n "$repo_series" ] && [ "$repo_series" != "$current_series" ]; then
+            return 1
+        fi
+        repo_series=$current_series
+        case "$relative" in
+            targets/"$TARGET"/packages/packages.adb)
+                target_count=$((target_count + 1)) ;;
+            targets/"$TARGET"/kmods/*/packages.adb)
+                kernel_id=${relative#targets/"$TARGET"/kmods/}
+                kernel_id=${kernel_id%/packages.adb}
+                case "$kernel_id" in ''|.|..|*/*|*[!a-zA-Z0-9._+-]*) return 1 ;; esac ;;
+            packages/"$ARCH"/*/packages.adb)
+                category=${relative#packages/"$ARCH"/}
+                category=${category%/packages.adb}
+                case "$category" in ''|.|..|*/*|*[!a-zA-Z0-9._+-]*) return 1 ;; esac
+                architecture_count=$((architecture_count + 1)) ;;
+            *) return 1 ;;
+        esac
     done < "$FEEDS"
-    [ "$count" -ge 2 ]
+    [ "$target_count" -ge 1 ] && [ "$architecture_count" -ge 1 ]
 }
 is_installed() { installed; }
 ensure_root() {
@@ -272,8 +293,12 @@ do_install() (
 do_uninstall() (
     ensure_root
     [ -f "$MARKER" ] && [ ! -L "$MARKER" ] || fail '非本 ARM64 Beta 安装，拒绝卸载。'
-    grep -qx "tag=$TAG" "$MARKER" && grep -qx "profile=$PROFILE" "$MARKER" ||
-        fail '现有安装记录与本机 target 不匹配。'
+    # beta.1 installations remain recoverable from the newer beta.2 menu.
+    { grep -Fxq "tag=$TAG" "$MARKER" ||
+      grep -Fxq 'tag=v0.21.5-arm64-beta.1' "$MARKER"; } &&
+        grep -Fxq "profile=$PROFILE" "$MARKER" &&
+        grep -Fxq "target=$TARGET" "$MARKER" ||
+        fail '安装记录与当前固件、目标或已知测试版不匹配，拒绝卸载。'
     [ -x "$CTL" ] && [ ! -L "$CTL" ] || fail '控制程序不可用，不能安全卸载。'
     [ ! -e "$ROOT/tmp/adzero.lock" ] && [ ! -L "$ROOT/tmp/adzero.lock" ] ||
         fail '存在 AdZero 保护操作锁，拒绝与运行时配置竞争。'

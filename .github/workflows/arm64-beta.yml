@@ -7,7 +7,9 @@ on:
       - 'scripts/install_arm64_beta.sh'
       - 'tests/test_arm64_beta.py'
       - 'docs/RELEASE_ARM64_BETA_0.21.5.md'
+      - 'docs/RELEASE_ARM64_BETA_0.21.5_BETA2.md'
       - 'docs/evidence/arm64-public-beta-0.21.5-assets.json'
+      - 'docs/evidence/arm64-public-beta-0.21.5-beta2-assets.json'
       - 'docs/ARM64.md'
       - 'docs/compatibility-matrix.json'
       - '.github/workflows/arm64-beta.yml'
@@ -40,4 +42,10 @@ jobs:
           assert record["physical_router_acceptance"]=="not_run"
           assert not record["production_sdk_verified_modified"]
           assert len(record["vendor_artifacts"])==4
+          new=json.loads(Path("docs/evidence/arm64-public-beta-0.21.5-beta2-assets.json").read_text())
+          assert new["release_tag"] == "v0.21.5-arm64-beta.2"
+          assert new["supersedes_beta"] == record["release_tag"]
+          assert new["physical_router_acceptance"] == "not_run"
+          assert new["production_sdk_verified_modified"] is False
+          assert [i["asset_sha256"] for i in record["vendor_artifacts"]] == [i["asset_sha256"] for i in new["vendor_artifacts"]]
           PY

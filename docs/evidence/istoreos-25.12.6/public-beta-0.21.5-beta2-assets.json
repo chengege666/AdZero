@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "release_tag": "v0.21.5-istoreos-beta.2",
+  "release_type": "public_opt_in_prerelease",
+  "firmware": "istoreos",
+  "release": "25.12.6",
+  "revision": "2026102312",
+  "app_package": "luci-app-adzero-0.21.5-r1.apk",
+  "app_apk_sha256": "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52",
+  "app_package_source_sha256": "8df7589827fdc1adc418c3b83887097589b257a4a7654ac0dd91ddf878ee60c9",
+  "vendor_source_commit": "283d02639c740f8ae6e9425b48be8c61f152c6b8",
+  "archives": [
+    {
+      "profile": "x86_64",
+      "target": "x86/64",
+      "arch": "x86_64",
+      "name": "adzero-istoreos-x86_64-beta.tar.gz",
+      "sha256": "6fead4e18b8590e3321ddd5e3e09ca6376a6eec8226f2c0b7fe469f5f6dac976",
+      "factory_image_sha256": "833e203e667fb49b27dd69ce8a8a8176a563d5f7154ba95ac219bed0af5da3c9",
+      "dependency_count": 6
+    },
+    {
+      "profile": "armsr",
+      "target": "armsr/armv8",
+      "arch": "aarch64_generic",
+      "name": "adzero-istoreos-armsr-beta.tar.gz",
+      "sha256": "7c2d3a5ac09e58eb2ef6484e008afdb0f9b800b2ef0f74f00931953e00baa48d",
+      "factory_image_sha256": "c46658d6f9a4b1d6d45b2da25f0eee0d188a7a625cdc200a59eb7af1a4f78128",
+      "dependency_count": 6
+    },
+    {
+      "profile": "rockchip-r6xs",
+      "target": "rockchip/armv8",
+      "arch": "aarch64_generic",
+      "name": "adzero-istoreos-rockchip-r6xs-beta.tar.gz",
+      "sha256": "5c57651d0ace2588bcf8d1169ac49a54f0f47fcaedbf6dbe08c8125771570f34",
+      "factory_image_sha256": "c89326ee924f41d10921570d3da1b7caf22be13a275be7bd9bd830e0f21c8ec8",
+      "dependency_count": 6
+    }
+  ],
+  "installer": {
+    "name": "install-istoreos-beta.sh",
+    "sha256": "664b29e27c74c7cf12a7daabd2048edc82ddadd3150e5fb2fa606b15d0dd64d4"
+  },
+  "source_script": "scripts/install_istoreos_beta.sh",
+  "build_script": "scripts/build_istoreos_beta.py",
+  "public_stable_sdk_verified_matrix_changed": false,
+  "automatic_enable": false,
+  "physical_device_test": "not_run",
+  "lan_dns_proxy_coexistence": "not_run",
+  "original_public_release_v0_21_5_modified": false,
+  "scope": "SHA-pinned factory-native APK artifacts, user-opt-in public beta install channel with separate release tag; not a stable certification",
+  "supersedes_beta": "v0.21.5-istoreos-beta.1",
+  "upgrade_scope": "Exact original factory APK bytes preserved, stricter R6XS board check, beta.1 marker safe uninstall",
+  "physical_router_acceptance": "not_run",
+  "beta2_installer_auto_enable": false
+}

@@ -194,14 +194,60 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
         self.invoke("x86_64","--install",success=False)
         self.assertFalse(self.ctls.exists())
 
+    def test_beta2_archive_and_factory_source_evidence_preserves_prior_release(self):
+        old = json.loads((ROOT/"docs/evidence/istoreos-25.12.6/public-beta-0.21.5-assets.json").read_text())
+        new = json.loads((ROOT/"docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta2-assets.json").read_text())
+        self.assertEqual(old["release_tag"], "v0.21.5-istoreos-beta.1")
+        self.assertEqual(new["release_tag"], beta.RELEASE_TAG)
+        self.assertEqual(new["supersedes_beta"], old["release_tag"])
+        self.assertEqual(new["app_apk_sha256"], old["app_apk_sha256"])
+        self.assertEqual(new["app_package_source_sha256"], old["app_package_source_sha256"])
+        self.assertFalse(new["public_stable_sdk_verified_matrix_changed"])
+        self.assertFalse(new["automatic_enable"])
+        self.assertEqual(new["physical_router_acceptance"], "not_run")
+        self.assertEqual(len(new["archives"]), 3)
+        self.assertNotEqual(new["installer"]["sha256"], old["installer"]["sha256"])
+        self.assertEqual(len({x["sha256"] for x in new["archives"]}), 3)
+
     def test_archive_pins_deterministic_and_non_semver_beta(self):
-        self.assertEqual(self.assets["release_tag"],"v0.21.5-istoreos-beta.1")
+        self.assertEqual(self.assets["release_tag"],"v0.21.5-istoreos-beta.2")
         self.assertTrue(self.assets["production_verified_matrix_unchanged"])
         code=self.script.read_text()
         self.assertNotIn("@SHA_",code)
         self.assertNotIn("@RELEASE_TAG@",code)
         for name,digest in self.assets["assets"].items():
             self.assertEqual(hashlib.sha256((self.release/name).read_bytes()).hexdigest(),digest)
+
+
+    def test_old_beta1_install_still_allows_safe_uninstall_from_beta2(self):
+        for profile in ("x86_64", "armsr", "rockchip-r6xs"):
+            with self.subTest(profile=profile):
+                self.configure(profile)
+                self.invoke(profile, "--install", "--local-dir", str(self.release))
+                marker = self.router / "etc/adzero-beta/installed"
+                marker.write_text(
+                    "tag=v0.21.5-istoreos-beta.1\n"
+                    f"profile={profile}\n"
+                    f"target={beta.TARGETS[profile]['target']}\n")
+                self.invoke(profile, "--uninstall")
+                self.assertFalse(marker.exists())
+                self.assertIn("ctl:disable", self.ctls.read_text())
+                (self.router / "usr/libexec/adzero/ctl").unlink()
+                shutil.rmtree(self.router / "etc/adzero-backups")
+                self.apks.unlink()
+                self.ctls.unlink()
+
+    def test_r6xs_symlinked_board_name_is_not_device_attestation(self):
+        profile = "rockchip-r6xs"
+        self.configure(profile)
+        board = self.router / "tmp/sysinfo/board_name"
+        board.unlink()
+        original = self.router / "tmp/sysinfo/fake-board"
+        original.write_text("fastrhino,r6xs\n")
+        board.symlink_to(original)
+        self.invoke(profile, "--check", success=False)
+        self.assertFalse(self.curls.exists())
+        self.assertFalse(self.apks.exists())
 
 
 if __name__=="__main__":
