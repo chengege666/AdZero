@@ -1,4 +1,4 @@
-name: iStoreOS 24.10.8 OPKG native candidate checks
+name: iStoreOS 24.10.8 native OPKG beta checks
 on:
   workflow_dispatch:
   pull_request:
@@ -7,9 +7,14 @@ on:
       - 'scripts/install_istoreos_24108_beta.sh'
       - 'scripts/check_istoreos_24108_opkg_solver.py'
       - 'tests/test_istoreos_24108_beta.py'
+      - 'tests/test_install_auto.py'
+      - 'scripts/install-auto.sh'
+      - 'docs/RELEASE_ISTOREOS_24108_BETA_0.21.5.md'
       - 'docs/ISTOREOS_24_10.md'
       - 'docs/evidence/istoreos-24.10.8/**'
       - '.github/workflows/istoreos-24108.yml'
+      - 'docs/site/content/installation.html'
+      - 'docs/site/content/compatibility.html'
 permissions:
   contents: read
 jobs:
@@ -27,6 +32,8 @@ jobs:
           python3 -m py_compile scripts/build_istoreos_24108_beta.py scripts/check_istoreos_24108_opkg_solver.py
           sh -n scripts/install_istoreos_24108_beta.sh
           python3 -m unittest discover -s tests -p test_istoreos_24108_beta.py -v
+          python3 -m unittest discover -s tests -p test_install_auto.py -v
+          sh -n scripts/install-auto.sh
       - name: Exact target and firmware provenance guard
         run: |
           python3 - <<'PY'
@@ -57,5 +64,28 @@ jobs:
           stable=json.loads(Path("docs/compatibility-matrix.json").read_text())
           assert len(stable["sdk_verified"])==5
           assert not any(x["firmware"]=="istoreos" for x in stable["sdk_verified"])
+          public=json.loads(Path("docs/evidence/istoreos-24.10.8/public-beta-0.21.5-native-build-assets.json").read_text())
+          assert public["release_tag"]=="v0.21.5-istoreos-24108-beta.1"
+          assert public["release"]==VER and public["revision"]==REV
+          assert public["channel"]=="public_opt_in_beta_not_stable"
+          assert public["historical_vendor_source_exact_factory_revision_attested"] is False
+          assert public["physical_device_acceptance"]=="not_run"
+          assert public["release_stable_sdk_verified_changed"] is False
+          assert public["default_filtering_enabled"] is False
+          assert set(public["profiles"])==set(PROFILES)
+          import re
+          code=Path("scripts/install-auto.sh").read_text()
+          pin=re.search(r"PIN_ISTOREOS24108='([0-9a-f]{64})'",code)
+          assert pin and pin.group(1)==public["installer"]["sha256"]
+          for profile,spec in PROFILES.items():
+              row=public["profiles"][profile]
+              assert row["target"]==spec["target"]
+              assert row["arch"]==spec["arch"]
+              assert row["opkg_no_network_simulated_package_count"]==8
+              assert row["original_ipk_file_lists"]==row["original_installed_packages"]
+              assert row["opkg_simulator_no_upgrade_remove_reinstall"]
+              assert row["factory_installed_database_unchanged"]
+              assert row["factory_full_tcpdump_retained"]
+              assert row["physical_device_acceptance"]=="not_run"
           print("Exact three iStoreOS 24.10.8 OPKG targets isolated from stable SDK install matrix")
           PY

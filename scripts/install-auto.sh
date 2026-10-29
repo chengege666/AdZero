@@ -11,9 +11,11 @@ export LC_ALL
 REGULAR_URL='https://raw.githubusercontent.com/slobys/AdZero/eecd25ff3d7911530fdea1dfded5f3a399aee777/scripts/install.sh'
 ARM64_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh'
 ISTOREOS_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.3/install-istoreos-beta.sh'
+ISTOREOS24108_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-24108-beta.1/install-istoreos-24108-beta.sh'
 PIN_REGULAR='85b1a1b80bfc5c7b05bfd220ebd368739053f2b5bcf0cfb0b973014d5565c333'
 PIN_ARM64='77f6ff5e6cccaca1895d6d24092ea89e80f8f0a90bc399af4fa8569c093900ed'
 PIN_ISTOREOS='120920acb4f7ed2e2e48d3537bea671da927bf09ca4150a7c9afaed00133dfcd'
+PIN_ISTOREOS24108='d30c309e650442708dcfda552fa4f62e1530916e93ac2d9341f25db5503a2766'
 
 fail() {
     printf 'AdZero 安装助手：%s\n' "$*" >&2
@@ -79,6 +81,12 @@ case "$FW:$VERSION:$TARGET:$ARCH" in
     immortalwrt:25.12.2:rockchip/armv8:aarch64_generic|\
     immortalwrt:25.12.2:mediatek/filogic:aarch64_cortex-a53)
         CHANNEL=arm64; PKG_FORMAT=apk ;;
+    istoreos:24.10.8:x86/64:x86_64|\
+    istoreos:24.10.8:armsr/armv8:aarch64_generic|\
+    istoreos:24.10.8:rockchip/armv8:aarch64_generic)
+        [ "$REVISION" = 2026073111 ] ||
+            fail "iStoreOS 24.10.8 测试版仅支持修订 2026073111；当前为 ${REVISION:-未知}。"
+        CHANNEL=istoreos24108; PKG_FORMAT=opkg ;;
     istoreos:25.12.6:x86/64:x86_64|\
     istoreos:25.12.6:armsr/armv8:aarch64_generic|\
     istoreos:25.12.6:rockchip/armv8:aarch64_generic)
@@ -113,7 +121,8 @@ else
         command -v opkg >/dev/null 2>&1 ||
         fail '目标需要 OPKG，当前包管理器或已安装数据库不匹配。'
 fi
-if [ "$CHANNEL" = istoreos ] && [ "$TARGET" = rockchip/armv8 ]; then
+if { [ "$CHANNEL" = istoreos ] || [ "$CHANNEL" = istoreos24108 ]; } &&
+   [ "$TARGET" = rockchip/armv8 ]; then
     BOARD_FILE="$ROOT/tmp/sysinfo/board_name"
     [ -r "$BOARD_FILE" ] && [ ! -L "$BOARD_FILE" ] ||
         fail 'iStoreOS R6XS 需要读取官方设备板型，无法确认，拒绝安装。'
@@ -138,6 +147,10 @@ case "$CHANNEL" in
         DESCRIPTION='iStoreOS 公测（v0.21.5-istoreos-beta.3）'
         URL=$ISTOREOS_URL
         EXPECTED_SHA=$PIN_ISTOREOS ;;
+    istoreos24108)
+        DESCRIPTION='iStoreOS 24.10.8 OPKG 公测（v0.21.5-istoreos-24108-beta.1）'
+        URL=$ISTOREOS24108_URL
+        EXPECTED_SHA=$PIN_ISTOREOS24108 ;;
 esac
 printf '%s\n' '================ AdZero 自动安装入口 ================'
 printf '已识别：%s %s\n设备目标：%s\n包架构：%s\n' "$FW_LABEL" "$VERSION" "$TARGET" "$ARCH"

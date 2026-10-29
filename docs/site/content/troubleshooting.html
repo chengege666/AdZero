@@ -14,8 +14,11 @@
 <p>网络路径恢复后，Windows 可按需清除坏缓存，再重新打开受影响应用：</p><pre><code>ipconfig /flushdns</code></pre>
 <p>这不能替代路由器修复。如果每次都需清缓存，或 TCP DNS 超时、nftset 持续报错，保留原文分别排查。不要全局清连接跟踪、盲目改全部上游或关闭路径安全检查。</p>
 <h2 id="compatibility">安装时提示「不支持此固件 / 目标架构」</h2>
-<p>不是所有 OpenWrt、ImmortalWrt、iStoreOS 都能用同一个安装包。以 root SSH 运行 <code>cat /etc/openwrt_release</code>，核对固件 ID、完整版本、target 和包架构，再与<a href="compatibility.html">支持固件表</a>对比。iStoreOS Beta 还要核对修订号 <code>2026102312</code>，R6XS 还会检查板型。</p>
-<p>请使用<a href="installation.html#install">统一自动检测安装命令</a>：它会在已发布的三种渠道中自动选一个，而不是让你手动下载对应版本。已下载后还可运行 <code>sh /tmp/adzero-install-auto.sh --detect</code> 进行不联网的只读识别。若你的固件不在<a href="compatibility.html">支持表</a>中，不要修改 <code>DISTRIB_ID</code> 或强装其他 target；可以提交<a href="https://github.com/slobys/AdZero/issues">适配需求</a>。</p>
+<p>不是所有 OpenWrt、ImmortalWrt、iStoreOS 都能用同一个安装包。以 root SSH 运行 <code>cat /etc/openwrt_release</code>，核对固件 ID、完整版本、target 和包架构，再与<a href="compatibility.html">支持固件表</a>对比。iStoreOS 25.12 Beta 要核对修订号 <code>2026102312</code>，iStoreOS 24.10.8 OPKG Beta 要核对 <code>2026073111</code>，R6XS 还会检查板型。</p>
+<p>请使用<a href="installation.html#install">统一自动检测安装命令</a>：它会在已发布的四种渠道中自动选一个，而不是让你手动下载对应版本。已下载后还可运行 <code>sh /tmp/adzero-install-auto.sh --detect</code> 进行不联网的只读识别。若你的固件不在<a href="compatibility.html">支持表</a>中，不要修改 <code>DISTRIB_ID</code> 或强装其他 target；可以提交<a href="https://github.com/slobys/AdZero/issues">适配需求</a>。</p>
+<h2 id="istoreos-24108-opkg">iStoreOS 24.10.8 提示 OPKG/IPK 或版本不匹配</h2>
+<p>24.10.8（revision 2026073111）使用 OPKG/IPK，不能直接安装 iStoreOS 25.12 的 APK。本项目只对 x86_64、ARMSR 和原厂 R6XS 三种精确 target 开放 <a href="installation.html#istoreos-24108">24.10 Beta.1 公测</a>。运行统一安装命令会自动识别。其他 24.10.x、不同 revision 或错误架构必须停止，不要强制安装或更改系统标识。</p>
+<p>请先从菜单选择只读预检，再尝试「安装但不启用过滤」。本通道包含原厂真实 OPKG 格式 IPK 和七份匹配的依赖包；若模拟提示安装其他包、升级系统软件或恢复失败，请保留错误详情并提交反馈。</p>
 <h2 id="apk-db">iStoreOS 25.12.6 提示「目标需要 APK，当前包管理器或数据库不匹配」</h2>
 <p>这条报错可能来自旧版统一安装器使用固定数据库路径或将历史 OPKG 状态文件当成有效包管理器。请重新执行<a href="installation.html#install">最新的一条命令</a>下载新版安装助手；它会自动选择 iStoreOS Beta.3，通过真正的 <code>apk info -e</code> 查询本机软件包，而不是凭遗留路径判断。</p>
 <p>如新版本仍报错，可只读执行 <code>cat /etc/openwrt_release</code>、<code>apk --print-arch</code>、<code>apk info -e base-files luci-base rpcd tcpdump</code> 并反馈脱敏后的结果。若这些必要组件确实不存在，程序仍会安全拒绝安装。不要删除 OPKG/APK 数据库、强制安装或绕过 SHA-256 校验。</p>

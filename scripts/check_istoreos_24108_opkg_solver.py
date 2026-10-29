@@ -27,7 +27,8 @@ INFO_TOOL_LIBS = (
     ("lib/libubox.so.20240329", "libubox.so.20240329"),
     ("lib/libgcc_s.so.1", "libgcc_s.so.1"),
 )
-NAME = re.compile(r"[a-zA-Z0-9_.+-]+\Z")
+# Original iStoreOS OPKG version names legitimately contain ~ (ucode).
+NAME = re.compile(r"[a-zA-Z0-9_.+~-]+\Z")
 
 
 def run_original(*argv, timeout=95, **kwargs):

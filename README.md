@@ -38,9 +38,11 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 | **常规安装** | OpenWrt 24.10.8 / 25.12.5，ImmortalWrt 24.10.6 / 25.12.2 的指定目标 |
 | **ARM64 公测** | OpenWrt 25.12.6、ImmortalWrt 25.12.2 的 Rockchip / MediaTek Filogic |
 | **iStoreOS 公测** | iStoreOS 25.12.6（修订 2026102312）的 x86_64 / ARMSR / R6XS |
+| **iStoreOS 24.10 IPK 公测** | iStoreOS **24.10.8（修订 2026073111）** 的 x86_64 / ARM64 ARMSR / R6XS |
+
 OpenWrt / ImmortalWrt ARM64 公测为 **Beta.2**；iStoreOS 已更新 **Beta.3**，修复 APK 环境误判并保留旧版安全卸载。统一安装命令会自动选择对应版本。
 
-**正在适配（尚不能安装）：**iStoreOS **24.10.8（2026073111）** 的 x86_64、ARM64 ARMSR 和 R6XS，已完成原厂固件/依赖预检，原生 IPK 编译与安装验收待完成。[查看进度 PR #18](https://github.com/slobys/AdZero/pull/18)。
+iStoreOS **24.10.8** 已开放独立 **IPK/OPKG Beta.1**：三个目标已通过原厂源码打包和真实 OPKG 离线安装预检，仍待实体设备 DNS/代理验收；其他 24.10.x 版本不在安装名单。
 
 匹配不到就会**拒绝安装并说明原因**，不会强装其他架构的软件包。下载的安装脚本还会经过 SHA-256 校验。[查看完整固件兼容表](https://slobys.github.io/AdZero/compatibility.html)。
 

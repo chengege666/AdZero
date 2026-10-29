@@ -10,8 +10,9 @@
 <tr><td>OpenWrt 24.10.8 / 25.12.5、ImmortalWrt 24.10.6 / 25.12.2 的指定常规目标</td><td><a href="#standard">常规安装菜单</a></td></tr>
 <tr><td>OpenWrt 25.12.6 / ImmortalWrt 25.12.2 的 Rockchip ARM64 或 MediaTek Filogic</td><td><a href="#arm64-beta">ARM64 公测菜单</a></td></tr>
 <tr><td>iStoreOS 25.12.6（修订号 2026102312）的 x86_64、ARMSR 或 Rockchip R6XS</td><td><a href="#istoreos-beta">iStoreOS 公测菜单</a></td></tr>
+<tr><td>iStoreOS 24.10.8（修订号 2026073111）的 x86_64、ARMSR 或 Rockchip R6XS</td><td><a href="#istoreos-24108">iStoreOS 24.10 IPK 公测菜单</a></td></tr>
 </tbody></table>
-<p>这是三种<strong>自动选择的发行渠道</strong>，用户不需要从中手动挑命令。助手会核对<a href="compatibility.html#device">固件、完整版本、target、架构</a>；匹配失败就提示原因并停止。常规版和公测版的独立发行包仍互不混用。</p>
+<p>这是四种<strong>自动选择的发行渠道</strong>，用户不需要从中手动挑命令。助手会核对<a href="compatibility.html#device">固件、完整版本、target、架构</a>；匹配失败就提示原因并停止。常规版和公测版的独立发行包仍互不混用。</p>
 <h2 id="standard">常规安装：OpenWrt / ImmortalWrt</h2>
 <p>适用于已有 SDK 构建包的<a href="compatibility.html#regular">五组精确固件目标</a>。统一安装助手会自动进入常规安装菜单，无需填写固件或架构。</p>
 <p>进入中文菜单，选择兼容检查、安装、安装但暂不开启、升级或安全卸载。安装包按当前固件自动匹配，<strong>不需要手动输入 CPU 架构</strong>。常规发布版本为 <a href="https://github.com/slobys/AdZero/releases/tag/$release">$release</a>（当前同样标记为 Pre-release，SDK 编译不等于所有真机认证）。</p>
@@ -23,6 +24,10 @@
 <p>仅适用于 <strong>iStoreOS 25.12.6、修订号 2026102312</strong> 的 x86_64、ARM64 ARMSR 和原厂兼容的 Rockchip R6XS。统一安装助手会自动进入 iStoreOS 公测菜单，R6XS 还会额外核对板型。</p>
 <p>每种设备的安装包都含 AdZero 本体及六个对应原厂依赖，安装前验证 SHA-256 和离线依赖计划。Beta.3 已修复旧版对 APK 数据库路径或历史 OPKG 文件的误判，改为通过当前 APK 已安装包查询验证。首次安装<strong>默认关闭 DNS 过滤</strong>，不自动更改原有 DNS/代理路径。</p>
 <p><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-beta.3">iStoreOS 公测下载页</a> · <a href="https://github.com/slobys/AdZero/blob/main/docs/RELEASE_ISTOREOS_BETA_0.21.5_BETA3.md">更多安装说明</a></p>
+<h2 id="istoreos-24108">iStoreOS 24.10.8 公测：原生 OPKG/IPK</h2>
+<p>只适用于 <strong>iStoreOS 24.10.8，修订号 2026073111</strong> 的 <code>x86/64</code>、<code>armsr/armv8</code>、R6XS <code>rockchip/armv8</code> 三个严格目标。统一入口会自动选择独立的 <strong>iStoreOS 24.10 Beta.1</strong>，不是新版 25.12 的 APK 安装器。其他 24.10.x 和不匹配的 Rockchip 板型仍被拒绝。</p>
+<p>每个目标的安装包包含一份历史原厂 Buildroot 编译的 AdZero <strong>OPKG/IPK</strong> 和七个原厂 IPK 依赖，执行哈希验证和真实 OPKG 离线模拟，遇到已有软件包升级、删除或文件冲突时停止。首次<strong>默认不启用 DNS 广告过滤</strong>，请先在可救援的测试设备上确认正常网络和原有代理。此渠道尚待真实设备安装和 DNS/代理共存验收。</p>
+<p><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-24108-beta.1">iStoreOS 24.10.8 Beta.1 下载页</a> · <a href="https://github.com/slobys/AdZero/blob/main/docs/RELEASE_ISTOREOS_24108_BETA_0.21.5.md">原生 IPK 发布与安全验证说明</a></p>
 <h2 id="after">安装成功后做什么？</h2>
 <ol>
 <li>先确认仍能进入 LuCI / SSH，正常网站能打开。</li>
@@ -32,7 +37,7 @@
 <p>公测版建议先安装不启用，等正常上网和原代理确认无误，再手动开启。首次试装优先使用有备用管理方式的设备，并提前<a href="maintenance.html#backup">备份配置</a>。</p>
 <h2 id="upgrade">已安装 AdZero，怎么升级？</h2>
 <p>重新执行<a href="#install">顶部同一条统一命令</a>，会根据本机固件重新打开正确的安装菜单。常规渠道仍可以点击 LuCI Logo 旁的版本号检查匹配的常规更新；独立 Beta 不会被常规在线更新自动选中。</p>
-<p><strong>两个 Beta 仍是独立测试渠道，不提供跨渠道强制覆盖升级。</strong>已安装其他版本的设备必须先安全关闭、恢复原有网络设置，再从原渠道卸载。公测版可以通过统一入口进入对应菜单选择「安全卸载」；<a href="maintenance.html#beta">查看恢复说明</a>。</p>
+<p><strong>三个 Beta 仍是独立测试渠道，不提供跨渠道强制覆盖升级。</strong>已安装其他版本的设备必须先安全关闭、恢复原有网络设置，再从原渠道卸载。公测版可以通过统一入口进入对应菜单选择「安全卸载」；<a href="maintenance.html#beta">查看恢复说明</a>。</p>
 <h2 id="offline">路由器不能连接 GitHub？</h2>
 <p>统一入口需要联网下载匹配的安装菜单。如果路由器无法访问 GitHub，可在可信电脑上从对应的<a href="https://github.com/slobys/AdZero/releases">公开发行页</a>下载专用安装器与安装包，复制到路由器后使用该原安装器的 <code>--local-dir</code> 参数。仍需检查固件和 SHA；ARM64 公测的缺失依赖可能需要官方仓库。</p>
 <h2 id="failure">安装失败，怎么办？</h2>
