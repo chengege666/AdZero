@@ -276,6 +276,7 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
 
     def test_deterministic_source_record_and_public_release_exclusion(self):
         self.assertEqual(self.built["release_tag"], beta.TAG)
+        self.assertEqual(beta.TAG, "v0.21.5-arm64-beta.2")
         self.assertRegex(beta.TAG,r"^v0\.21\.5-arm64-beta\.\d+$")
         self.assertFalse(self.built["physical_router_acceptance"] != "not_run")
         code = self.installer.read_text()
@@ -288,10 +289,28 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
         self.assertTrue(all(row["firmware"]!="istoreos" for row in matrix["sdk_verified"]))
 
 
+    def test_beta2_assets_exact_hashes_and_previous_release_unchanged(self):
+        record = json.loads((ROOT / "docs/evidence/arm64-public-beta-0.21.5-beta2-assets.json").read_text())
+        previous = json.loads((ROOT / "docs/evidence/arm64-public-beta-0.21.5-assets.json").read_text())
+        self.assertEqual(record["release_tag"], beta.TAG)
+        self.assertEqual(record["supersedes_beta"], previous["release_tag"])
+        self.assertEqual(record["installer"]["name"], "install-arm64-beta.sh")
+        self.assertTrue(record["installer"]["sha256"].isalnum())
+        self.assertFalse(record["production_sdk_verified_modified"])
+        self.assertTrue(record["stable_release_v0_21_5_unmodified"])
+        self.assertEqual(record["physical_router_acceptance"], "not_run")
+        self.assertEqual(
+            {x["profile"]: x["asset_sha256"] for x in record["vendor_artifacts"]},
+            {x["profile"]: x["asset_sha256"] for x in previous["vendor_artifacts"]},
+            "Original SDK-native APK archive bytes must not change")
+        with self.subTest(release=beta.TAG):
+            self.assertIn("v0.21.5-arm64-beta.2", self.installer.read_text())
+
     def test_four_public_beta_asset_records_match_original_sdk_build_evidence(self):
         recorded=json.loads((ROOT/"docs/evidence/arm64-public-beta-0.21.5-assets.json").read_text())
         ci=json.loads((ROOT/"docs/evidence/arm64-pr10-sdk-builds.json").read_text())
-        self.assertEqual(recorded["release_tag"],beta.TAG)
+        # Keep the already published beta.1 evidence immutable while building beta.2.
+        self.assertEqual(recorded["release_tag"],"v0.21.5-arm64-beta.1")
         self.assertEqual(recorded["physical_router_acceptance"],"not_run")
         self.assertFalse(recorded["production_sdk_verified_modified"])
         self.assertTrue(recorded["stable_release_v0_21_5_unmodified"])
@@ -314,6 +333,72 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
                 self.assertTrue(original["sdk_origin_verified"])
                 self.assertEqual(original["sdk_build"],"passed")
                 self.assertEqual(original["payload_checks"],"passed")
+
+
+    def test_official_and_ustc_repositories_match_exact_firmware_and_abi(self):
+        """Real-world Chinese mirrors are safe only for the same vendor/target."""
+        for profile, (fw, release, target, arch, _) in beta.TARGETS.items():
+            with self.subTest(profile=profile):
+                self.configure(profile)
+                feeds = self.router / "etc/apk/repositories.d/distfeeds.list"
+                source = feeds.read_text()
+                official = ("downloads.openwrt.org" if fw == "openwrt"
+                            else "downloads.immortalwrt.org")
+                mirror = "mirrors.ustc.edu.cn/" + fw
+                paths = (
+                    source,
+                    source.replace("https://" + official, "https://" + mirror),
+                    source.replace("/releases/25.12/", "/releases/" + release + "/"),
+                )
+                for selected in paths:
+                    with self.subTest(feed=selected.splitlines()[0]):
+                        feeds.write_text(selected)
+                        self.operations.unlink(missing_ok=True)
+                        self.run_cli(profile, "--check", "--local-dir", str(self.release),
+                                     options={"MOCK_NEED_REPO": "1"})
+                        self.assertIn(" update\n", self.operations.read_text())
+                        self.assertNotIn(" add --no-network ", self.operations.read_text())
+                        self.assertEqual(self.network.read_text(), "original-network-untouched")
+                bad = (
+                    source.replace("/releases/25.12/", "/releases/25.12.1/"),
+                    source.replace("/releases/25.12/", "/releases/25.12.0-rc3/"),
+                    source.replace("/releases/25.12/", "/snapshots/"),
+                    source.replace(official, "unknown.invalid"),
+                    source.replace(official, "downloads.openwrt.org" if fw != "openwrt"
+                                   else "downloads.immortalwrt.org"),
+                    source.replace("https://" + official, "https://mirrors.ustc.edu.cn/"
+                                   + ("immortalwrt" if fw == "openwrt" else "openwrt")),
+                    source.replace("/releases/25.12/", "/releases/25.12/../"),
+                    source.replace("/releases/25.12/", "/releases/25.12//"),
+                    source.replace("packages/" + arch + "/base", "packages/x86_64/base"),
+                    source.splitlines()[0] + "\n" + source.splitlines()[0] + "\n",
+                    source.splitlines()[1] + "\n" + source.splitlines()[1] + "\n",
+                    source.splitlines()[0] + "\n"
+                        + source.splitlines()[1].replace("/releases/25.12/",
+                                                          "/releases/" + release + "/") + "\n",
+                )
+                for selected in bad:
+                    with self.subTest(rejected=selected[:90]):
+                        feeds.write_text(selected)
+                        self.operations.unlink(missing_ok=True)
+                        self.run_cli(profile, "--check", "--local-dir", str(self.release),
+                                     ok=False, options={"MOCK_NEED_REPO": "1"})
+                        self.assertNotIn(" update\n", self.operations.read_text())
+                feeds.write_text(source)
+
+    def test_prior_beta_installation_can_be_safely_uninstalled(self):
+        profile = "immortalwrt-filogic"
+        self.configure(profile)
+        self.run_cli(profile, "--install", "--local-dir", str(self.release))
+        marker = self.router / "etc/adzero-arm64-beta/installed"
+        marker.write_text(
+            "tag=v0.21.5-arm64-beta.1\n"
+            "profile=immortalwrt-filogic\n"
+            "target=mediatek/filogic\n"
+        )
+        self.run_cli(profile, "--uninstall")
+        self.assertFalse(marker.exists())
+        self.assertIn("ctl:disable", self.ctl_log.read_text())
 
 
 if __name__ == "__main__":

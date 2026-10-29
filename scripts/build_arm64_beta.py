@@ -17,7 +17,7 @@ from build_ipk import version
 from build_sdk import source_hash
 
 ROOT = Path(__file__).resolve().parents[1]
-TAG = "v0.21.5-arm64-beta.1"
+TAG = "v0.21.5-arm64-beta.2"
 SOURCE_SHA = "8df7589827fdc1adc418c3b83887097589b257a4a7654ac0dd91ddf878ee60c9"
 PACKAGE = "luci-app-adzero-0.21.5-r1.apk"
 EVIDENCE = ROOT / "docs/evidence/arm64-pr10-sdk-builds.json"
