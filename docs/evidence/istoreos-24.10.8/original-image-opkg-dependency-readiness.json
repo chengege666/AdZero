@@ -1,0 +1,228 @@
+{
+  "firmware": "istoreos",
+  "release": "24.10.8",
+  "revision": "2026073111",
+  "verified_official_firmware_prefix": "https://fw.koolcenter.com/iStoreOS/",
+  "app_version": "0.21.5-r1",
+  "app_source_sha256": "8df7589827fdc1adc418c3b83887097589b257a4a7654ac0dd91ddf878ee60c9",
+  "historical_vendor_source_git": "a405f0378aef729f0f250c94b18a34a09b7d8890",
+  "historical_vendor_source_exact_factory_revision_attested": false,
+  "package_manager": "opkg",
+  "format": "ipk",
+  "profiles": {
+    "x86_64": {
+      "target": "x86/64",
+      "arch": "x86_64",
+      "original_image_sha256": "2ce609e2625f9ba67723ec29b0b509baa300c6b74f528596490d950909e09a9c",
+      "original_image_raw_sha256": "431470911d0aac490c14e744c8213c057819f1c1ac72bc66aa428bf4f8315170",
+      "original_squashfs_offsets": [
+        134742016
+      ],
+      "original_config_buildinfo_sha256": "b2ae3d3faa52b28595dd4597a691f9659deb94084056ddea4855a74ba4e39c44",
+      "original_feeds_buildinfo_sha256": "fc18878e95b97235e70edffe525c8236d25a0c1a76ffa3f29a62b76f236b2b05",
+      "original_pinned_vendor_feeds": 12,
+      "original_opkg_installed_package_count": 1041,
+      "original_opkg_status_sha256": "47005cabd7257f588cae42be98d93de0666d529994fdcf71d10e6d1726988379",
+      "original_full_tcpdump_preserved": true,
+      "missing_dependencies": [
+        {
+          "name": "adblock-fast",
+          "filename": "adblock-fast_1.2.4-r4_all.ipk",
+          "version": "1.2.4-r4",
+          "arch": "all",
+          "sha256": "cdd744ba8fdddc06246a5edaf916d382f9bcb3a7c612ecc463d290bf84601163"
+        },
+        {
+          "name": "conntrack",
+          "filename": "conntrack_1.4.8-r1_x86_64.ipk",
+          "version": "1.4.8-r1",
+          "arch": "x86_64",
+          "sha256": "1bedf00a2e778280c8ab9c2268809daacfaf8216e493f2ac81358050e75925e0"
+        },
+        {
+          "name": "coreutils-timeout",
+          "filename": "coreutils-timeout_9.7-r1_x86_64.ipk",
+          "version": "9.7-r1",
+          "arch": "x86_64",
+          "sha256": "f21b143782c1a5713ed1ab12bf60b71f9e074d9cdfacda5b98113c9844a28388"
+        },
+        {
+          "name": "libnetfilter-cthelper0",
+          "filename": "libnetfilter-cthelper0_1.0.0-r2_x86_64.ipk",
+          "version": "1.0.0-r2",
+          "arch": "x86_64",
+          "sha256": "85c6c4dd7a306d842e58ad45ea0570e8f24d688520609f25b22f929a6f8c2a99"
+        },
+        {
+          "name": "libnetfilter-cttimeout1",
+          "filename": "libnetfilter-cttimeout1_1.0.0-r2_x86_64.ipk",
+          "version": "1.0.0-r2",
+          "arch": "x86_64",
+          "sha256": "861ff672ddd02bc1beb0f3780b9dd77013e12222a6598e6b715807104dfaf0ed"
+        },
+        {
+          "name": "libnetfilter-queue1",
+          "filename": "libnetfilter-queue1_1.0.5-r4_x86_64.ipk",
+          "version": "1.0.5-r4",
+          "arch": "x86_64",
+          "sha256": "ca8933d168e2d02253bdb599525a585682c5c052c8f19b5a5695f9f2c99fe73b"
+        },
+        {
+          "name": "ucode-mod-socket",
+          "filename": "ucode-mod-socket_2025.07.18~3f64c808-r1_x86_64.ipk",
+          "version": "2025.07.18~3f64c808-r1",
+          "arch": "x86_64",
+          "sha256": "4b776b244a346875a399d1b848dd02e8af20e6e2c4d7b4288e1a94f25554b461"
+        }
+      ],
+      "original_opkg_preview_offline_solver": "passed_with_original_vendor_opkg_and_full_factory_file_lists",
+      "native_luci_ipk_build": "not_verified",
+      "native_luci_ipk_used_in_offline_solver": false,
+      "device_acceptance": "not_run"
+    },
+    "armsr": {
+      "target": "armsr/armv8",
+      "arch": "aarch64_generic",
+      "original_image_sha256": "361c7b1657422a1217d74fbcd3aeb09c56dcea40503a46d35494a45b5feeeefb",
+      "original_image_raw_sha256": "7d5bd7abba081402b1265e243e0d1474e22a4ba66e7ba72ccb91ee0e10bc1355",
+      "original_squashfs_offsets": [
+        134479872
+      ],
+      "original_config_buildinfo_sha256": "2af1b50f2fe6d5273d0e20eccc705a599612a9aca6ef173f00aed63508740ae7",
+      "original_feeds_buildinfo_sha256": "fc18878e95b97235e70edffe525c8236d25a0c1a76ffa3f29a62b76f236b2b05",
+      "original_pinned_vendor_feeds": 12,
+      "original_opkg_installed_package_count": 1001,
+      "original_opkg_status_sha256": "2a64168da24f012b63b4ba040f03e8c93c41b61d3126b621f0ec68cd4b5618cd",
+      "original_full_tcpdump_preserved": true,
+      "missing_dependencies": [
+        {
+          "name": "adblock-fast",
+          "filename": "adblock-fast_1.2.4-r4_all.ipk",
+          "version": "1.2.4-r4",
+          "arch": "all",
+          "sha256": "052665cf4d3b88572fdd94d72490e5dfdd1da6a4002e0d060b70982daa97c4ad"
+        },
+        {
+          "name": "conntrack",
+          "filename": "conntrack_1.4.8-r1_aarch64_generic.ipk",
+          "version": "1.4.8-r1",
+          "arch": "aarch64_generic",
+          "sha256": "b0e2bfbff0fc63d6ae39b5d8b6d01a04e66ce36d7ac6d30138835be2ce43138b"
+        },
+        {
+          "name": "coreutils-timeout",
+          "filename": "coreutils-timeout_9.7-r1_aarch64_generic.ipk",
+          "version": "9.7-r1",
+          "arch": "aarch64_generic",
+          "sha256": "9d0a0b3f518feffc8a27b002a96752547fdf2d7bc506c49c655002b186e897c8"
+        },
+        {
+          "name": "libnetfilter-cthelper0",
+          "filename": "libnetfilter-cthelper0_1.0.0-r2_aarch64_generic.ipk",
+          "version": "1.0.0-r2",
+          "arch": "aarch64_generic",
+          "sha256": "4733cc8382f097226fab3124acd2845bdaba821150c80411a80d98a2e5906129"
+        },
+        {
+          "name": "libnetfilter-cttimeout1",
+          "filename": "libnetfilter-cttimeout1_1.0.0-r2_aarch64_generic.ipk",
+          "version": "1.0.0-r2",
+          "arch": "aarch64_generic",
+          "sha256": "55bb4d2449c8e995f82ee11f0148e75c9abaa28ab61d9e95f9de913df0680263"
+        },
+        {
+          "name": "libnetfilter-queue1",
+          "filename": "libnetfilter-queue1_1.0.5-r4_aarch64_generic.ipk",
+          "version": "1.0.5-r4",
+          "arch": "aarch64_generic",
+          "sha256": "dbded31d05e42c03ca0c199329cf3a3061593b6cbd3af61c749323db487218f1"
+        },
+        {
+          "name": "ucode-mod-socket",
+          "filename": "ucode-mod-socket_2025.07.18~3f64c808-r1_aarch64_generic.ipk",
+          "version": "2025.07.18~3f64c808-r1",
+          "arch": "aarch64_generic",
+          "sha256": "7606f9c3f4547bc2006480e0ed9e724d7dbe775689e7cba22afdec073a2a3bc2"
+        }
+      ],
+      "original_opkg_preview_offline_solver": "passed_with_original_vendor_opkg_and_full_factory_file_lists",
+      "native_luci_ipk_build": "not_verified",
+      "native_luci_ipk_used_in_offline_solver": false,
+      "device_acceptance": "not_run"
+    },
+    "r6xs": {
+      "target": "rockchip/armv8",
+      "arch": "aarch64_generic",
+      "original_image_sha256": "8b916526ecb19d450b88eb1a198c39aa00c43e1c63d086c7a4040150d8298c14",
+      "original_image_raw_sha256": "783858ab2c6ee31d8a1339f9b57dba0a27fbfb38c619e8bc4ccfe237e6bf8731",
+      "original_squashfs_offsets": [
+        84934656
+      ],
+      "original_config_buildinfo_sha256": "1c2da6a3f619ef444d50115700996f3c23d90a5fd1ed0874b89e30c65d68e879",
+      "original_feeds_buildinfo_sha256": "5a660b4dae2a80f23bd5c153d266d70b0b1d37ce6ee03030d11a5363ad6f2b2f",
+      "original_pinned_vendor_feeds": 14,
+      "original_opkg_installed_package_count": 922,
+      "original_opkg_status_sha256": "3c195f10e8b2ee71b8b7119d807a5f176e693e36d1bd90fd796bc0d6346fd8d9",
+      "original_full_tcpdump_preserved": true,
+      "missing_dependencies": [
+        {
+          "name": "adblock-fast",
+          "filename": "adblock-fast_1.2.4-r4_all.ipk",
+          "version": "1.2.4-r4",
+          "arch": "all",
+          "sha256": "052665cf4d3b88572fdd94d72490e5dfdd1da6a4002e0d060b70982daa97c4ad"
+        },
+        {
+          "name": "conntrack",
+          "filename": "conntrack_1.4.8-r1_aarch64_generic.ipk",
+          "version": "1.4.8-r1",
+          "arch": "aarch64_generic",
+          "sha256": "b0e2bfbff0fc63d6ae39b5d8b6d01a04e66ce36d7ac6d30138835be2ce43138b"
+        },
+        {
+          "name": "coreutils-timeout",
+          "filename": "coreutils-timeout_9.7-r1_aarch64_generic.ipk",
+          "version": "9.7-r1",
+          "arch": "aarch64_generic",
+          "sha256": "9d0a0b3f518feffc8a27b002a96752547fdf2d7bc506c49c655002b186e897c8"
+        },
+        {
+          "name": "libnetfilter-cthelper0",
+          "filename": "libnetfilter-cthelper0_1.0.0-r2_aarch64_generic.ipk",
+          "version": "1.0.0-r2",
+          "arch": "aarch64_generic",
+          "sha256": "4733cc8382f097226fab3124acd2845bdaba821150c80411a80d98a2e5906129"
+        },
+        {
+          "name": "libnetfilter-cttimeout1",
+          "filename": "libnetfilter-cttimeout1_1.0.0-r2_aarch64_generic.ipk",
+          "version": "1.0.0-r2",
+          "arch": "aarch64_generic",
+          "sha256": "55bb4d2449c8e995f82ee11f0148e75c9abaa28ab61d9e95f9de913df0680263"
+        },
+        {
+          "name": "libnetfilter-queue1",
+          "filename": "libnetfilter-queue1_1.0.5-r4_aarch64_generic.ipk",
+          "version": "1.0.5-r4",
+          "arch": "aarch64_generic",
+          "sha256": "dbded31d05e42c03ca0c199329cf3a3061593b6cbd3af61c749323db487218f1"
+        },
+        {
+          "name": "ucode-mod-socket",
+          "filename": "ucode-mod-socket_2025.07.18~3f64c808-r1_aarch64_generic.ipk",
+          "version": "2025.07.18~3f64c808-r1",
+          "arch": "aarch64_generic",
+          "sha256": "7606f9c3f4547bc2006480e0ed9e724d7dbe775689e7cba22afdec073a2a3bc2"
+        }
+      ],
+      "original_opkg_preview_offline_solver": "passed_with_original_vendor_opkg_and_full_factory_file_lists",
+      "native_luci_ipk_build": "not_verified",
+      "native_luci_ipk_used_in_offline_solver": false,
+      "device_acceptance": "not_run"
+    }
+  },
+  "public_release": false,
+  "stable_sdk_verified": false,
+  "not_entire_2410_family": true,
+  "testing_scope": "Original 3 image SHA and true OPKG installed DB/full .list; 7 factory-feed dependencies per target hash pinned; solver simulated with native-format development preview only; real vendor Buildroot native IPK pending"
+}
