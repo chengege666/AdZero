@@ -5,7 +5,7 @@
 <tr><td>ARM64 公测</td><td>OpenWrt / ImmortalWrt 的四种 ARM64 新目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-arm64-beta.2">ARM64 Beta 发行页</a></td></tr>
 <tr><td>iStoreOS 公测</td><td>对应原厂版本的 iStoreOS 三种目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-beta.3">iStoreOS Beta 发行页</a></td></tr>
 </tbody></table>
-<p>你只要执行<a href="installation.html#install">同一条一键安装命令</a>，不用从三个渠道里手动挑。下方表格只是解释每个渠道的精确支持范围。<strong>常规版有 SDK 编译包，但不等于全部实机认证；Beta 可以公开试装，也不代表稳定认证。</strong></p>
+<p>你只要执行<a href="installation.html#install">同一条一键安装命令</a>，不用从三个渠道里手动挑。下面先列出<strong>已开放安装</strong>的精确组合，再单独展示<strong>适配中、尚未开放安装</strong>的目标。常规版有 SDK 编译包，但不等于全部实机认证；Beta 可以公开试装，也不代表稳定认证。</p>
 <h2 id="regular">常规安装：5 组已编译目标</h2>
 <table><thead><tr><th>固件</th><th>版本</th><th>设备目标 / CPU</th><th>格式</th></tr></thead><tbody>
 <tr><td>OpenWrt</td><td>24.10.8</td><td>x86/64 · x86_64</td><td>IPK</td></tr>
@@ -31,6 +31,15 @@
 <tr><td>rockchip/armv8</td><td>ARM64 · aarch64_generic</td><td>仅原厂 R6XS 镜像支持的板型，另核对设备标识</td></tr>
 </tbody></table>
 <p>每种目标都有独立的原厂 APK 与依赖包。修订号不同、其他 Rockchip 设备或第三方改造固件不能自动套用。<a href="installation.html#istoreos-beta">查看 iStoreOS 公测安装命令</a>。</p>
+<h2 id="istoreos-24108">正在适配：iStoreOS 24.10.8（暂未开放安装）</h2>
+<p><strong>这是开发计划中的目标，不属于上面的公开安装名单。</strong>目前锁定原厂 <strong>iStoreOS 24.10.8、修订号 2026073111</strong>，三种目标如下：</p>
+<table><thead><tr><th>固件与修订号</th><th>CPU / 设备 target</th><th>开发状态</th></tr></thead><tbody>
+<tr><td>iStoreOS 24.10.8 · 2026073111</td><td>x86_64 · x86/64</td><td>适配中，暂未开放安装</td></tr>
+<tr><td>iStoreOS 24.10.8 · 2026073111</td><td>ARM64 ARMSR · armsr/armv8</td><td>适配中，暂未开放安装</td></tr>
+<tr><td>iStoreOS 24.10.8 · 2026073111</td><td>ARM64 R6XS · rockchip/armv8</td><td>适配中，暂未开放安装</td></tr>
+</tbody></table>
+<p>已完成原厂固件镜像和原始 OPKG 软件包数据库校验、每种目标七个依赖 IPK 的校验，以及隔离环境的依赖安装模拟。<strong>原生 AdZero IPK 的最终编译及使用真实编译包的安装验收尚未完成</strong>，因此统一安装器仍会拒绝这三组目标。24.10.8 使用 OPKG/IPK，不得混装 iStoreOS 25.12 的 APK；其他 24.10.x 版本也不能视为已支持。</p>
+<p><a href="https://github.com/slobys/AdZero/pull/18">查看 iStoreOS 24.10.8 适配进度（Draft PR #18）</a> · <a href="https://github.com/slobys/AdZero/blob/codex/istoreos-24108-three-arch-20261029/docs/ISTOREOS_24_10.md">原厂适配与验证说明</a></p>
 <h2 id="device">怎么查看自己的固件信息？</h2>
 <p>用 root 登录路由器 SSH，先执行只读命令：</p>
 <pre><code>cat /etc/openwrt_release</code></pre>
