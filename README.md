@@ -1,157 +1,72 @@
 <p align="center">
-  <img src="docs/images/adzero-logo.png" alt="AdZero Logo" width="104" height="104">
+  <img src="docs/images/adzero-logo.png" alt="AdZero" width="96" height="96">
 </p>
+
 <h1 align="center">AdZero</h1>
-<p align="center">软路由上的广告过滤与 DNS 分流插件</p>
+<p align="center">让软路由帮你拦广告，管理 DNS 更简单。</p>
+
 <p align="center">
-  <a href="https://github.com/slobys/AdZero/releases">下载安装包</a> ·
-  <a href="https://slobys.github.io/AdZero/">在线文档</a> ·
-  <a href="https://www.youtube.com/@naiyou">YouTube 频道</a> ·
-  <a href="https://t.me/naiyous">Telegram 群组</a> ·
-  <a href="https://github.com/slobys/AdZero/issues">反馈问题</a>
+  <a href="https://slobys.github.io/AdZero/">📖 在线使用文档</a> ·
+  <a href="https://github.com/slobys/AdZero/releases">📦 下载安装</a> ·
+  <a href="https://github.com/slobys/AdZero/issues">💬 问题反馈</a>
 </p>
 
-AdZero 直接集成在 OpenWrt 的 LuCI 管理页面中，无需额外登录。添加想用的规则、按需调整 DNS，修改完成后统一应用。
+AdZero 是一款运行在 **OpenWrt、ImmortalWrt、iStoreOS** 软路由上的广告过滤插件，直接用路由器的 **LuCI 管理页面**操作，不需要额外安装管理 App。
 
-日常使用和设置请看 [在线使用文档](https://slobys.github.io/AdZero/)，包括安装、规则、拦截与放行、DNS、代理切换和常见问题；支持中文搜索、命令复制与手机阅读。
+## 能做什么？
 
-## 能做什么
+- **拦广告、挡追踪**：使用 adblock-fast 和过滤规则，减少广告及追踪域名请求。
+- **规则管理**：添加订阅、自定义拦截与放行；网站误拦时可以临时暂停或放行。
+- **看过滤效果**：查看 DNS 请求、拦截数量和响应耗时，并从电脑实际检测。
+- **设置 DNS**：修改国内/国外 DNS、备用地址；分流与严格模式按需启用。
+- **兼容常用代理**：适配 NaiLink、PassWall、OpenClash、Nikki 等，尽量保留原有代理设置。
 
-- **广告过滤**：内置常用规则库，也能添加自己的 HTTPS 规则订阅。
-- **批量应用**：先添加、编辑或开关多项规则，再一次应用，减少重复加载。
-- **拦截统计**：每秒刷新局域网可观察的请求数与「DNS请求拦截占比」，说明它不代表网页广告拦截率；可一键清零请求数和拦截数，从同一时刻重新计算。
-- **DNS 应答耗时**：分开显示正常、拦截应答的平均耗时，以及慢应答和 15 秒内未观察到应答的数量；只统计当前接入期间采集到的样本。
-- **最近拦截**：按需开启 5 分钟的内存记录，查看域名、次数并检查误杀。
-- **效果检测**：复制页面提供的查询命令，在电脑执行后自动核对拦截与正常解析。
-- **访问控制**：集中查询域名、查看最近拦截，搜索和批量管理自定义放行／拦截名单；改完统一应用。
-- **命中来源**：查询拦截来自哪个已应用列表；来源快照缺失时明确提示，不猜测。
-- **临时放行**：支持 10 分钟或 1 小时，到期由路由器尝试恢复，重启后失效。
-- **DNS 增强**：可选的 CNAME 过滤和按设备附加规则；上游测试与同组备用集中在概览的 DNS 设置。具体路径和限制见 [增强功能说明](docs/DNS_ENHANCEMENTS.md)。
-- **临时暂停**：网站或 App 异常时，暂停几分钟做对比，到期尝试自动恢复。
-- **可编辑 DNS**：国内、国外 DNS 都有默认地址，可以自行添加、删除和调整顺序。
-- **可选自动分流**：有受支持代理时，国内直连、国外走当前代理；无代理时使用国内 DNS 和本地直连。默认关闭。
+> **注意**：DNS 过滤不是浏览器广告扩展。同域名视频广告、App 自带加密 DNS 或绕过路由器的流量，不一定能拦截。页面统计也不等于网页广告拦截率。
 
-提供 NaiLink、PassWall、OpenClash、Nikki 的 DNS 适配，并支持 SSR Plus+ 原生域名广告过滤。使用 adblock-fast 处理广告规则，无需另外安装 AdGuard Home 或 SmartDNS。
+## 安装：先选自己的固件
 
-## 安装与升级
+| 安装渠道 | 对应固件和设备 | 当前状态 |
+| --- | --- | --- |
+| **常规安装 v0.21.5** | OpenWrt 24.10.8 / 25.12.5、ImmortalWrt 24.10.6 / 25.12.2 的**指定 x86_64 目标**，以及 **OpenWrt 25.12.5 Rockchip ARM64** | 已提供匹配 SDK 包 |
+| **ARM64 公测** | OpenWrt **25.12.6**、ImmortalWrt **25.12.2** 的 **Rockchip ARMv8 / MediaTek Filogic** | 公开 Beta |
+| **iStoreOS 公测** | iStoreOS **25.12.6（修订 2026102312）** 的 **x86_64 / ARM64 ARMSR / Rockchip R6XS** | 公开 Beta |
 
-v0.21.4 新增 LuCI 在线更新、中文菜单安装与固件 SDK 兼容判断改进。详见 [v0.21.4 更新说明](docs/RELEASE_0.21.4.md)。v0.21.3 的 NaiLink／PassWall DNS 并发修复继续保留。
+**必须匹配完整固件版本、设备 target 和包架构**，不是所有 ARM64 或同系列固件都通用。详细名单见 [支持的固件](https://slobys.github.io/AdZero/compatibility.html)。
 
-当前为 **v0.21.5 测试版（Pre-release）**，DNS 地址、并发、严格模式、上游测试和自动备用集中在运行概览。PassWall 不支持的组合会在修改网络前预检，并显示具体原因。升级保留原来的单一模式，严格模式默认关闭。严格模式覆盖默认 IPv4 LAN 的明文 DNS 路径，并阻断该 LAN 的 IPv6 DNS 和 853 端口；浏览器 DoH 需另行管理。详见 [DNS 设置与范围](docs/DNS_SETTINGS.md)。
+以 **root 身份登录软路由 SSH**，复制对应的一条命令，即可进入中文安装菜单。
 
-### OpenWrt / ImmortalWrt ARM64 独立一键测试版
-
-**OpenWrt 25.12.6 与 ImmortalWrt 25.12.2 的 Rockchip ARMv8 / MediaTek Filogic** 已各自提供独立的官方/厂商 SDK 安装包及中文一键安装测试渠道。必须精确匹配固件发行版、完整版本、target 和包架构；普通稳定版更新清单不变，**这不是所有 ARM64 设备通用安装包**。
-
-以 root SSH 登录有备份与恢复方式的测试软路由，执行：
-
-```sh
-curl -fL --proto '=https' --proto-redir '=https' https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.1/install-arm64-beta.sh -o /tmp/install-arm64-beta.sh && sh /tmp/install-arm64-beta.sh --menu
-```
-
-菜单可选择只读兼容性/依赖检查、一键安装（默认不启用 DNS 过滤）、确认风险后启用和安全卸载。缺失依赖仅尝试从匹配固件的**官方 HTTPS 软件源**安装；仓库不匹配、依赖计划升级/替换原系统包时会拒绝安装。说明和适用目标见 [ARM64 Beta 发布说明](docs/RELEASE_ARM64_BETA_0.21.5.md)。**尚未完成真实设备 DNS/代理共存、重启和故障恢复认证，首轮应在可救援设备测试。**
-
-### iStoreOS 独立公开测试版：一键安装
-
-**已开放 [iStoreOS 独立公开 Beta 渠道](docs/RELEASE_ISTOREOS_BETA_0.21.5.md)**，仅支持 iStoreOS **25.12.6 修订 `2026102312`** 的 x86_64、ARMSR ARM64 与原厂 R6XS Rockchip，每个目标分别打包原厂 Buildroot APK + 六个依赖。在有备份与救援方式的测试设备上以 root SSH 执行：
-
-```sh
-curl -fL --proto '=https' --proto-redir '=https' https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.1/install-istoreos-beta.sh -o /tmp/install-istoreos-beta.sh && sh /tmp/install-istoreos-beta.sh --menu
-```
-
-自动识别精确固件、下载并校验 SHA-256。中文菜单可选只读预检、一键安装（默认关闭过滤）、经确认启用及安全卸载。**公开试装 Pre-release 不代表已通过真机正式认证**。它不替换普通 v0.21.5 安装/在线更新；请在 [GitHub Issues](https://github.com/slobys/AdZero/issues) 提交脱敏的安装和 DNS/代理测试结果。
-
-### 中文菜单式安装（推荐）
-
-以 root 登录路由器 SSH，运行下面**一条固定命令**。地址不包含版本号，不需要每次修改命令；菜单会根据已安装状态自动选择安装或升级，并使用发行版内固定的 SDK 校验清单选包：
+### ① OpenWrt / ImmortalWrt 常规安装
 
 ```sh
 curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install.sh -o /tmp/adzero-install.sh && sh /tmp/adzero-install.sh --menu
 ```
 
-菜单包含「一键安装/自动升级」「安装但不自动开启」「只读环境与安装包校验」「安全卸载」「退出」。**不会要求手填 OpenWrt 版本、目标架构、IPK/APK 文件名或 GitHub 发布版本**；默认使用仓库安装器当前固定的已发布版本，维护者发布新版时更新该默认来源。下载后也可以再次运行 `sh /tmp/adzero-install.sh --menu` 打开菜单。
-
-安装/升级仍会严格检查固件完整版本、target、软件包架构和 SHA-256；不在兼容矩阵内的设备会停止，不会强装。环境检查只下载并核对安装包，不改变路由器服务。普通用户推荐菜单；已有自动化脚本仍可用 `--install`、`--upgrade`、`--no-enable` 和 `--local-dir` 进行非交互操作。
-
-安装后打开 **服务 → AdZero**。升级后如果页面未更新，按 `Ctrl + F5` 刷新。
-
-安装器会检查机型与软件包、备份配置并安装依赖。也可以在 [GitHub Releases](https://github.com/slobys/AdZero/releases) 下载已发布且匹配固件的发行包。详细操作见 [安装与恢复](docs/INSTALLATION.md)。
-
-### LuCI 页面内在线更新（无需 SSH）
-
-安装**包含此功能的新版本**后，版本号会显示在左上角 AdZero Logo 旁。点击版本号即可检查 GitHub 官方发布版本；有匹配的新版本时显示目标版本、兼容性结果和「立即更新」，再次确认后启动后台升级任务。升级完成后刷新页面核对版本。网页打开时也会静默检查一次，GitHub 不可用不会阻断现有广告过滤。
-
-- 更新检查使用 GitHub Releases API，包括已发布测试版但不包含草稿；仅接受 vX.Y.Z 标签和具有 GitHub SHA-256 digest 的官方 install.sh 资产。
-- 更新前验证发布安装脚本 SHA-256，并调用其只读预检核对固件 ID、完整版本、target、包格式、架构及安装包 SHA-256。**没有匹配 SDK 构建的固件仍会拒绝升级。**
-- 只有第二次点击「确认升级」才会启动后台任务。已校验的许可 15 分钟有效、针对特定版本且一次性使用；并发任务被锁定，失败不会自动重复安装。
-- 后台沿用安装器原有的依赖预检、配置备份、恢复记录和安装锁。升级可能短暂中断 DNS/代理；若未确认成功，保留恢复记录并手动核对。
-- 这不是 OpenWrt 固件升级或刷机，只升级 AdZero 软件包。
-- **注意：已发布的 v0.21.3 安装包尚不包含在线更新按钮。** 需要先通过 SSH 菜单升级到 v0.21.4（正式构建发布后）或更高版本，此后才可在 LuCI 内点击更新。合并源码不会自动替换旧 Release。
-
-## 日常怎么用
-
-1. **选规则**：在「过滤规则」添加需要的列表，也可以粘贴自己的订阅地址。
-2. **按需改设置**：修改 DNS 或分流开关，选择会进入「待应用」。每组可选单一或并发；严格模式按需启用。在同一入口测试已应用地址，单一模式可启用同组备用切换。
-3. **统一应用**：改完后点击「应用并重新加载」。有草稿时「重载已应用规则」不可用，先应用或撤销草稿；「更新订阅」获取新规则，「手动校验」只检查本地已下载规则。
-
-「访问控制」集中管理最近拦截和自定义名单；用法及范围见 [统计与访问控制](docs/ACCESS_CONTROL.md)。
-
-保护总开关、临时暂停为即时操作；访问控制中的放行／拦截先加入待应用，改完统一生效。应用规则或网络设置时，可能短暂重载 DNS 或当前代理；具体耗时取决于设备与规则规模。
-
-## 兼容范围
-
-以下组合已有对应官方 SDK 构建包：
-
-| 固件 | 设备目标 | 软件包 |
-| --- | --- | --- |
-| OpenWrt 24.10.8 | x86/64 | IPK |
-| OpenWrt 25.12.5 | x86/64 | APK |
-| OpenWrt 25.12.5 | rockchip/armv8 | APK |
-| ImmortalWrt 24.10.6 | x86/64 | IPK（独立厂商 SDK 编译通过） |
-| ImmortalWrt 25.12.2 | x86/64 | APK（独立厂商 SDK 编译通过） |
-
-以上五种完整固件/目标组合均已具备独立 SDK 构建证据，真实路由器的网络与广告过滤效果仍待验收。ImmortalWrt 的其他版本、iStoreOS、其他架构按 [兼容矩阵](docs/COMPATIBILITY.md) 逐步推进；安装器仍会拒绝发行清单中没有的组合。
-
-**ARM64 开发进展：**已为 OpenWrt 25.12.6 的 Rockchip/Filogic、ImmortalWrt 25.12.2 的 Rockchip/Filogic 固定各自官方 SDK SHA，并新增真实 SDK 自动构建目标；为 iStoreOS 25.12.6 的 ARMSR 和 R6XS 两种 ARM64 固件单独核验原厂构建配置、源码提交和 feeds，提供原生候选 APK 构建入口。**这些组合尚未加入稳定版安装兼容清单；OpenWrt/ImmortalWrt 四组 ARM64 及 iStoreOS 三组目标现分别通过独立 Beta 通道公开试装。**完整进度与测试门槛见 [ARM64 适配计划](docs/ARM64.md)。
-
-**iStoreOS 进度（尚未发布）：**原厂 iStoreOS 25.12.6、修订 `2026102312`、x86_64 的专用 APK 已从原厂 Buildroot 编译，并在隔离 KVM 虚拟机完成离线模拟与实际安装；六个原厂依赖均能满足，原有完整版 `tcpdump` 得以保留，安装后 AdZero 仍默认关闭。详见 [虚拟机验证证据](docs/evidence/istoreos-25.12.6/native-apk-virtual-machine-acceptance.json)。这并非实机 LAN、NaiLink 或 DNS/回滚验收，**iStoreOS 尚未列入稳定安装清单；独立 Beta 提供公开一键试装**。本次新字节不是已发布的 v0.21.5 Release 资产。
-
-**iStoreOS ARM64 原厂镜像核验：**独立验证了 25.12.6-2026102312 的 ARMSR 与 R6XS 官方压缩镜像、原始文件系统 SHA-256、固件 ID/target/ABI 和预装 APK 数据库；两套固件分别预装 1,018 / 940 个包，均保留完整版 `tcpdump`。已增加严格的 ARM64 原厂 APK 递归依赖检查及反混装测试；两种固件的原厂原生 APK 编译、6 个缺失依赖闭环及 7 个 APK 离线模拟均已通过；真实软路由 LAN/DNS/代理/升级回滚验收仍需逐项完成，**当前不得在菜单或在线更新中将其当成已发布支持**。证据和构建流程见 [ARM64 适配进度](docs/ARM64.md)。
-
-**iStoreOS 下一阶段（只读预检候选包）：**增加严格绑定 ARMSR/R6XS 原厂完整修订号、target/ABI 和六个原厂依赖哈希的独立离线候选 ZIP，以及不支持安装操作的只读环境与 apk-tools 模拟预检。在对应原厂镜像数据库隔离副本上，两种目标均用真实厂商 apk-tools 通过 `--check` 和 `--solver`；**原私有预检 ZIP 仍不属于公开安装包；新 iStoreOS Beta 通过独立发布页开放一键试装，稳定在线更新尚未开放**。详见 [iStoreOS 私有离线预检流程](docs/ISTOREOS_PILOT.md)。 新增 `--report` 严格脱敏只读设备就绪报告（只有固定布尔和资源数值，绝不复制代理订阅、密钥、节点或 IP），可在维护者机器上与原厂目标/测试包 manifest 严格比对；仍不授权安装。
-
-**安装器兼容性修正（v0.21.5）**：不再因 `DISTRIB_ID` 不是 `OpenWrt` 就直接拒绝，改为匹配发布清单中的**固件名称 + 完整版本 + 设备 target + IPK/APK 格式**，随后核对包架构和 SHA-256。ImmortalWrt 增加两个 x86_64 的厂商 SDK 专属构建组合；其他 ImmortalWrt 版本及尚无专用 SDK 包的 iStoreOS，仍不允许强行跨固件安装，但会明确显示检测到的系统信息和已支持组合。详见 [安装常见问题](docs/INSTALLATION.md)。
-
-NaiLink、PassWall、OpenClash、Nikki 的不同版本需分别验收。SSR Plus+ 使用原生屏蔽列表，保留节点和分流设置，需关闭 AdZero 自动分流；PassWall 2 和 HomeProxy 目前仅识别。同时开启多个代理或遇到未知代理时，不会自动接管。概览中的「代理接入」可展开查看：区分实际内核、已保存开关和当前接入，不把识别到插件当作已经适配。
-
-PassWall 保留原有 dnsmasq 或 ChinaDNS-NG 分流引擎，沿原生屏蔽列表接入；SSR Plus+ 也使用原生接口。会核对运行进程、配置加载路径与屏蔽规则样本，发现 DNS 子进程回收信号阻塞时单独提示。未加载时有限重试，内容未变且运行配置正常时不重复重启代理；这些检查不能代替终端效果检测。
-
-切换时先停止旧代理、启动新代理，再点击「重新检测」。NaiLink 的管理服务和代理内核分别判断；说明见 [切换代理](docs/PROXY_SWITCHING.md)。
-
-PassWall 默认 IPv4 LAN DNS 接管模式下，会每五秒检查旧 UDP DNS 会话；入口稳定后只处理仍走旧入口的连接，不清空全网连接。需要小型 `conntrack` 依赖；自定义 ACL、未知规则或多代理状态会跳过。已缓存的错误解析不会被路由器远程清除，IPv6、TCP 异常和 nftset 报错需分别验收。
-
-## 卸载
-
-先关闭保护并恢复 AdZero 管理的设置，成功后卸载。按路由器的包管理器选择一条：
+### ② OpenWrt / ImmortalWrt ARM64 公测
 
 ```sh
-# APK 固件（如 OpenWrt 25.12.5）
-/usr/libexec/adzero/ctl disable && apk del luci-app-adzero
-
-# OPKG 固件（如 OpenWrt 24.10.8）
-/usr/libexec/adzero/ctl disable && opkg remove luci-app-adzero
+curl -fL --proto '=https' --proto-redir '=https' https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.1/install-arm64-beta.sh -o /tmp/install-arm64-beta.sh && sh /tmp/install-arm64-beta.sh --menu
 ```
 
-如果恢复失败或提示操作锁占用，先保留错误信息，不要强制卸载或手动删除恢复记录。
+### ③ iStoreOS 公测
 
-## 使用前了解
+```sh
+curl -fL --proto '=https' --proto-redir '=https' https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.1/install-istoreos-beta.sh -o /tmp/install-istoreos-beta.sh && sh /tmp/install-istoreos-beta.sh --menu
+```
 
-DNS 过滤主要拦截广告和追踪域名，无法保证去除同域视频广告或网页空白。设备使用自己的加密 DNS、外部 DNS 或绕过路由器时，过滤可能不生效。
+安装器会检查固件和安装包。**公测版首次建议选择「安装但不启用过滤」**：先确认 SSH、LuCI 和正常上网没问题，再手动开启。测试前请备份路由器配置，并准备本地恢复方式。
 
-界面显示「已开启」表示配置已应用，实际过滤效果还需要在手机或电脑上确认。
+## 装好以后怎么用？
 
-「效果检测」通过后会显示对应设备。统计保存在内存中，重启路由器后清零；不代表网页广告个数，不保存完整查询日志。范围与操作见 [统计与检测说明](docs/OBSERVATION.md)。
+1. 打开路由器 LuCI → **服务 → AdZero**。
+2. 在「过滤规则」选择列表，点击 **应用并重新加载**。
+3. 回到「运行概览」开启保护，用电脑进行 **效果检测**。
 
-[规则管理](docs/RULE_SOURCES.md) · [DNS 设置](docs/DNS_SETTINGS.md) · [AdGuard 参考与优化方向](docs/ADGUARD_REVIEW.md) · [验证记录](docs/LOCAL_VALIDATION.md) · [开发与构建](docs/PACKAGING.md) · [Logo 与设计说明](docs/BRAND.md)
+网站打不开？先临时暂停，再检查是否误拦；不要直接删除代理配置或恢复记录。具体操作见 [第一次使用](https://slobys.github.io/AdZero/quick-start.html) 和 [常见问题](https://slobys.github.io/AdZero/troubleshooting.html)。
 
-源码采用 [MIT 许可证](LICENSE)。adblock-fast、代理插件与规则源遵循各自许可。
+## 文档与反馈
+
+**[完整在线文档](https://slobys.github.io/AdZero/)** · [支持固件与安装渠道](https://slobys.github.io/AdZero/compatibility.html) · [GitHub Releases](https://github.com/slobys/AdZero/releases) · [提交问题](https://github.com/slobys/AdZero/issues)
+
+[YouTube 频道](https://www.youtube.com/@naiyou) · [Telegram 群组](https://t.me/naiyous)
+
+项目采用 [MIT 许可证](LICENSE)。各依赖、代理插件及规则来源遵循其各自的许可。

@@ -1,0 +1,45 @@
+<div class="callout"><strong>不知道自己的固件能不能装？</strong>先看下面的三个渠道。安装器会检查固件版本、设备目标（target）和软件包架构；不匹配就停止，不能只凭“是 ARM64”强行安装。</div>
+<h2 id="channels">三种安装渠道，有什么区别？</h2>
+<table><thead><tr><th>渠道</th><th>适合谁</th><th>下载入口</th></tr></thead><tbody>
+<tr><td>常规版 v0.21.5</td><td>下表五组已有 SDK 编译包的固件</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5">常规版发行页</a></td></tr>
+<tr><td>ARM64 公测</td><td>OpenWrt / ImmortalWrt 的四种 ARM64 新目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-arm64-beta.1">ARM64 Beta 发行页</a></td></tr>
+<tr><td>iStoreOS 公测</td><td>对应原厂版本的 iStoreOS 三种目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-beta.1">iStoreOS Beta 发行页</a></td></tr>
+</tbody></table>
+<p>三种渠道都可以从<a href="installation.html">安装与升级</a>找到中文菜单命令。<strong>常规版表示有指定 SDK 构建包，不代表所有实体路由器已经验收；Beta 表示可以自愿安装测试，不等于稳定认证。</strong></p>
+<h2 id="regular">常规安装：5 组已编译目标</h2>
+<table><thead><tr><th>固件</th><th>版本</th><th>设备目标 / CPU</th><th>格式</th></tr></thead><tbody>
+<tr><td>OpenWrt</td><td>24.10.8</td><td>x86/64 · x86_64</td><td>IPK</td></tr>
+<tr><td>OpenWrt</td><td>25.12.5</td><td>x86/64 · x86_64</td><td>APK</td></tr>
+<tr><td>OpenWrt</td><td>25.12.5</td><td>rockchip/armv8 · ARM64</td><td>APK</td></tr>
+<tr><td>ImmortalWrt</td><td>24.10.6</td><td>x86/64 · x86_64</td><td>IPK</td></tr>
+<tr><td>ImmortalWrt</td><td>25.12.2</td><td>x86/64 · x86_64</td><td>APK</td></tr>
+</tbody></table>
+<p>这是常规安装器精确匹配的五组固件/目标；不是“所有 24.10 或 25.12 都支持”。<a href="installation.html#standard">打开常规安装教程</a>。</p>
+<h2 id="arm64">OpenWrt / ImmortalWrt ARM64 公测：4 组</h2>
+<table><thead><tr><th>固件</th><th>版本</th><th>设备目标</th><th>包架构</th></tr></thead><tbody>
+<tr><td>OpenWrt</td><td>25.12.6</td><td>rockchip/armv8</td><td>aarch64_generic</td></tr>
+<tr><td>OpenWrt</td><td>25.12.6</td><td>mediatek/filogic</td><td>aarch64_cortex-a53</td></tr>
+<tr><td>ImmortalWrt</td><td>25.12.2</td><td>rockchip/armv8</td><td>aarch64_generic</td></tr>
+<tr><td>ImmortalWrt</td><td>25.12.2</td><td>mediatek/filogic</td><td>aarch64_cortex-a53</td></tr>
+</tbody></table>
+<p>四份 APK 分别由匹配的 OpenWrt 或 ImmortalWrt SDK 编译，<strong>不能互换</strong>。如果固件缺少依赖，Beta 安装器只尝试对应厂商官方 HTTPS 软件源；第三方或无法匹配的软件源会导致安装停止。首次安装默认不启用 DNS 过滤。<a href="installation.html#arm64-beta">查看 ARM64 公测安装命令</a>。</p>
+<h2 id="istoreos">iStoreOS 公测：3 组</h2>
+<p>这三组必须是 <strong>iStoreOS 25.12.6，修订号 2026102312</strong>：</p>
+<table><thead><tr><th>设备目标</th><th>CPU / 包架构</th><th>说明</th></tr></thead><tbody>
+<tr><td>x86/64</td><td>x86_64</td><td>Intel / AMD 64 位软路由</td></tr>
+<tr><td>armsr/armv8</td><td>ARM64 · aarch64_generic</td><td>ARMSR 原厂固件</td></tr>
+<tr><td>rockchip/armv8</td><td>ARM64 · aarch64_generic</td><td>仅原厂 R6XS 镜像支持的板型，另核对设备标识</td></tr>
+</tbody></table>
+<p>每种目标都有独立的原厂 APK 与依赖包。修订号不同、其他 Rockchip 设备或第三方改造固件不能自动套用。<a href="installation.html#istoreos-beta">查看 iStoreOS 公测安装命令</a>。</p>
+<h2 id="device">怎么查看自己的固件信息？</h2>
+<p>用 root 登录路由器 SSH，先执行只读命令：</p>
+<pre><code>cat /etc/openwrt_release</code></pre>
+<p>重点查看 <code>DISTRIB_ID</code>（固件）、<code>DISTRIB_RELEASE</code>（版本）、<code>DISTRIB_TARGET</code>（设备目标）、<code>DISTRIB_ARCH</code>（包架构）。iStoreOS Beta 还会核对 <code>DISTRIB_REVISION</code>；即使 CPU 相同，也必须和上面精确对应。</p>
+<p>需要核对实际包管理器时，可尝试 <code>apk --print-arch</code>。旧的 IPK / OPKG 固件不使用 APK；安装脚本会自行判断。如果目标不在表中，请<a href="https://github.com/slobys/AdZero/issues">提交兼容需求</a>，不要改掉固件标识来绕过检查。</p>
+<h2 id="beta-note">公测前先记住三件事</h2>
+<ol>
+<li><strong>先备份，有救援方式。</strong>建议从非唯一生产路由器开始，保持本地 SSH / 有线管理可用。</li>
+<li><strong>先安装，不急着开启。</strong>Beta 首次推荐安装但关闭过滤；确认网络正常后再手动开启，检查 DNS 和代理。</li>
+<li><strong>别用稳定版更新按钮升级 Beta。</strong>两个 Beta 都是单独的发布渠道，当前未加入常规 LuCI 在线更新白名单；已安装其他版本时先按原渠道安全卸载。</li>
+</ol>
+<p>详细步骤见<a href="installation.html">安装与升级</a>，如何排查失败见<a href="troubleshooting.html#compatibility">常见问题</a>。此表按 2026 年 10 月 29 日已发布的安装资产整理。</p>

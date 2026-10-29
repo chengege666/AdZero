@@ -13,8 +13,14 @@
 <p>先确认唯一活动代理和当前接入，再从故障电脑查询同一域名。比较新查询、旧连接、IPv4/IPv6 与可信加密路径的答案；NOERROR 只表示收到了 DNS 应答。</p>
 <p>网络路径恢复后，Windows 可按需清除坏缓存，再重新打开受影响应用：</p><pre><code>ipconfig /flushdns</code></pre>
 <p>这不能替代路由器修复。如果每次都需清缓存，或 TCP DNS 超时、nftset 持续报错，保留原文分别排查。不要全局清连接跟踪、盲目改全部上游或关闭路径安全检查。</p>
+<h2 id="compatibility">安装时提示「不支持此固件 / 目标架构」</h2>
+<p>不是所有 OpenWrt、ImmortalWrt、iStoreOS 都能用同一个安装包。以 root SSH 运行 <code>cat /etc/openwrt_release</code>，核对固件 ID、完整版本、target 和包架构，再与<a href="compatibility.html">支持固件表</a>对比。iStoreOS Beta 还要核对修订号 <code>2026102312</code>，R6XS 还会检查板型。</p>
+<p>常规安装器不包含独立 ARM64 / iStoreOS Beta。若你的设备在公测表中，应使用<a href="installation.html#arm64-beta">ARM64 公测安装器</a>或<a href="installation.html#istoreos-beta">iStoreOS 公测安装器</a>。不在表中的固件不要改 <code>DISTRIB_ID</code>、不要强装别的 target 软件包，可以提交<a href="https://github.com/slobys/AdZero/issues">适配需求</a>。</p>
+<h2 id="beta-deps">公测版依赖下载失败 / 软件包被拒绝</h2>
+<p>ARM64 公测缺少依赖时，只尝试当前固件对应的官方 HTTPS 软件源。若使用第三方镜像、旧版本源，或原厂依赖暂时无法获取，安装器会停止。先检查路由器原有仓库是否匹配固件，不要关闭 SHA 验证、禁用证书校验或手动添加其他固件的 feeds。</p>
+<p>iStoreOS Beta 则自带每种目标的原厂依赖，安装前检查全部 APK。如果提示压缩包 SHA-256 不匹配、原厂 <code>tcpdump</code> 将被替换、板型不符或已有 AdZero，应该停止，保留错误信息；不要用 <code>--force</code> 或人工改包名绕过。</p>
 <h2 id="upgrade">升级失败</h2>
-<p>“没有唯一匹配的 SDK 包”需核对固件、目标和架构；“软件源更新失败”需检查报错的软件源。保留安装版本与保护状态，修复安装条件后重新升级，不要先卸载当前可用版本。</p>
+<p>“没有唯一匹配的 SDK 包”需核对完整固件版本、设备 target 和包架构；“软件源更新失败”需检查对应固件的官方软件源。独立 ARM64 / iStoreOS Beta <strong>不会通过 LuCI 常规更新按钮自动升级</strong>，需要使用各自的独立菜单。已有可用版本时先保留配置和状态，不要为了重试而直接删掉旧包。</p>
 <h2 id="report">反馈时提供什么</h2>
 <p>提供 AdZero、代理、固件版本，复现顺序，页面错误详情与以下只读输出。状态含本地名单等信息，分享前检查并遮盖私人域名；不要发节点、订阅令牌、完整代理配置或恢复记录内容。</p>
 <pre><code>/usr/libexec/adzero/probe
