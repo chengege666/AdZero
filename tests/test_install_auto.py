@@ -1,4 +1,4 @@
-"""Unified AdZero entrypoint: twelve exact firmware routes and no unsafe installs.
+"""Unified AdZero entrypoint: fifteen exact firmware routes and no unsafe installs.
 
 Every firmware package database, curl, child installer and APK executable is a
 temporary fixture. No real router, network, DNS or package database is touched.
@@ -16,7 +16,7 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 SOURCE = REPO / "scripts/install-auto.sh"
 
-# Exact published compatibility matrix: five regular, four new ARM64, three iStoreOS.
+# Exact release channels: five regular, four ARM64, three iStoreOS 25.12 APK, three 24.10 IPK.
 ROUTES = (
     ("OpenWrt", "24.10.8", "x86/64", "x86_64", "r100-test", "opkg", "regular"),
     ("OpenWrt", "25.12.5", "x86/64", "x86_64", "r100-test", "apk", "regular"),
@@ -30,13 +30,20 @@ ROUTES = (
     ("iStoreOS", "25.12.6", "x86/64", "x86_64", "2026102312", "apk", "istoreos"),
     ("iStoreOS", "25.12.6", "armsr/armv8", "aarch64_generic", "2026102312", "apk", "istoreos"),
     ("iStoreOS", "25.12.6", "rockchip/armv8", "aarch64_generic", "2026102312", "apk", "istoreos"),
+    ("iStoreOS", "24.10.8", "x86/64", "x86_64", "2026073111", "opkg", "istoreos24108"),
+    ("iStoreOS", "24.10.8", "armsr/armv8", "aarch64_generic", "2026073111", "opkg", "istoreos24108"),
+    ("iStoreOS", "24.10.8", "rockchip/armv8", "aarch64_generic", "2026073111", "opkg", "istoreos24108"),
 )
 BASENAMES = {
     "regular": "install.sh",
     "arm64": "install-arm64-beta.sh",
     "istoreos": "install-istoreos-beta.sh",
+    "istoreos24108": "install-istoreos-24108-beta.sh",
 }
-PIN_VARIABLES = {"regular": "PIN_REGULAR", "arm64": "PIN_ARM64", "istoreos": "PIN_ISTOREOS"}
+PIN_VARIABLES = {
+    "regular": "PIN_REGULAR", "arm64": "PIN_ARM64",
+    "istoreos": "PIN_ISTOREOS", "istoreos24108": "PIN_ISTOREOS24108",
+}
 
 
 def sha(path):
@@ -86,6 +93,7 @@ case "$url" in
     https://raw.githubusercontent.com/slobys/AdZero/*/scripts/install.sh) base=install.sh ;;
     https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh) base=install-arm64-beta.sh ;;
     https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.3/install-istoreos-beta.sh) base=install-istoreos-beta.sh ;;
+    https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-24108-beta.1/install-istoreos-24108-beta.sh) base=install-istoreos-24108-beta.sh ;;
     *) echo wrong-provenance >&2; exit 74 ;;
 esac
 cp "$MOCK_INSTALLERS/$base" "$out" || exit 73
@@ -172,7 +180,7 @@ exit 0
                          process.stdout + process.stderr)
         return process
 
-    def test_all_twelve_exact_firmware_routes_detect_without_download(self):
+    def test_all_fifteen_exact_firmware_routes_detect_without_download(self):
         for row in ROUTES:
             with self.subTest(firmware=row[0], version=row[1], target=row[2]):
                 self.exec_log.unlink(missing_ok=True)
@@ -185,7 +193,7 @@ exit 0
                 self.assertFalse(self.curl_log.exists())
                 self.assertFalse(self.exec_log.exists())
 
-    def test_all_twelve_exact_firmware_routes_open_only_correct_menu(self):
+    def test_all_fifteen_exact_firmware_routes_open_only_correct_menu(self):
         for row in ROUTES:
             with self.subTest(firmware=row[0], version=row[1], target=row[2]):
                 self.exec_log.unlink(missing_ok=True)
@@ -199,7 +207,7 @@ exit 0
                 self.assertEqual(len(self.curl_log.read_text().splitlines()), 1)
 
     def test_selected_check_only_delegates_exact_readonly_check(self):
-        for index in (0, 5, 9):
+        for index in (0, 5, 9, 12):
             row = ROUTES[index]
             with self.subTest(route=row[-1]):
                 self.exec_log.unlink(missing_ok=True)
@@ -213,6 +221,9 @@ exit 0
             ("OpenWrt", "25.12.5", "mediatek/filogic", "aarch64_cortex-a53", "r1", "apk", "arm64"),
             ("ImmortalWrt", "25.12.2", "mediatek/filogic", "aarch64_generic", "r1", "apk", "arm64"),
             ("iStoreOS", "25.12.6", "armsr/armv8", "aarch64_generic", "2026102313", "apk", "istoreos"),
+            ("iStoreOS", "24.10.7", "armsr/armv8", "aarch64_generic", "2026073111", "opkg", "istoreos24108"),
+            ("iStoreOS", "24.10.8", "armsr/armv8", "aarch64_generic", "2026073112", "opkg", "istoreos24108"),
+            ("iStoreOS", "24.10.8", "mediatek/filogic", "aarch64_cortex-a53", "2026073111", "opkg", "istoreos24108"),
         )
         for row in cases:
             with self.subTest(row=row):
@@ -254,6 +265,28 @@ exit 0
                                         text=True, capture_output=True, timeout=8)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.curl_log.exists())
+
+    def test_istoreos_24108_exact_opkg_and_r6xs_board_only(self):
+        # Positive routing is only for the original OPKG firmware revision.
+        for row in ROUTES[12:15]:
+            with self.subTest(target=row[2]):
+                self.exec_log.unlink(missing_ok=True)
+                self.execute(row,"--menu")
+                self.assertEqual(self.exec_log.read_text().strip(),
+                                 "child:istoreos24108:--menu")
+        # A superficially compatible 24.10 device with an APK database is
+        # not allowed to use the 24.10 native IPK packages.
+        row=ROUTES[12]
+        self.configure(row)
+        (self.router/"lib/apk/db/installed").write_text("P:base-files\n")
+        env={**os.environ,
+             "PATH":str(self.bin)+":"+os.environ["PATH"],
+             "ADZERO_AUTO_TEST_MODE":"1",
+             "ADZERO_AUTO_TEST_ROOT":str(self.router)}
+        denied=subprocess.run(["sh",str(self.script),"--detect"],
+                              env=env,capture_output=True,text=True,timeout=10)
+        self.assertNotEqual(denied.returncode,0)
+        self.assertIn("OPKG",denied.stderr)
 
     def test_real_apk_inventory_ignores_relocated_db_and_old_opkg_artifacts(self):
         # Reproduces the reporter's 25.12.6 launcher rejection: a live APK
@@ -312,7 +345,8 @@ exit 0
         self.assertEqual(sha_from("PIN_REGULAR"), sha(REPO/"scripts/install.sh"))
         for name,path in (
             ("PIN_ARM64", "docs/evidence/arm64-public-beta-0.21.5-beta2-assets.json"),
-            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta3-assets.json")
+            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta3-assets.json"),
+            ("PIN_ISTOREOS24108", "docs/evidence/istoreos-24.10.8/public-beta-0.21.5-native-build-assets.json")
         ):
             metadata = json.loads((REPO/path).read_text(encoding="utf-8"))
             self.assertEqual(sha_from(name),metadata["installer"]["sha256"])

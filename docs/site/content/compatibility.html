@@ -1,11 +1,12 @@
 <div class="callout"><strong>不知道自己的固件能不能装？</strong>直接使用<a href="installation.html#install">统一安装命令</a>，它会自动读取固件版本、设备 target 和包架构，并选择正确的发行渠道。不需要手动选 CPU；不支持的组合会明确拒绝。</div>
-<h2 id="channels">安装助手会自动选择的三种渠道</h2>
+<h2 id="channels">安装助手会自动选择的四种渠道</h2>
 <table><thead><tr><th>渠道</th><th>适合谁</th><th>下载入口</th></tr></thead><tbody>
 <tr><td>常规版 v0.21.5</td><td>下表五组已有 SDK 编译包的固件</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5">常规版发行页</a></td></tr>
 <tr><td>ARM64 公测</td><td>OpenWrt / ImmortalWrt 的四种 ARM64 新目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-arm64-beta.2">ARM64 Beta 发行页</a></td></tr>
 <tr><td>iStoreOS 公测</td><td>对应原厂版本的 iStoreOS 三种目标</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-beta.3">iStoreOS Beta 发行页</a></td></tr>
+<tr><td>iStoreOS 24.10 OPKG 公测</td><td>iStoreOS 24.10.8（2026073111）x86_64/ARMSR/R6XS</td><td><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-24108-beta.1">iStoreOS 24.10 Beta.1 发行页</a></td></tr>
 </tbody></table>
-<p>你只要执行<a href="installation.html#install">同一条一键安装命令</a>，不用从三个渠道里手动挑。下面先列出<strong>已开放安装</strong>的精确组合，再单独展示<strong>适配中、尚未开放安装</strong>的目标。常规版有 SDK 编译包，但不等于全部实机认证；Beta 可以公开试装，也不代表稳定认证。</p>
+<p>你只要执行<a href="installation.html#install">同一条一键安装命令</a>，不用从四个渠道里手动挑。下面列出<strong>已开放下载的精确组合</strong>，公测目标仍待真实设备验收。常规版有 SDK 编译包，但不等于全部实机认证；Beta 可以公开试装，也不代表稳定认证。</p>
 <h2 id="regular">常规安装：5 组已编译目标</h2>
 <table><thead><tr><th>固件</th><th>版本</th><th>设备目标 / CPU</th><th>格式</th></tr></thead><tbody>
 <tr><td>OpenWrt</td><td>24.10.8</td><td>x86/64 · x86_64</td><td>IPK</td></tr>
@@ -31,15 +32,15 @@
 <tr><td>rockchip/armv8</td><td>ARM64 · aarch64_generic</td><td>仅原厂 R6XS 镜像支持的板型，另核对设备标识</td></tr>
 </tbody></table>
 <p>每种目标都有独立的原厂 APK 与依赖包。修订号不同、其他 Rockchip 设备或第三方改造固件不能自动套用。<a href="installation.html#istoreos-beta">查看 iStoreOS 公测安装命令</a>。</p>
-<h2 id="istoreos-24108">正在适配：iStoreOS 24.10.8（暂未开放安装）</h2>
-<p><strong>这是开发计划中的目标，不属于上面的公开安装名单。</strong>目前锁定原厂 <strong>iStoreOS 24.10.8、修订号 2026073111</strong>，三种目标如下：</p>
-<table><thead><tr><th>固件与修订号</th><th>CPU / 设备 target</th><th>开发状态</th></tr></thead><tbody>
-<tr><td>iStoreOS 24.10.8 · 2026073111</td><td>x86_64 · x86/64</td><td>适配中，暂未开放安装</td></tr>
-<tr><td>iStoreOS 24.10.8 · 2026073111</td><td>ARM64 ARMSR · armsr/armv8</td><td>适配中，暂未开放安装</td></tr>
-<tr><td>iStoreOS 24.10.8 · 2026073111</td><td>ARM64 R6XS · rockchip/armv8</td><td>适配中，暂未开放安装</td></tr>
+<h2 id="istoreos-24108">iStoreOS 24.10.8 原生 OPKG/IPK 公测：3 组</h2>
+<p>已开放独立的 <a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-24108-beta.1">iStoreOS 24.10.8 Beta.1</a> 下载。只接受 <strong>iStoreOS 24.10.8、修订号 2026073111</strong>，绝非全部 24.10.x 通用：</p>
+<table><thead><tr><th>精确原厂固件</th><th>CPU / 设备 target</th><th>安装状态</th></tr></thead><tbody>
+<tr><td>24.10.8 · 2026073111</td><td>x86_64 · x86/64</td><td>公开 Beta.1，待实机验收</td></tr>
+<tr><td>24.10.8 · 2026073111</td><td>ARM64 ARMSR · armsr/armv8</td><td>公开 Beta.1，待实机验收</td></tr>
+<tr><td>24.10.8 · 2026073111</td><td>ARM64 R6XS · rockchip/armv8</td><td>公开 Beta.1，待实机验收；限制原厂板型</td></tr>
 </tbody></table>
-<p>已完成原厂固件镜像和原始 OPKG 软件包数据库校验、每种目标七个依赖 IPK 的校验，以及隔离环境的依赖安装模拟。<strong>原生 AdZero IPK 的最终编译及使用真实编译包的安装验收尚未完成</strong>，因此统一安装器仍会拒绝这三组目标。24.10.8 使用 OPKG/IPK，不得混装 iStoreOS 25.12 的 APK；其他 24.10.x 版本也不能视为已支持。</p>
-<p><a href="https://github.com/slobys/AdZero/pull/18">查看 iStoreOS 24.10.8 适配进度（Draft PR #18）</a> · <a href="https://github.com/slobys/AdZero/blob/codex/istoreos-24108-three-arch-20261029/docs/ISTOREOS_24_10.md">原厂适配与验证说明</a></p>
+<p>三种目标均已从对应 iStoreOS 24.10 历史 Buildroot 和固定原厂 feeds 生成<strong>原生 OPKG/IPK</strong>，并使用原厂 OPKG、原始已安装数据库和完整文件清单对真实编译包及七个原厂依赖完成离线模拟；未升级或删除任何原装软件包。首次安装默认不启用过滤。<strong>实体设备 DNS/代理、重启和恢复仍未完成验收</strong>，建议只在可救援的测试路由器上试装。24.10.8 禁止混用 25.12 的 APK。</p>
+<p><a href="https://github.com/slobys/AdZero/releases/tag/v0.21.5-istoreos-24108-beta.1">下载 iStoreOS 24.10.8 Beta.1</a> · <a href="https://github.com/slobys/AdZero/blob/main/docs/ISTOREOS_24_10.md">原厂构建与模拟验收证据</a> · <a href="installation.html#istoreos-24108">打开统一安装教程</a></p>
 <h2 id="device">怎么查看自己的固件信息？</h2>
 <p>用 root 登录路由器 SSH，先执行只读命令：</p>
 <pre><code>cat /etc/openwrt_release</code></pre>
@@ -49,6 +50,6 @@
 <ol>
 <li><strong>先备份，有救援方式。</strong>建议从非唯一生产路由器开始，保持本地 SSH / 有线管理可用。</li>
 <li><strong>先安装，不急着开启。</strong>Beta 首次推荐安装但关闭过滤；确认网络正常后再手动开启，检查 DNS 和代理。</li>
-<li><strong>别用稳定版更新按钮升级 Beta。</strong>两个 Beta 都是单独的发布渠道，当前未加入常规 LuCI 在线更新白名单；已安装其他版本时先按原渠道安全卸载。</li>
+<li><strong>别用稳定版更新按钮升级 Beta。</strong>三个独立 Beta 都有自己的发行包，当前未加入常规 LuCI 在线更新白名单；已安装其他版本时先按原渠道安全卸载。</li>
 </ol>
 <p>详细步骤见<a href="installation.html">安装与升级</a>，如何排查失败见<a href="troubleshooting.html#compatibility">常见问题</a>。此表按 2026 年 10 月 29 日已发布的安装资产整理。</p>
