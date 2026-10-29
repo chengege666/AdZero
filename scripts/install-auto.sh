@@ -10,10 +10,10 @@ export LC_ALL
 
 REGULAR_URL='https://raw.githubusercontent.com/slobys/AdZero/eecd25ff3d7911530fdea1dfded5f3a399aee777/scripts/install.sh'
 ARM64_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh'
-ISTOREOS_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.2/install-istoreos-beta.sh'
+ISTOREOS_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.3/install-istoreos-beta.sh'
 PIN_REGULAR='85b1a1b80bfc5c7b05bfd220ebd368739053f2b5bcf0cfb0b973014d5565c333'
 PIN_ARM64='77f6ff5e6cccaca1895d6d24092ea89e80f8f0a90bc399af4fa8569c093900ed'
-PIN_ISTOREOS='664b29e27c74c7cf12a7daabd2048edc82ddadd3150e5fb2fa606b15d0dd64d4'
+PIN_ISTOREOS='120920acb4f7ed2e2e48d3537bea671da927bf09ca4150a7c9afaed00133dfcd'
 
 fail() {
     printf 'AdZero 安装助手：%s\n' "$*" >&2
@@ -92,10 +92,11 @@ esac
 # Catch package-manager confusion before network access; the downstream
 # installer performs further version, dependency and ownership checks.
 if [ "$PKG_FORMAT" = apk ]; then
-    [ -r "$ROOT/lib/apk/db/installed" ] &&
-        [ ! -e "$ROOT/usr/lib/opkg/status" ] &&
-        command -v apk >/dev/null 2>&1 ||
-        fail '目标需要 APK，当前包管理器或已安装数据库不匹配。'
+    # The active APK database can be relocated with overlayfs, and a previous
+    # firmware may have left an inactive OPKG status file behind. Consult the
+    # native APK installed inventory rather than assuming a fixed DB pathname.
+    command -v apk >/dev/null 2>&1 ||
+        fail '当前固件需要 APK，但未找到 apk 命令。'
     ACTUAL=$(apk --print-arch) || fail '无法读取 APK 实际 CPU 架构。'
     case "$ARCH:$ACTUAL" in
         x86_64:x86_64|\
@@ -103,6 +104,9 @@ if [ "$PKG_FORMAT" = apk ]; then
         aarch64_cortex-a53:aarch64|aarch64_cortex-a53:aarch64_cortex-a53) ;;
         *) fail "实际 APK 架构 $ACTUAL 与固件声明的 $ARCH 不匹配。" ;;
     esac
+    # Read-only proof that this *running* firmware has an APK-managed system.
+    apk --root "${ROOT:-/}" --arch "$ARCH" info -e base-files luci-base rpcd >/dev/null 2>&1 ||
+        fail 'APK 已安装包查询失败：请检查 apk info -e base-files luci-base rpcd；拒绝跨包管理器安装。'
 else
     [ -r "$ROOT/usr/lib/opkg/status" ] &&
         [ ! -e "$ROOT/lib/apk/db/installed" ] &&
@@ -131,7 +135,7 @@ case "$CHANNEL" in
         URL=$ARM64_URL
         EXPECTED_SHA=$PIN_ARM64 ;;
     istoreos)
-        DESCRIPTION='iStoreOS 公测（v0.21.5-istoreos-beta.2）'
+        DESCRIPTION='iStoreOS 公测（v0.21.5-istoreos-beta.3）'
         URL=$ISTOREOS_URL
         EXPECTED_SHA=$PIN_ISTOREOS ;;
 esac

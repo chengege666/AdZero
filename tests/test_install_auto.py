@@ -85,7 +85,7 @@ echo "$url" >> "$MOCK_CURL_LOG"
 case "$url" in
     https://raw.githubusercontent.com/slobys/AdZero/*/scripts/install.sh) base=install.sh ;;
     https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh) base=install-arm64-beta.sh ;;
-    https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.2/install-istoreos-beta.sh) base=install-istoreos-beta.sh ;;
+    https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.3/install-istoreos-beta.sh) base=install-istoreos-beta.sh ;;
     *) echo wrong-provenance >&2; exit 74 ;;
 esac
 cp "$MOCK_INSTALLERS/$base" "$out" || exit 73
@@ -94,8 +94,18 @@ cp "$MOCK_INSTALLERS/$base" "$out" || exit 73
         curl.chmod(0o755)
         apk = self.bin / "apk"
         apk.write_text("""#!/bin/sh
-[ "$1" = --print-arch ] || exit 88
-printf '%s\\n' "$MOCK_APK_ARCH"
+if [ "$1" = --print-arch ]; then
+    printf '%s\\n' "$MOCK_APK_ARCH"
+    exit 0
+fi
+[ "$MOCK_FORCE_APK_QUERY_FAIL" != 1 ] || exit 1
+while [ "$#" -gt 0 ] && [ "$1" != info ]; do shift; done
+[ "$#" -ge 3 ] && [ "$2" = -e ] || exit 88
+shift 2
+for package do
+    grep -qx "P:$package" "$MOCK_APK_DB" || exit 1
+done
+exit 0
 """)
         apk.chmod(0o755)
         opkg = self.bin / "opkg"
@@ -125,7 +135,7 @@ printf '%s\\n' "$MOCK_APK_ARCH"
         if pm == "opkg":
             opkg.write_text("Package: base-files\n")
         else:
-            apk.write_text("P:base-files\n")
+            apk.write_text("P:base-files\nP:luci-base\nP:rpcd\n")
         board = self.router / "tmp/sysinfo/board_name"
         board.unlink(missing_ok=True)
         if fw == "iStoreOS" and target == "rockchip/armv8":
@@ -133,6 +143,16 @@ printf '%s\\n' "$MOCK_APK_ARCH"
 
     def execute(self, row, *args, success=True, additions=None):
         self.configure(row)
+        additions = additions or {}
+        if additions.get("MOCK_STALE_OPKG") == "1":
+            (self.router / "usr/lib/opkg/status").write_text(
+                "Package: stale-opkg\nVersion: 1\n"
+            )
+        database = self.router / "lib/apk/db/installed"
+        if additions.get("MOCK_RELOCATED_APK_DB") == "1":
+            relocated = self.router / "tmp/active-apk-installed"
+            database.replace(relocated)
+            database = relocated
         arch = row[3]
         cpu = "x86_64" if arch == "x86_64" else "aarch64"
         env = {
@@ -142,7 +162,8 @@ printf '%s\\n' "$MOCK_APK_ARCH"
             "MOCK_INSTALLERS": str(self.sources),
             "MOCK_CURL_LOG": str(self.curl_log), "MOCK_DISPATCH_LOG": str(self.exec_log),
             "MOCK_APK_ARCH": cpu,
-            **(additions or {}),
+            "MOCK_APK_DB": str(database),
+            **additions,
         }
         shell = shlex.split(os.environ.get("ADZERO_TEST_SHELL", "sh"))
         process = subprocess.run(shell + [str(self.script), *args], env=env,
@@ -234,6 +255,36 @@ printf '%s\\n' "$MOCK_APK_ARCH"
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.curl_log.exists())
 
+    def test_real_apk_inventory_ignores_relocated_db_and_old_opkg_artifacts(self):
+        # Reproduces the reporter's 25.12.6 launcher rejection: a live APK
+        # inventory is valid even if a previous OPKG status file is left
+        # behind or the installed database is mounted outside the old path.
+        row = ROUTES[9]
+        self.curl_log.unlink(missing_ok=True)
+        result = self.execute(row, "--detect", additions={
+            "MOCK_STALE_OPKG": "1",
+            "MOCK_RELOCATED_APK_DB": "1",
+        })
+        self.assertIn("iStoreOS", result.stdout)
+        self.assertIn("自动选择：", result.stdout)
+        self.assertFalse(self.curl_log.exists())
+        self.execute(row, "--menu", additions={
+            "MOCK_STALE_OPKG": "1",
+            "MOCK_RELOCATED_APK_DB": "1",
+        })
+        self.assertIn("child:istoreos:--menu", self.exec_log.read_text())
+
+    def test_real_apk_query_failure_blocks_before_any_download(self):
+        row = ROUTES[9]
+        self.curl_log.unlink(missing_ok=True)
+        self.exec_log.unlink(missing_ok=True)
+        response = self.execute(row, "--detect", success=False, additions={
+            "MOCK_FORCE_APK_QUERY_FAIL": "1",
+        })
+        self.assertIn("APK 已安装包查询失败", response.stderr)
+        self.assertFalse(self.curl_log.exists())
+        self.assertFalse(self.exec_log.exists())
+
     def test_tampered_download_and_https_failure_never_execute(self):
         row = ROUTES[9]
         for key in ("MOCK_BAD_DIGEST", "MOCK_CURL_ERROR"):
@@ -261,7 +312,7 @@ printf '%s\\n' "$MOCK_APK_ARCH"
         self.assertEqual(sha_from("PIN_REGULAR"), sha(REPO/"scripts/install.sh"))
         for name,path in (
             ("PIN_ARM64", "docs/evidence/arm64-public-beta-0.21.5-beta2-assets.json"),
-            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta2-assets.json")
+            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta3-assets.json")
         ):
             metadata = json.loads((REPO/path).read_text(encoding="utf-8"))
             self.assertEqual(sha_from(name),metadata["installer"]["sha256"])

@@ -26,7 +26,7 @@ class BetaInstallTests(unittest.TestCase):
         for f in ("etc/config","lib/apk/db","tmp/sysinfo"):
             (self.router/f).mkdir(parents=True)
         (self.router/"etc/config/network").write_text("original-untouched")
-        (self.router/"lib/apk/db/installed").write_text("P:tcpdump\nP:rpcd\nP:luci-base\nP:curl\n")
+        (self.router/"lib/apk/db/installed").write_text("P:base-files\nP:tcpdump\nP:rpcd\nP:luci-base\nP:curl\n")
         self.bin=self.base/"bin";self.bin.mkdir()
         self.apks=self.base/"apk.log";self.ctls=self.base/"ctl.log";self.curls=self.base/"curl.log"
         shim=self.bin/"apk"
@@ -34,17 +34,26 @@ class BetaInstallTests(unittest.TestCase):
 if [ "$1" = --print-arch ]; then echo "$MOCK_ARCH"; exit 0; fi
 echo "$*" >> "$MOCK_APK_LOG"
 case " $* " in
+  *" info -e "*)
+    [ "$MOCK_FORCE_APK_QUERY_FAIL" != 1 ] || exit 1
+    while [ "$#" -gt 0 ] && [ "$1" != info ]; do shift; done
+    [ "$#" -ge 3 ] && [ "$2" = -e ] || exit 91
+    shift 2
+    for package do
+      grep -qx "P:$package" "$MOCK_APK_DB" || exit 1
+    done
+    exit 0 ;;
   *" add --simulate --no-network "*) ;;
   *" add --no-network "*)
     mkdir -p "$MOCK_ROOT/usr/libexec/adzero"
-    echo "P:luci-app-adzero" >> "$MOCK_ROOT/lib/apk/db/installed"
+    echo "P:luci-app-adzero" >> "$MOCK_APK_DB"
     cat > "$MOCK_ROOT/usr/libexec/adzero/ctl" <<'EOCTL'
 #!/bin/sh
 echo "ctl:$1" >> "$MOCK_CTL_LOG"
 EOCTL
     chmod +x "$MOCK_ROOT/usr/libexec/adzero/ctl"; exit 0 ;;
   *" del luci-app-adzero "*)
-    sed -i '/^P:luci-app-adzero$/d' "$MOCK_ROOT/lib/apk/db/installed"; exit 0 ;;
+    sed -i '/^P:luci-app-adzero$/d' "$MOCK_APK_DB"; exit 0 ;;
   *) echo "unexpected apk" >&2; exit 97 ;;
 esac
 echo '(1/7) Installing adblock-fast (1.2.4-r4)'
@@ -107,6 +116,7 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
             "ADZERO_BETA_TEST_ROOT":str(self.router),"ADZERO_BETA_TEST_MODE":"1",
             "MOCK_ROOT":str(self.router),
             "MOCK_ARCH":"x86_64" if profile=="x86_64" else "aarch64",
+            "MOCK_APK_DB":str(self.router/"lib/apk/db/installed"),
             "MOCK_APK_LOG":str(self.apks),"MOCK_CTL_LOG":str(self.ctls),
             "MOCK_CURL_LOG":str(self.curls),"MOCK_RELEASE":str(self.release),
             **(options or {})}
@@ -198,7 +208,7 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
         old = json.loads((ROOT/"docs/evidence/istoreos-25.12.6/public-beta-0.21.5-assets.json").read_text())
         new = json.loads((ROOT/"docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta2-assets.json").read_text())
         self.assertEqual(old["release_tag"], "v0.21.5-istoreos-beta.1")
-        self.assertEqual(new["release_tag"], beta.RELEASE_TAG)
+        self.assertEqual(new["release_tag"], "v0.21.5-istoreos-beta.2")
         self.assertEqual(new["supersedes_beta"], old["release_tag"])
         self.assertEqual(new["app_apk_sha256"], old["app_apk_sha256"])
         self.assertEqual(new["app_package_source_sha256"], old["app_package_source_sha256"])
@@ -209,8 +219,30 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
         self.assertNotEqual(new["installer"]["sha256"], old["installer"]["sha256"])
         self.assertEqual(len({x["sha256"] for x in new["archives"]}), 3)
 
+    def test_beta3_apk_source_and_deps_remain_identical_to_beta2(self):
+        old=json.loads((ROOT/"docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta2-assets.json").read_text())
+        new=json.loads((ROOT/"docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta3-assets.json").read_text())
+        self.assertEqual(old["release_tag"],"v0.21.5-istoreos-beta.2")
+        self.assertEqual(new["release_tag"],beta.RELEASE_TAG)
+        self.assertEqual(new["supersedes_beta"],old["release_tag"])
+        self.assertEqual(new["app_apk_sha256"],old["app_apk_sha256"])
+        self.assertEqual(new["app_package_source_sha256"],old["app_package_source_sha256"])
+        self.assertEqual(new["vendor_source_commit"],old["vendor_source_commit"])
+        self.assertEqual(new["physical_device_test"],"not_run")
+        self.assertFalse(new["public_stable_sdk_verified_matrix_changed"])
+        self.assertFalse(new["automatic_enable"])
+        self.assertRegex(new["installer"]["sha256"],r"^[a-f0-9]{64}$")
+        self.assertNotEqual(new["installer"]["sha256"],old["installer"]["sha256"])
+        previous={row["profile"]:row for row in old["archives"]}
+        self.assertEqual(set(previous),{row["profile"] for row in new["archives"]})
+        for item in new["archives"]:
+            prev=previous[item["profile"]]
+            self.assertEqual(item["factory_image_sha256"],prev["factory_image_sha256"])
+            self.assertEqual(item["dependency_count"],prev["dependency_count"])
+            self.assertRegex(item["sha256"],r"^[a-f0-9]{64}$")
+            self.assertNotEqual(item["sha256"],prev["sha256"])
     def test_archive_pins_deterministic_and_non_semver_beta(self):
-        self.assertEqual(self.assets["release_tag"],"v0.21.5-istoreos-beta.2")
+        self.assertEqual(self.assets["release_tag"],"v0.21.5-istoreos-beta.3")
         self.assertTrue(self.assets["production_verified_matrix_unchanged"])
         code=self.script.read_text()
         self.assertNotIn("@SHA_",code)
@@ -236,6 +268,38 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
                 shutil.rmtree(self.router / "etc/adzero-backups")
                 self.apks.unlink()
                 self.ctls.unlink()
+
+    def test_stale_opkg_and_relocated_apk_db_still_allow_safe_preflight(self):
+        # Actual report came from iStoreOS 25.12.6 at the auto-installer
+        # gate. The real APK query, not stale OPKG file names, is decisive.
+        self.configure("x86_64")
+        old = self.router/"usr/lib/opkg/status"
+        old.parent.mkdir(parents=True)
+        old.write_text("Package: old-opkg-remnant\n")
+        live_db = self.router/"tmp/real-apk-installed"
+        (self.router/"lib/apk/db/installed").replace(live_db)
+        result = self.invoke(
+            "x86_64", "--check", "--local-dir", str(self.release),
+            options={"MOCK_APK_DB":str(live_db)})
+        self.assertIn("预检通过", result.stdout)
+        self.assertTrue(old.exists())
+        self.assertEqual(live_db.read_text().count("P:tcpdump"),1)
+        self.assertFalse(self.ctls.exists())
+        self.assertFalse((self.router/"etc/adzero-beta/installed").exists())
+        live_db.write_text(live_db.read_text().replace("P:tcpdump\n",""))
+        denied = self.invoke(
+            "x86_64","--check","--local-dir",str(self.release),success=False,
+            options={"MOCK_APK_DB":str(live_db)})
+        self.assertIn("原厂组件 tcpdump",denied.stderr)
+
+    def test_beta2_previous_install_marker_uninstalls_safely_from_beta3(self):
+        self.configure("x86_64")
+        self.invoke("x86_64", "--install", "--local-dir", str(self.release))
+        marker=self.router/"etc/adzero-beta/installed"
+        marker.write_text("tag=v0.21.5-istoreos-beta.2\nprofile=x86_64\ntarget=x86/64\n")
+        self.invoke("x86_64","--uninstall")
+        self.assertFalse(marker.exists())
+        self.assertIn("ctl:disable",self.ctls.read_text())
 
     def test_r6xs_symlinked_board_name_is_not_device_attestation(self):
         profile = "rockchip-r6xs"

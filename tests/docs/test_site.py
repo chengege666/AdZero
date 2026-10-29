@@ -60,7 +60,7 @@ class Handbook(unittest.TestCase):
         self.assertNotIn('install-istoreos-beta.sh -o', readme)
         self.assertIn('--detect', install)
         self.assertIn('--check', install)
-        for tag in ('v0.21.5-arm64-beta.2', 'v0.21.5-istoreos-beta.2'):
+        for tag in ('v0.21.5-arm64-beta.2', 'v0.21.5-istoreos-beta.3'):
             self.assertIn(tag, install)
         self.assertIn('https://slobys.github.io/AdZero/compatibility.html', readme)
         self.assertNotIn('iStoreOS 进度（尚未发布）', readme)
@@ -79,7 +79,7 @@ class Handbook(unittest.TestCase):
         self.assertIn('修订号 2026102312', page)
         self.assertIn('aarch64_cortex-a53', page)
         for release_tag in ('v0.21.5', 'v0.21.5-arm64-beta.2',
-                            'v0.21.5-istoreos-beta.2'):
+                            'v0.21.5-istoreos-beta.3'):
             self.assertIn(release_tag, page)
         search = json.loads((self.output / 'search-index.json').read_text(encoding='utf-8'))
         self.assertTrue(any(item['url'].startswith('compatibility.html')
@@ -91,6 +91,20 @@ class Handbook(unittest.TestCase):
                       (self.output / 'maintenance.html').read_text(encoding='utf-8'))
         self.assertIn('compatibility.html',
                       (self.output / 'troubleshooting.html').read_text(encoding='utf-8'))
+
+    def test_istoreos_24108_candidates_not_misrepresented_as_installable(self):
+        page = (self.output / 'compatibility.html').read_text(encoding='utf-8')
+        readme = (REPO / 'README.md').read_text(encoding='utf-8')
+        auto = (REPO / 'scripts/install-auto.sh').read_text(encoding='utf-8')
+        self.assertIn('id="istoreos-24108"', page)
+        self.assertIn('iStoreOS 24.10.8', page)
+        self.assertIn('修订号 2026073111', page)
+        self.assertIn('适配中，暂未开放安装', page)
+        self.assertIn('原生 AdZero IPK 的最终编译及使用真实编译包的安装验收尚未完成', page)
+        self.assertIn('https://github.com/slobys/AdZero/pull/18', page)
+        self.assertIn('正在适配（尚不能安装）', readme)
+        self.assertNotIn('istoreos:24.10.8:', auto)
+        self.assertLess(page.index('iStoreOS 公测：3 组'), page.index('id="istoreos-24108"'))
 
     def test_broken_link_and_anchor_are_rejected(self):
         file = self.output / 'index.html'
