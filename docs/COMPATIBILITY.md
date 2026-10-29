@@ -2,6 +2,8 @@
 
 **当前安装器：** 安装器不再硬编码只接受名为 OpenWrt 的发行版，而是依据发行目录 `releases.tsv` 中的固件 ID、完整版本、target 和包格式匹配唯一包，并核对固件声明架构、包管理器实际架构及 SHA-256。`scripts/build_release.py` 仅认可 `compatibility-matrix.json` 中明确标为 `sdk_build=passed` 的完整条目；候选固件列表不能视为 SDK 验证通过。没有对应 SDK 条目的 ImmortalWrt 版本及 iStoreOS 仍不能安装，须用厂商匹配 SDK 构建并验证后再添加新行。不要靠修改 `DISTRIB_ID` 或改名安装包来绕过限制。 **独立公开 Beta 试装渠道例外**：它不会修改普通安装器的 SDK 白名单，只接受原厂完整匹配的 iStoreOS 25.12.6 revision 2026102312 x86_64、ARMSR 与 R6XS；使用 [专门的一键安装器](RELEASE_ISTOREOS_BETA_0.21.5.md) 和 SHA 固定的同厂商 APK/依赖，默认不启用过滤；仍待用户真机 LAN 验收。
 
+**OpenWrt/ImmortalWrt ARM64 独立公开 Beta（2026-10-29）**：OpenWrt 25.12.6 和 ImmortalWrt 25.12.2 各自新增 `rockchip/armv8` / `mediatek/filogic` 两种原厂 SDK APK，另通过 [独立 ARM64 一键安装器](RELEASE_ARM64_BETA_0.21.5.md) 提供有条件公开试装。完整版本/target/ABI/SHA 精确匹配，缺失依赖仅从所属厂商官方 HTTPS 仓库加载；预检若可能替换/升级已安装软件就拒绝，安装后默认不启用 DNS 拦截。**不修改稳定版 sdk_verified 或 releases.tsv，不代表实体路由器已通过 LAN/代理/回滚验收。**
+
 v0.18.0 使用共享代码和下列 SDK 组合构建，不把旧版本的单设备证据升级为新功能的真机认证。代理识别增加配置归属核对；原生服务统一使用外部期限启动，避免受影响固件的子进程信号继承问题。功能范围、固件构建和实际 LAN 验收分别记录。
 
 | 固件完整版本 | target / 包架构 | 包格式 | SDK | 设备安装 | LAN 过滤 |
