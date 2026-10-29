@@ -40,6 +40,8 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 | **iStoreOS 公测** | iStoreOS 25.12.6（修订 2026102312）的 x86_64 / ARMSR / R6XS |
 OpenWrt / ImmortalWrt ARM64 公测为 **Beta.2**；iStoreOS 已更新 **Beta.3**，修复 APK 环境误判并保留旧版安全卸载。统一安装命令会自动选择对应版本。
 
+**正在适配（尚不能安装）：**iStoreOS **24.10.8（2026073111）** 的 x86_64、ARM64 ARMSR 和 R6XS，已完成原厂固件/依赖预检，原生 IPK 编译与安装验收待完成。[查看进度 PR #18](https://github.com/slobys/AdZero/pull/18)。
+
 匹配不到就会**拒绝安装并说明原因**，不会强装其他架构的软件包。下载的安装脚本还会经过 SHA-256 校验。[查看完整固件兼容表](https://slobys.github.io/AdZero/compatibility.html)。
 
 **建议首次选择「安装但不启用过滤」**，先确认 SSH、LuCI、正常上网与原有代理没问题，再手动开启。公测版仍需更多真实设备测试，请先备份配置并准备本地恢复方式。

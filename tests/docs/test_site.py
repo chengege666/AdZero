@@ -92,6 +92,20 @@ class Handbook(unittest.TestCase):
         self.assertIn('compatibility.html',
                       (self.output / 'troubleshooting.html').read_text(encoding='utf-8'))
 
+    def test_istoreos_24108_candidates_not_misrepresented_as_installable(self):
+        page = (self.output / 'compatibility.html').read_text(encoding='utf-8')
+        readme = (REPO / 'README.md').read_text(encoding='utf-8')
+        auto = (REPO / 'scripts/install-auto.sh').read_text(encoding='utf-8')
+        self.assertIn('id="istoreos-24108"', page)
+        self.assertIn('iStoreOS 24.10.8', page)
+        self.assertIn('修订号 2026073111', page)
+        self.assertIn('适配中，暂未开放安装', page)
+        self.assertIn('原生 AdZero IPK 的最终编译及使用真实编译包的安装验收尚未完成', page)
+        self.assertIn('https://github.com/slobys/AdZero/pull/18', page)
+        self.assertIn('正在适配（尚不能安装）', readme)
+        self.assertNotIn('istoreos:24.10.8:', auto)
+        self.assertLess(page.index('iStoreOS 公测：3 组'), page.index('id="istoreos-24108"'))
+
     def test_broken_link_and_anchor_are_rejected(self):
         file = self.output / 'index.html'
         original = file.read_text(encoding='utf-8')
