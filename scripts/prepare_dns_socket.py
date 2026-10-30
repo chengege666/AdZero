@@ -3,7 +3,10 @@ from pathlib import Path
 import hashlib,io,tarfile,urllib.request
 SHA256='4b776b244a346875a399d1b848dd02e8af20e6e2c4d7b4288e1a94f25554b461'
 NAME='ucode-mod-socket_2025.07.18~3f64c808-r1_x86_64.ipk'
-URL='https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base/'+NAME
+# Archived, immutable official OpenWrt 24.10.8 package. The rolling
+# downloads.openwrt.org release feed no longer serves this exact IPK.
+# The package bytes remain constrained by the original SHA-256 pin.
+URL='https://archive.openwrt.org/releases/24.10.8/packages/x86_64/base/'+NAME
 def prepare(root,runtime):
     package=Path(root)/'artifacts/runtime/dns-extras'/NAME
     if not package.exists():
