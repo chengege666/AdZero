@@ -13,6 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_istoreos_dependencies as closure
+APP_VERSION = closure.adzero_version()
 
 
 class OriginalFirmwareClosureTest(unittest.TestCase):
@@ -24,7 +25,7 @@ class OriginalFirmwareClosureTest(unittest.TestCase):
         self.source.mkdir()
         self.folder = self.source / "bin/packages/x86_64/vendor"
         self.folder.mkdir(parents=True)
-        self.adzero = self.folder / "luci-app-adzero-0.21.5-r1.apk"
+        self.adzero = self.folder / f"luci-app-adzero-{APP_VERSION}.apk"
         self.adzero.write_bytes(b"mock-original-source-package")
         self.apk_tool = self.source / "staging_dir/host/bin/apk"
         self.apk_tool.parent.mkdir(parents=True)
@@ -34,7 +35,7 @@ class OriginalFirmwareClosureTest(unittest.TestCase):
         self.installed = {"libc", "luci-base", "rpcd", "curl"}
         self.meta = {
             "luci-app-adzero": {
-                "name": "luci-app-adzero", "version": "0.21.5-r1",
+                "name": "luci-app-adzero", "version": APP_VERSION,
                 "arch": "noarch", "depends": ["libc", "curl", "adblock-fast", "conntrack"]
             },
             "adblock-fast": {

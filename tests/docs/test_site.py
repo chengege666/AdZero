@@ -60,60 +60,40 @@ class Handbook(unittest.TestCase):
         self.assertNotIn('install-istoreos-beta.sh -o', readme)
         self.assertIn('--detect', install)
         self.assertIn('--check', install)
-        for tag in ('v0.21.5-arm64-beta.2', 'v0.21.5-istoreos-beta.4'):
-            self.assertIn(tag, install)
+        self.assertNotIn('-beta.', install)
+        self.assertIn('同一个正式版', install)
         self.assertIn('https://slobys.github.io/AdZero/compatibility.html', readme)
         self.assertNotIn('iStoreOS 进度（尚未发布）', readme)
 
     def test_public_firmware_table_and_search_are_current(self):
         matrix = json.loads((REPO / 'docs/compatibility-matrix.json').read_text(encoding='utf-8'))
-        self.assertEqual(len(matrix['sdk_verified']), 5)
-        self.assertEqual(len(matrix['arm64_candidates']), 6)
+        unified = matrix['unified_install']
+        self.assertEqual(unified['firmwares'], ['openwrt', 'immortalwrt', 'istoreos'])
+        self.assertEqual(unified['channel'], 'stable')
+        self.assertEqual(unified['application_formats'], {'ipk':'all', 'apk':'noarch'})
         page = (self.output / 'compatibility.html').read_text(encoding='utf-8')
-        for row in matrix['sdk_verified'] + matrix['arm64_candidates']:
-            with self.subTest(firmware=row['firmware'], target=row['target']):
-                self.assertIn(row['release'], page)
-                self.assertIn(row['target'], page)
-        for target in ('x86/64', 'armsr/armv8', 'rockchip/armv8', 'mediatek/filogic'):
+        for family in ['OpenWrt', 'ImmortalWrt', 'iStoreOS']:
+            self.assertIn(family, page)
+        for target in ['x86/64', 'armsr/armv8', 'rockchip/armv8', 'mediatek/filogic']:
             self.assertIn(target, page)
-        self.assertIn('修订号 2026102312', page)
-        self.assertIn('aarch64_cortex-a53', page)
-        for release_tag in ('v0.21.5', 'v0.21.5-arm64-beta.2',
-                            'v0.21.5-istoreos-beta.4'):
-            self.assertIn(release_tag, page)
+        self.assertIn('原生软件包', page)
+        self.assertIn('不代表所有物理设备', page)
+        self.assertNotIn('-beta.', page)
         search = json.loads((self.output / 'search-index.json').read_text(encoding='utf-8'))
-        self.assertTrue(any(item['url'].startswith('compatibility.html')
-                            and ('iStoreOS' in item['text'] or 'Rockchip' in item['text'])
-                            for item in search))
-        self.assertIn('href="compatibility.html">支持的固件',
-                      (self.output / 'index.html').read_text(encoding='utf-8'))
-        self.assertIn('installation.html#install',
-                      (self.output / 'maintenance.html').read_text(encoding='utf-8'))
-        self.assertIn('compatibility.html',
-                      (self.output / 'troubleshooting.html').read_text(encoding='utf-8'))
+        self.assertTrue(any(item['url'].startswith('compatibility.html') and 'iStoreOS' in item['text'] for item in search))
 
-    def test_istoreos_24108_exact_native_ipk_beta_publicly_documented(self):
+    def test_native_vendor_dependencies_remain_revision_and_abi_scoped(self):
         page = (self.output / 'compatibility.html').read_text(encoding='utf-8')
-        readme = (REPO / 'README.md').read_text(encoding='utf-8')
+        for value in ['2026073111', '2026102312', 'aarch64_cortex-a53', '原生 OPKG/IPK', '原生 APK']:
+            self.assertIn(value, page)
         auto = (REPO / 'scripts/install-auto.sh').read_text(encoding='utf-8')
-        self.assertIn('id="istoreos-24108"', page)
-        self.assertIn('iStoreOS 24.10.8', page)
-        self.assertIn('修订号 2026073111', page)
-        self.assertIn('公开 Beta.1，待实机验收', page)
-        self.assertNotIn('适配中，暂未开放安装', page)
-        self.assertIn('原生 OPKG/IPK', page)
-        self.assertIn('完整文件清单', page)
-        self.assertIn('v0.21.5-istoreos-24108-beta.1', page)
-        self.assertIn('安装包', (self.output / 'installation.html').read_text(encoding='utf-8'))
-        self.assertIn('id="istoreos-24108"', (self.output / 'installation.html').read_text(encoding='utf-8'))
-        self.assertIn('iStoreOS **24.10.8** 已开放独立', readme)
-        self.assertIn('istoreos:24.10.8:', auto)
-        self.assertIn('2026073111', auto)
-        self.assertIn('PIN_ISTOREOS24108', auto)
-        self.assertIn('d30c309e650442708dcfda552fa4f62e1530916e93ac2d9341f25db5503a2766', auto)
-        self.assertLess(page.index('iStoreOS 公测：3 组'), page.index('id="istoreos-24108"'))
-        self.assertIn('v0.21.5-istoreos-24108-beta.1', (self.output / 'compatibility.html').read_text(encoding='utf-8'))
-        self.assertEqual((self.output / 'installation.html').read_text().count('<pre><code>'),1)
+        self.assertNotIn('PIN_ISTOREOS', auto)
+        self.assertNotIn('istoreos:24.10.8:', auto)
+        install = (self.output / 'installation.html').read_text(encoding='utf-8')
+        self.assertIn('原生依赖', install)
+        self.assertIn('旧 Beta', install)
+        self.assertIn('不作为自动更新候选', install)
+        self.assertEqual(install.count('<pre><code>'), 1)
 
     def test_broken_link_and_anchor_are_rejected(self):
         file = self.output / 'index.html'

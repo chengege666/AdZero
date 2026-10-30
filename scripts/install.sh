@@ -3,9 +3,10 @@
 set -eu
 set -f
 umask 077
-BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.21.5}
+BASE_URL=${ADZERO_BASE_URL:-https://github.com/slobys/AdZero/releases/download/v0.22.0}
 LOCAL_DIR=
 ENABLE=1
+ENABLE_EXPLICIT=0
 UPGRADE=0
 MENU=0
 CHECK_ONLY=0
@@ -19,7 +20,7 @@ while [ "$#" -gt 0 ]; do
 		--check) CHECK_ONLY=1; CLI_REQUESTED=1; shift ;;
 		--base-url) [ "$#" -ge 2 ] || fail '缺少 URL'; BASE_URL=$2; CLI_REQUESTED=1; shift 2 ;;
 		--local-dir) [ "$#" -ge 2 ] || fail '缺少发行目录'; LOCAL_DIR=$2; CLI_REQUESTED=1; shift 2 ;;
-		--no-enable) ENABLE=0; CLI_REQUESTED=1; shift ;;
+		--no-enable) ENABLE=0; ENABLE_EXPLICIT=1; CLI_REQUESTED=1; shift ;;
 		--upgrade) UPGRADE=1; CLI_REQUESTED=1; shift ;;
 		*) fail '用法: install.sh [--menu | --install | --check] [--upgrade] [--no-enable] [--local-dir DIR | --base-url https://...]' ;;
 	esac
@@ -32,6 +33,167 @@ fi
 release_value() {
 	awk -v key="$1" 'index($0,key "=")==1 { v=substr($0,length(key)+2); if (v ~ /^".*"$/ || v ~ /^\047.*\047$/) v=substr(v,2,length(v)-2); print v; exit }' "$ROOT/etc/openwrt_release"
 }
+
+# Script-only application packages are shared by the three distributions.
+# Compiled dependency supplements remain exact vendor/ABI/revision matches.
+apk_native() {
+    if [ -n "$DECLARED_ARCH" ]; then
+        apk --root "${ROOT:-/}" --arch "$DECLARED_ARCH" "$@"
+    else
+        apk --root "${ROOT:-/}" "$@"
+    fi
+}
+opkg_native() {
+    if [ -n "$ROOT" ]; then opkg --offline-root "$ROOT" "$@"; else opkg "$@"; fi
+}
+package_installed() {
+    if [ "$PM" = apk ]; then apk_native info -e "$1" >/dev/null 2>&1;
+    else opkg_native status "$1" 2>/dev/null | grep -q '^Status: .* ok installed$'; fi
+}
+detect_manager() {
+    PM=
+    # Native APK inventory is authoritative even with relocated/overlay DBs
+    # and leftover OPKG files. Query every required base package separately.
+    if command -v apk >/dev/null 2>&1; then
+        apk_base=1
+        for base_package in base-files luci-base rpcd; do
+            [ "$(apk_native info -e "$base_package" 2>/dev/null)" = "$base_package" ] || apk_base=0
+        done
+        if [ "$apk_base" = 1 ]; then PM=apk; return; fi
+    fi
+    if command -v opkg >/dev/null 2>&1 && command -v apk >/dev/null 2>&1 &&
+       [ -r "$ROOT/usr/lib/opkg/status" ] && [ -r "$ROOT/lib/apk/db/installed" ]; then
+        fail '同时发现 OPKG 和 APK 数据库，但原生 APK 清单不可确认，拒绝猜测。'
+    fi
+    if command -v opkg >/dev/null 2>&1 &&
+       { [ -r "$ROOT/usr/lib/opkg/status" ] || [ -r "$ROOT/var/lib/opkg/status" ]; }; then
+        PM=opkg; return
+    fi
+    # Fixed-path fallback is retained only for a sole APK manager. The
+    # generic release later requires its native inventory to be readable.
+    if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then PM=apk; fi
+    [ -n "$PM" ] || fail '无法读取当前软件包管理器；需要带 LuCI 的 OpenWrt、ImmortalWrt 或 iStoreOS。'
+}
+run_package_plan() (
+    set +f
+    set -- "$TMP/package.$EXT"
+    for candidate in "$TMP"/deps/*.$EXT; do [ ! -f "$candidate" ] || set -- "$@" "$candidate"; done
+    if [ "$PM" = apk ]; then
+        if [ "$PLAN_ONLINE" = 1 ]; then
+            apk_native add --simulate --force-reinstall --allow-untrusted "$@"
+        else
+            apk_native add --simulate --force-reinstall --no-network --repositories-file /dev/null --allow-untrusted "$@"
+        fi
+    else
+        if [ "$PLAN_ONLINE" = 1 ]; then opkg_native --noaction --force-reinstall install "$@";
+        else opkg_native --lists-dir "$TMP/empty-lists" --noaction --force-reinstall install "$@"; fi
+    fi
+)
+safe_package_plan() {
+    # Do not replace a working DNS stack, libc, tcpdump, proxy or unrelated
+    # package to install a LuCI application. Reinstallation/upgrade is allowed
+    # only for AdZero itself. Native package managers still check dependencies.
+    awk '
+      /[Dd]owngrading/ {bad=1}
+      /(^|[[:space:]])(Removing|Purging|Upgrading|Downgrading|Reinstalling)[[:space:]]/ {
+        if ($0 !~ /(Removing|Purging|Upgrading|Downgrading|Reinstalling) luci-app-adzero([[:space:]]|$)/) bad=1
+        if ($0 ~ /(Removing|Purging) luci-app-adzero([[:space:]]|$)/) bad=1
+      }
+      END {exit bad}
+    ' "$TMP/preflight.log" || fail '依赖求解要求更换已有系统软件包，已停止；未关闭现有保护。请先通过固件的软件包管理器处理依赖冲突。'
+    if package_installed ucode && grep -Eq 'Installing libucode[0-9]+[[:space:]]' "$TMP/preflight.log"; then
+        fail '新增模块需要另一个 ucode 运行库 ABI，不能与现有引擎混用；请先通过本机软件包管理器统一更新 ucode，当前保护未关闭。'
+    fi
+}
+dependency_supplement() {
+    # Optional supplements are never borrowed from another revision or ABI.
+    fetch dependencies.tsv "$TMP/dependencies.tsv" || return 1
+    supplement=$(awk -F '\t' -v fw="$FIRMWARE" -v ver="$VERSION" -v rev="$DECLARED_REVISION" -v target="$TARGET" -v arch="$DECLARED_ARCH" -v fmt="$EXT" '
+      {sub(/\r$/, "", $0)}
+      NF==9 && $3==fw && $4==ver && $5==rev && $6==target && $7==arch && $8==fmt {print $1 " " $2 " " $9;n++}
+      END {if(n!=1)exit 1}' "$TMP/dependencies.tsv") || return 1
+    supplement_sum=${supplement%% *}; supplement_rest=${supplement#* }
+    supplement_file=${supplement_rest%% *}; supplement_profile=${supplement_rest#* }
+    case "$supplement_sum" in ''|*[!0-9a-f]*) fail '依赖补充包摘要无效。' ;; esac
+    [ "${#supplement_sum}" = 64 ] || fail '依赖补充包摘要长度无效。'
+    case "$supplement_file" in ''|.*|*[!a-zA-Z0-9._+-]*) fail '依赖补充包文件名无效。' ;; esac
+    case "$supplement_profile" in ''|.*|*[!a-zA-Z0-9._+-]*) fail '依赖配置名无效。' ;; esac
+    fetch "$supplement_file" "$TMP/dependencies.tar.gz"
+    actual=$(sha256sum "$TMP/dependencies.tar.gz"); [ "${actual%% *}" = "$supplement_sum" ] || fail '依赖补充包 SHA-256 不匹配。'
+    tar -tzf "$TMP/dependencies.tar.gz" > "$TMP/dependency-paths" || fail '依赖补充包不可读取。'
+    awk -v profile="$supplement_profile" '
+      $0 ~ /^[a-zA-Z0-9][a-zA-Z0-9._+-]*\/packages.tsv$/ && $0 !~ /\.\./ {
+        if(seen[$0]++)bad=1;if($0==profile"/packages.tsv")manifest++;next
+      }
+      $0 ~ /^[a-zA-Z0-9][a-zA-Z0-9._+-]*\/packages\/[a-zA-Z0-9][a-zA-Z0-9._+~-]*\.(ipk|apk)$/ && $0 !~ /\.\./ {
+        if(seen[$0]++)bad=1;next
+      }
+      {bad=1} END{exit bad || manifest!=1}' "$TMP/dependency-paths" || fail '依赖补充包含不允许的路径。'
+    tar -tvzf "$TMP/dependencies.tar.gz" | awk 'substr($1,1,1)!="-" {bad=1} END{exit bad}' || fail '依赖补充包只能包含普通文件。'
+    mkdir "$TMP/supplement"
+    tar -xzf "$TMP/dependencies.tar.gz" -C "$TMP/supplement" || fail '依赖补充包解压失败。'
+    count=0
+    while IFS="$(printf '\t')" read -r digest filename name; do
+        case "$digest" in ''|*[!0-9a-f]*) fail '依赖文件摘要无效。' ;; esac
+        [ "${#digest}" = 64 ] || fail '依赖文件摘要长度无效。'
+        case "$filename" in ''|.*|*[!a-zA-Z0-9._+~-]*) fail '依赖文件名无效。' ;; esac
+        case "$name" in adblock-fast|conntrack|coreutils-timeout|libnetfilter-cthelper0|libnetfilter-cttimeout1|libnetfilter-queue1|ucode-mod-socket) ;;
+            *) fail '依赖清单含不允许的软件包。' ;; esac
+        actual=$(sha256sum "$TMP/supplement/$supplement_profile/packages/$filename")
+        [ "${actual%% *}" = "$digest" ] || fail '依赖文件 SHA-256 不匹配。'
+        [ ! -e "$TMP/seen-$name" ] || fail '依赖清单重复。'
+        : > "$TMP/seen-$name"
+        count=$((count + 1)); [ "$count" -le 7 ] || fail '依赖清单过大。'
+        # Existing native packages are left alone, including full tcpdump.
+        if ! package_installed "$name"; then cp "$TMP/supplement/$supplement_profile/packages/$filename" "$TMP/deps/$filename"; fi
+    done < "$TMP/supplement/$supplement_profile/packages.tsv"
+    required_count=6; [ "$EXT" != ipk ] || required_count=7
+    [ "$count" = "$required_count" ] || fail '依赖清单不完整。'
+    printf '%s\n' 'AdZero: 已自动准备匹配本机固件的原厂依赖。'
+}
+prepare_universal_package() {
+    mkdir -p "$TMP/deps" "$TMP/empty-lists"
+    PLAN_ONLINE=0
+    if run_package_plan > "$TMP/preflight.log" 2>&1; then safe_package_plan; APK_LOCAL=1; return; fi
+    # Only iStoreOS needs our supplemental packages when its feeds lack them.
+    if [ "$FIRMWARE" = istoreos ]; then
+        if dependency_supplement; then
+            if run_package_plan > "$TMP/preflight.log" 2>&1; then safe_package_plan; APK_LOCAL=1; return; fi
+        fi
+    fi
+    PLAN_ONLINE=1
+    if ! run_package_plan > "$TMP/preflight.log" 2>&1; then
+        [ "$CHECK_ONLY" != 1 ] || { cat "$TMP/preflight.log" >&2; fail '本机原生软件源尚不能满足依赖；只读检查未刷新软件源，也未修改保护。'; }
+        printf '%s\n' 'AdZero: 正在用本机原有软件源准备依赖；不添加其他固件的软件源。'
+        if [ "$PM" = apk ]; then apk_native update > "$TMP/repository.log" 2>&1 || :
+        else opkg_native update > "$TMP/repository.log" 2>&1 || :; fi
+        run_package_plan > "$TMP/preflight.log" 2>&1 || { cat "$TMP/preflight.log" >&2; fail '本机软件源不能满足依赖，未关闭现有保护。'; }
+    fi
+    safe_package_plan
+    if [ "$PM" = apk ]; then
+        awk '/^\([0-9]+\/[0-9]+\) Installing / {name=$3;version=$4;gsub(/[()]/,"",version);if(name!="luci-app-adzero")print name "=" version}' "$TMP/preflight.log" > "$TMP/fetch-packages"
+        while IFS= read -r spec; do
+            case "$spec" in ''|*[!a-zA-Z0-9._+=~:-]*) fail '原生 APK 下载计划不可安全解析。' ;; esac
+            apk_native fetch --output "$TMP/deps" "$spec" || fail '依赖下载失败；原保护未关闭。'
+        done < "$TMP/fetch-packages"
+        PLAN_ONLINE=0
+        run_package_plan > "$TMP/preflight.log" 2>&1 || fail '依赖未能完成离线复核；原保护未关闭。'
+        safe_package_plan; APK_LOCAL=1
+    else
+        # opkg downloads the resolved closure without installing or running hooks.
+        (cd "$TMP/deps" && opkg_native --download-only --force-reinstall --cache "$TMP/deps" install "$TMP/package.ipk") || fail '依赖下载失败；原保护未关闭。'
+        run_package_plan > "$TMP/preflight.log" 2>&1 || fail 'OPKG 依赖预检未完成；原保护未关闭。'
+        safe_package_plan
+    fi
+}
+install_universal_package() (
+    set +f
+    set -- "$TMP/package.$EXT"
+    for candidate in "$TMP"/deps/*.$EXT; do [ ! -f "$candidate" ] || set -- "$@" "$candidate"; done
+    if [ "$PM" = apk ]; then
+        apk_native add --force-reinstall --no-network --repositories-file /dev/null --allow-untrusted "$@"
+    else opkg_native --cache "$TMP/deps" --force-reinstall install "$@"; fi
+)
 
 # The menu is a front end for this same SDK-verified installer. Never eval a
 # release name or execute an unverified downloaded shell script.
@@ -86,7 +248,7 @@ menu_install() {
 		printf '%s\n' 'AdZero: 已取消，未修改系统。'
 		return 0
 	fi
-	printf 'AdZero: 正在%s；将自动选择与当前固件匹配的 SDK 安装包。\n' "$description"
+	printf 'AdZero: 正在%s；将自动选择 IPK 或 APK，并在停止旧保护前检查依赖。\n' "$description"
 	if [ "$noenable" = 1 ]; then
 		if menu_action "$mode" --no-enable; then
 			printf '%s\n' 'AdZero: 操作已完成。'
@@ -112,20 +274,18 @@ menu_uninstall() (
 		return 0
 	fi
 	# Resolve the package manager before touching protection status.
-	pm=
-	if command -v opkg >/dev/null 2>&1 && [ -r "$ROOT/usr/lib/opkg/status" ]; then pm=opkg; fi
-	if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then
-		[ -z "$pm" ] || {
-			printf '%s\n' 'AdZero: 发现两个包管理器数据库，拒绝猜测。'
-			return 0
-		}
-		pm=apk
-	fi
-	[ -n "$pm" ] || {
-		printf '%s\n' 'AdZero: 无法确定包管理器，未修改当前保护。'
+	DECLARED_ARCH=$(release_value DISTRIB_ARCH)
+	if ! pm=$(detect_manager; printf '%s' "$PM"); then
+		printf '%s\n' 'AdZero: 无法确认包管理器（可能有两个包管理器数据库），未修改当前保护。'
 		return 0
-	}
+	fi
+	PM=$pm
+	if ! package_installed luci-app-adzero; then
+		printf '%s\n' 'AdZero: 原生包管理器未确认插件归属，拒绝卸载；未修改当前保护。'
+		return 0
+	fi
 	printf '%s\n' 'AdZero: 卸载前会先恢复它管理的设置；如果恢复失败，将停止卸载。'
+	printf '%s\n' 'AdZero: 保留已安装的依赖，只移除 AdZero 插件。'
 	printf '%s' '确认卸载请输入 YES: '
 	IFS= read -r confirmation || return 0
 	[ "$confirmation" = YES ] || {
@@ -146,20 +306,69 @@ menu_uninstall() (
 		printf '%s\n' 'AdZero: 另一个安装或卸载操作正在进行，拒绝并行卸载。'
 		return 0
 	fi
-	trap 'rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :' 0
+	remove_tmp=$(mktemp -d "${TMPDIR:-/tmp}/adzero-remove.XXXXXX") || {
+		rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :
+		printf '%s\n' 'AdZero: 无法创建卸载预检目录，未关闭保护。'; return 0
+	}
+	trap 'rm -f "$remove_tmp/plan" "$remove_tmp/keep" "$remove_tmp/preserve-plan"; rmdir "$remove_tmp" 2>/dev/null || :; rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :' 0
 	trap 'exit 130' 1 2 3 15
+	if [ "$pm" = apk ]; then
+		if ! apk_native del --simulate --no-network --repositories-file /dev/null luci-app-adzero > "$remove_tmp/plan" 2>&1; then
+			printf '%s\n' 'AdZero: 原生卸载预检失败，尚未关闭保护。'; return 0
+		fi
+		# APK garbage-collects automatic dependencies when deleting a world
+		# package. Mark existing dependencies as manually retained without
+		# changing packages, running hooks or pinning future version updates.
+		awk '/^\([0-9]+\/[0-9]+\) Purging / && $3!="luci-app-adzero" {v=$4;gsub(/[()]/,"",v);print $3 "=" v}' "$remove_tmp/plan" > "$remove_tmp/keep"
+		if [ -s "$remove_tmp/keep" ]; then
+			set --
+			while IFS= read -r keep_spec; do
+				case "$keep_spec" in ''|*[!a-zA-Z0-9._+=~:-]*) printf '%s\n' 'AdZero: 卸载依赖计划格式无效，未关闭保护。'; return 0 ;; esac
+				keep_name=${keep_spec%%=*}
+				case "$keep_name" in [a-zA-Z0-9]*) ;; *) printf '%s\n' 'AdZero: 依赖名称无效，未关闭保护。'; return 0 ;; esac
+				set -- "$@" "$keep_name"
+			done < "$remove_tmp/keep"
+			if ! apk_native add --simulate --no-scripts --no-network --repositories-file /dev/null "$@" > "$remove_tmp/preserve-plan" 2>&1 ||
+			   grep -Eq '(Installing|Upgrading|Downgrading|Reinstalling|Purging|Removing)[[:space:]]' "$remove_tmp/preserve-plan"; then
+				printf '%s\n' 'AdZero: 保留依赖会触发包变更，已停止；尚未关闭保护。'; return 0
+			fi
+			apk_native add --no-scripts --no-network --repositories-file /dev/null "$@" > "$remove_tmp/preserve-plan" 2>&1 || {
+				printf '%s\n' 'AdZero: 未能保留已安装依赖，尚未关闭保护。'; return 0;
+			}
+			apk_native del --simulate --no-network --repositories-file /dev/null luci-app-adzero > "$remove_tmp/plan" 2>&1 || return 0
+		fi
+		if ! awk '
+		  /^\([0-9]+\/[0-9]+\) Purging / {if($3!="luci-app-adzero")bad=1;else own++}
+		  /(Installing|Upgrading|Downgrading|Reinstalling|Removing)[[:space:]]/ {bad=1}
+		  END{exit bad || own!=1}' "$remove_tmp/plan"; then
+			printf '%s\n' 'AdZero: 卸载仍会更改其他组件，已停止；尚未关闭保护。'; return 0
+		fi
+	else
+		if ! opkg_native --noaction remove luci-app-adzero > "$remove_tmp/plan" 2>&1; then
+			printf '%s\n' 'AdZero: OPKG 卸载依赖检查失败，尚未关闭保护。'; return 0
+		fi
+		if ! awk '/^Removing package /{if($3!="luci-app-adzero")bad=1;else own++}
+		  /(Installing|Upgrading|Downgrading|Reinstalling)[[:space:]]/{bad=1}
+		  END{exit bad || own!=1}' "$remove_tmp/plan"; then
+			printf '%s\n' 'AdZero: OPKG 卸载会更改其他组件，尚未关闭保护。'; return 0
+		fi
+	fi
 	if ! "$ROOT/usr/libexec/adzero/ctl" disable; then
 		printf '%s\n' 'AdZero: 关闭及恢复失败，已停止卸载。请保留恢复记录。'
 		return 0
 	fi
+	if [ -e "$ROOT/etc/adzero/managed" ] || [ -e "$ROOT/etc/adzero/adapter.json" ]; then
+		printf '%s\n' 'AdZero: 恢复记录仍存在，已停止卸载；没有删除记录或软件包。'
+		return 0
+	fi
 	if [ "$pm" = opkg ]; then
-		if opkg remove luci-app-adzero; then
+		if opkg_native remove luci-app-adzero; then
 			printf '%s\n' 'AdZero: 卸载完成。'
 		else
 			printf '%s\n' 'AdZero: OPKG 卸载失败；保护已关闭，请核对包状态。'
 		fi
 	else
-		if apk del luci-app-adzero; then
+		if apk_native del --no-network --repositories-file /dev/null luci-app-adzero; then
 			printf '%s\n' 'AdZero: 卸载完成。'
 		else
 			printf '%s\n' 'AdZero: APK 卸载失败；保护已关闭，请核对包状态。'
@@ -181,7 +390,7 @@ show_menu() {
 			esac
 		fi
 		printf '%s\n' '------------------------------------------------'
-		printf '%s\n' '  1) 一键安装 / 自动升级'
+		printf '%s\n' '  1) 一键安装 / 自动升级（首次不开启，升级保留开关）'
 		printf '%s\n' '  2) 安装 / 升级（不自动开启保护）'
 		printf '%s\n' '  3) 只读环境与安装包兼容性检查'
 		printf '%s\n' '  4) 安全卸载（先恢复 AdZero 管理的配置）'
@@ -195,7 +404,7 @@ show_menu() {
 			1) menu_install 0 ;;
 			2) menu_install 1 ;;
 			3)
-				printf '%s\n' 'AdZero: 仅下载与核对 SDK 发行包和 SHA-256，不安装或停止现有服务。'
+				printf '%s\n' 'AdZero: 下载、核对发行包和依赖；不安装、不停止现有服务、不修改软件源。'
 				if menu_action --check; then
 					printf '%s\n' 'AdZero: 校验完成。'
 				else
@@ -232,16 +441,9 @@ case "$DECLARED_REVISION" in *[!a-zA-Z0-9._+-]*) fail '固件 DISTRIB_REVISION �
 # OpenWrt BusyBox tr 1.36 may mis-handle paired character classes: OpenWrt -> OwenWrt.
 # Use explicit ASCII alphabets after the UCI ID character whitelist.
 FIRMWARE=$(printf '%s' "$FIRMWARE_LABEL" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
-PM=
-if command -v opkg >/dev/null 2>&1 && [ -r "$ROOT/usr/lib/opkg/status" ]; then PM=opkg; fi
-if command -v apk >/dev/null 2>&1 && [ -r "$ROOT/lib/apk/db/installed" ]; then
-	[ -z "$PM" ] || fail '同时发现 OPKG 和 APK 数据库，拒绝猜测。'
-	PM=apk
-fi
-[ -n "$PM" ] || fail '无法确定软件包管理器。'
+detect_manager
 if [ "$PM" = opkg ]; then EXT=ipk; else EXT=apk; fi
 command -v sha256sum >/dev/null 2>&1 || fail '缺少 sha256sum。'
-[ "$CHECK_ONLY" = 1 ] || [ "$UPGRADE" = 1 ] || [ ! -e "$ROOT/etc/adzero/adapter.json" ] || fail '请使用 --upgrade 自动准备升级，或先在现有版本中关闭保护；保留原有恢复记录。'
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/adzero-install.XXXXXX") || fail '无法创建临时目录。'
 WATCH="$ROOT/usr/libexec/adzero/watch"
 INSTALL_LOCK="$ROOT/tmp/adzero-install.lock"
@@ -286,6 +488,9 @@ resume_watchers() {
 cleanup() {
 	resume_watchers
 	[ "$INSTALL_LOCK_OWNED" != 1 ] || rmdir "$INSTALL_LOCK" 2>/dev/null || :
+	rm -rf "$TMP/deps" "$TMP/supplement" "$TMP/empty-lists"
+	rm -f "$TMP/dependencies.tsv" "$TMP/dependencies.tar.gz" "$TMP/dependency-paths" "$TMP/fetch-packages" "$TMP/repository.log"
+	rm -f "$TMP/seen-adblock-fast" "$TMP/seen-conntrack" "$TMP/seen-coreutils-timeout" "$TMP/seen-libnetfilter-cthelper0" "$TMP/seen-libnetfilter-cttimeout1" "$TMP/seen-libnetfilter-queue1" "$TMP/seen-ucode-mod-socket"
 	rm -f "$TMP/releases.tsv" "$TMP/package.$EXT" "$TMP/disable.log" "$TMP/watchers" "$TMP/preflight.log"
 	rmdir "$TMP" 2>/dev/null || :
 }
@@ -343,8 +548,11 @@ fetch() {
 		cp "$LOCAL_DIR/$1" "$2" || fail '本地发行文件缺失。'
 	else
 		case "$BASE_URL" in https://*) ;; *) fail '请指定发行目录或 HTTPS 下载地址。' ;; esac
-		command -v curl >/dev/null 2>&1 || fail 'HTTPS 安装需要 curl；也可下载发行压缩包后使用 --local-dir。'
-		curl --fail --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 --output "$2" "${BASE_URL%/}/$1" || fail '下载失败；没有更改 DNS 配置。'
+		if command -v curl >/dev/null 2>&1; then
+			curl --fail --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 --output "$2" "${BASE_URL%/}/$1" || fail '下载失败；没有更改 DNS 配置。'
+		elif command -v wget >/dev/null 2>&1; then
+			wget -O "$2" "${BASE_URL%/}/$1" || fail 'HTTPS 下载失败；没有更改 DNS 配置。'
+		else fail '缺少 curl 和 wget；也可下载发行文件后使用 --local-dir。'; fi
 	fi
 }
 APK_LOCAL=0
@@ -365,6 +573,25 @@ prepare_package() {
 	fi
 }
 fetch releases.tsv "$TMP/releases.tsv"
+UNIVERSAL=0
+case "$FIRMWARE" in openwrt|immortalwrt|istoreos)
+    if awk -F '\t' -v ext="$EXT" '{sub(/\r$/,"",$0)} $3=="openwrt-family" && $4=="any" && $5=="any" && $7==ext {found=1} END{exit !found}' "$TMP/releases.tsv"; then UNIVERSAL=1; fi ;;
+esac
+if [ "$UNIVERSAL" = 1 ]; then
+    ROW=$(awk -F '\t' -v ext="$EXT" '
+      {sub(/\r$/,"",$0)} NF==7 && $3=="openwrt-family" && $4=="any" && $5=="any" &&
+      $7==ext && (($7=="ipk" && $6=="all") || ($7=="apk" && $6=="noarch")) {print $1 " " $2 " " $6;n++}
+      END{if(n!=1)exit 1}' "$TMP/releases.tsv") || fail '通用发行清单缺少唯一的 IPK/APK 安装包。'
+    for base_package in base-files luci-base rpcd; do package_installed "$base_package" || fail '本机原生软件包清单不完整；请先确认 LuCI 和软件包管理器工作正常。'; done
+    if package_installed luci-app-adzero; then UPGRADE=1; fi
+    # An upgrade preserves the previous switch; a fresh installation adds
+    # the UI without taking over a working router's DNS automatically.
+    if [ "$ENABLE_EXPLICIT" = 0 ]; then
+        ENABLE=0
+        if [ -f "$ROOT/etc/adzero/managed" ] && command -v uci >/dev/null 2>&1 &&
+           [ "$(uci -q -c "$ROOT/etc/config" get adzero.main.enabled 2>/dev/null)" = 1 ]; then ENABLE=1; fi
+    fi
+else
 # A Windows-authored catalog may use CRLF. Remove only the line terminator.
 # Match the exact distributor, release, target and package format. Architecture
 # comes from the verified catalog row and must match the target package manager.
@@ -395,11 +622,14 @@ ROW=$(awk -F '\t' -v fw="$FIRMWARE" -v ver="$VERSION" -v target="$TARGET" -v ext
     ' "$TMP/releases.tsv")
 	fail "未找到唯一匹配的已发布 SDK 安装包：检测到 $FIRMWARE_LABEL $VERSION，revision=${DECLARED_REVISION:-未提供}，target=$TARGET，格式=$EXT。当前发行包支持：${AVAILABLE:-无有效条目}。请勿跨固件强制安装；提供 /etc/openwrt_release 和 opkg print-architecture / apk --print-arch 以便扩展兼容矩阵。尚未停止保护或修改网络配置。"
 }
+fi
+[ "$CHECK_ONLY" = 1 ] || [ "$UPGRADE" = 1 ] || [ ! -e "$ROOT/etc/adzero/adapter.json" ] || fail '请使用 --upgrade 自动准备升级，或先在现有版本中关闭保护；保留原有恢复记录。'
 SUM=${ROW%% *}
 REST=${ROW#* }
 FILE=${REST%% *}
 ARCH=${REST#* }
 case "$ARCH" in ''|*[!a-zA-Z0-9._+-]*) fail '发行清单中的架构字段无效。' ;; esac
+if [ "$UNIVERSAL" != 1 ]; then
 [ -z "$DECLARED_ARCH" ] || [ "$DECLARED_ARCH" = "$ARCH" ] || fail "固件声明架构 $DECLARED_ARCH 与所选 SDK 包架构 $ARCH 不一致。"
 if [ "$PM" = opkg ]; then
 	opkg print-architecture | awk -v arch="$ARCH" '$2==arch {found=1} END {exit !found}' || fail "OPKG 可安装架构中没有 SDK 包要求的 $ARCH，已拒绝安装。"
@@ -421,12 +651,14 @@ else
 		esac
 	fi
 fi
+fi
 [ "${#SUM}" = 64 ] || fail '校验清单格式错误。'
 case "$SUM" in *[!0-9a-f]*) fail '校验清单格式错误。' ;; esac
 case "$FILE" in ''|*[!a-zA-Z0-9._+-]*|.*) fail '不安全的安装包文件名。' ;; esac
 fetch "$FILE" "$TMP/package.$EXT"
 ACTUAL=$(sha256sum "$TMP/package.$EXT")
 [ "${ACTUAL%% *}" = "$SUM" ] || fail 'SHA-256 不匹配，已停止安装。'
+if [ "$UNIVERSAL" = 1 ] && [ "$CHECK_ONLY" = 1 ]; then prepare_universal_package; fi
 if [ "$CHECK_ONLY" = 1 ]; then
 	printf 'AdZero: 环境检测通过：%s %s，target=%s，SDK 架构=%s，包格式=%s。\n' "$FIRMWARE" "$VERSION" "$TARGET" "$ARCH" "$EXT"
 	printf 'AdZero: 已选择 %s 并通过 SHA-256 校验；未安装软件包、未操作代理或 DNS。\n' "$FILE"
@@ -445,7 +677,7 @@ if [ "$UPGRADE" = 1 ] && [ -x "$CTL" ]; then
 	wait_upgrade_lock
 fi
 # Repository errors must happen before the OLD controller restores its state.
-prepare_package
+if [ "$UNIVERSAL" = 1 ]; then prepare_universal_package; else prepare_package; fi
 BACKUP="$ROOT/etc/adzero-backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP"
 chmod 700 "$ROOT/etc/adzero-backups" "$BACKUP"
@@ -470,7 +702,9 @@ if [ "$UPGRADE" = 1 ]; then
 	[ ! -e "$ROOT/etc/adzero/adapter.json" ] && [ ! -e "$ROOT/etc/adzero/managed" ] || fail '旧版仍有未恢复的所有权记录，已停止升级。'
 fi
 printf 'AdZero: 安装 %s；配置备份：%s\n' "$FILE" "$BACKUP/config.tar.gz"
-if [ "$PM" = opkg ]; then
+if [ "$UNIVERSAL" = 1 ]; then
+	install_universal_package || fail '本地安装失败；配置备份已保留，请检查软件包状态。'
+elif [ "$PM" = opkg ]; then
 	opkg install "$TMP/package.ipk" || fail '安装失败，请检查当前固件软件源依赖。'
 else
 	if [ "$APK_LOCAL" = 1 ]; then

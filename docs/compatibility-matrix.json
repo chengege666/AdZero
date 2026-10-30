@@ -28,5 +28,23 @@
   "plugins": ["nailink", "passwall", "passwall2", "openclash", "nikki", "none", "unknown_core", "multiple_plugins"],
   "dns_cases": ["dnsmasq", "multiple_dnsmasq", "smartdns", "unbound", "adguardhome_conflict", "proxy_dns", "fake_ip", "tun", "ebpf", "ipv4", "ipv6", "doh", "dot", "external_dns"],
   "evidence_levels": ["source_review", "offline_fixture", "sdk_build", "device_install", "client_filtering"],
-  "policy": "Identify the actual package manager, package architecture, dependencies and DNS path. Never infer filtering from a plugin name, firmware release or CPU bitness."
+  "policy": "Identify the actual package manager, package architecture, dependencies and DNS path. Never infer filtering from a plugin name, firmware release or CPU bitness.",
+  "unified_install": {
+    "release": "v0.22.0",
+    "channel": "stable",
+    "firmwares": [
+      "openwrt",
+      "immortalwrt",
+      "istoreos"
+    ],
+    "application_formats": {
+      "ipk": "all",
+      "apk": "noarch"
+    },
+    "selection": "native_package_manager_and_dependencies",
+    "fresh_install_enabled": false,
+    "upgrade_preserves_switch": true,
+    "legacy_sdk_rows": "historical_build_evidence_not_patch_whitelist",
+    "device_acceptance": "not_run_for_this_release"
+  }
 }

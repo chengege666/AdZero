@@ -1,0 +1,122 @@
+{
+  "version": "0.22.0",
+  "source_sha256": "0ba7296f58ac02832a4b56d0dcdf170844f0fca42e103ebe21fcbec3ea138479",
+  "sdk_application_metadata": {
+    "ipk": {
+      "arch": "all",
+      "depends": [
+        "adblock-fast",
+        "ca-bundle",
+        "conntrack",
+        "coreutils-timeout",
+        "curl",
+        "libc",
+        "luci-base",
+        "rpcd-mod-file",
+        "rpcd-mod-ucode",
+        "tcpdump",
+        "ucode",
+        "ucode-mod-fs",
+        "ucode-mod-socket",
+        "ucode-mod-ubus",
+        "ucode-mod-uci",
+        "ucode-mod-uloop"
+      ],
+      "conflicts": "",
+      "provides": ""
+    },
+    "apk": {
+      "arch": "noarch",
+      "depends": [
+        "adblock-fast",
+        "ca-bundle",
+        "conntrack",
+        "coreutils-timeout",
+        "curl",
+        "libc",
+        "luci-base",
+        "rpcd-mod-file",
+        "rpcd-mod-ucode",
+        "tcpdump",
+        "ucode",
+        "ucode-mod-fs",
+        "ucode-mod-socket",
+        "ucode-mod-ubus",
+        "ucode-mod-uci",
+        "ucode-mod-uloop"
+      ],
+      "conflicts": false,
+      "provides": true
+    }
+  },
+  "native_vendor_contracts": [
+    {
+      "native_origin": "adzero-istoreos-24108-armsr-beta.tar.gz",
+      "format": "ipk",
+      "application_dependency_contract_unchanged": true,
+      "portable_arch": "all",
+      "historical_application_sha256": "0477f7e1497819effe1ddb19b83005754707b177ca0f17bc0fecd269fbd8f3a6"
+    },
+    {
+      "native_origin": "adzero-istoreos-24108-r6xs-beta.tar.gz",
+      "format": "ipk",
+      "application_dependency_contract_unchanged": true,
+      "portable_arch": "all",
+      "historical_application_sha256": "0a348c3100d2d35ab1280b88fe09edfe9336d44d466b7b12ce151dc567eb02ec"
+    },
+    {
+      "native_origin": "adzero-istoreos-24108-x86_64-beta.tar.gz",
+      "format": "ipk",
+      "application_dependency_contract_unchanged": true,
+      "portable_arch": "all",
+      "historical_application_sha256": "95aeaee15fa1ce25ce4a8e893a45b1797386d0e6f51f2fc56bf242206421bc5f"
+    },
+    {
+      "native_origin": "adzero-istoreos-armsr-beta.tar.gz",
+      "format": "apk",
+      "application_dependency_contract_unchanged": true,
+      "portable_arch": "noarch",
+      "historical_application_sha256": "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52"
+    },
+    {
+      "native_origin": "adzero-istoreos-rockchip-r6xs-beta.tar.gz",
+      "format": "apk",
+      "application_dependency_contract_unchanged": true,
+      "portable_arch": "noarch",
+      "historical_application_sha256": "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52"
+    },
+    {
+      "native_origin": "adzero-istoreos-x86_64-beta.tar.gz",
+      "format": "apk",
+      "application_dependency_contract_unchanged": true,
+      "portable_arch": "noarch",
+      "historical_application_sha256": "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52"
+    }
+  ],
+  "current_router_readonly_inventory_check": {
+    "firmware": "OpenWrt",
+    "release": "25.12.5",
+    "target": "rockchip/armv8",
+    "package_format": "apk",
+    "native_solver": "passed",
+    "installed_database_unchanged": true,
+    "snapshot_source": "read_only_current_router_package_inventory",
+    "router_configuration_modified": false,
+    "device_installation": "not_run",
+    "native_snapshot_uninstall": {
+      "transaction": "real_apk_against_local_inventory_snapshot",
+      "package_hooks": "disabled_in_snapshot_test",
+      "removed": [
+        "luci-app-adzero"
+      ],
+      "retained": [
+        "adblock-fast",
+        "ucode-mod-socket"
+      ],
+      "dependency_version_pins_added": false,
+      "live_router_modified": false
+    }
+  },
+  "physical_device_installation": "not_run",
+  "native_vendor_dependency_simulations": "prior_pinned_reports_retained; dependency_contract_equivalence_checked_this_release"
+}

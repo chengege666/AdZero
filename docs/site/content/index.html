@@ -1,7 +1,7 @@
-<div class="callout"><strong>第一次使用 AdZero？</strong><a href="installation.html#install">只需一条安装命令</a>：它会自动检测 OpenWrt、ImmortalWrt 或 iStoreOS，选择对应中文菜单。公测版建议先安装但不启用，确认网络正常后再开启过滤。</div>
+<div class="callout"><strong>第一次使用 AdZero？</strong><a href="installation.html#install">只需一条安装命令</a>：它会自动检测 OpenWrt、ImmortalWrt 或 iStoreOS，使用同一个正式版本和中文菜单。首次安装保持保护关闭，确认网络正常后再开启过滤。</div>
 <h2 id="start">三步开始使用</h2>
 <ol>
-<li><a href="compatibility.html">确认固件与设备架构</a>：分别查看常规版、ARM64 公测和 iStoreOS 公测支持范围。</li>
+<li><a href="compatibility.html">确认固件与设备架构</a>：查看三个固件共用的安装条件与依赖范围。</li>
 <li><a href="installation.html#install">一键安装</a>：以 root SSH 运行统一命令，自动选择固件与安装包。</li>
 <li><a href="quick-start.html">开启并验证过滤</a>：选规则、应用，在连接路由器的电脑上做 DNS 效果检测。</li>
 </ol>
@@ -18,7 +18,4 @@
 <h2 id="scope">AdZero 是做什么的？</h2>
 <p>AdZero 是装在软路由上的<strong> DNS 域名广告过滤插件</strong>，直接从 LuCI 管理。它用 adblock-fast 处理过滤列表，也可以配合受支持的代理，无需另外登录或安装管理 App。</p>
 <p>它擅长拦广告、追踪域名的解析，不等于浏览器广告扩展：与内容共用域名的视频广告、设备自己的加密 DNS 或绕过路由器的流量，未必能拦截。页面显示的 DNS 请求拦截占比，也不是网页广告拦截率。</p>
-<div class="callout"><strong>发行和测试：</strong>常规渠道是 v$version；OpenWrt / ImmortalWrt ARM64 与 iStoreOS 各有<a href="compatibility.html#channels">独立公开 Beta</a>。已经编译或可以下载安装，不代表每台真实路由器的 LAN DNS、代理与回滚都完成了验收。</div>
-<h2 id="community">文档与社区</h2>
-<p><a href="https://github.com/slobys/AdZero">GitHub 源码</a> · <a href="https://github.com/slobys/AdZero/releases">下载发行包</a> · <a href="https://github.com/slobys/AdZero/issues">反馈问题</a> · <a href="https://www.youtube.com/@naiyou">YouTube</a> · <a href="https://t.me/naiyous">Telegram</a></p>
-<p>搜索框支持中文关键词，按 Ctrl K 或 ⌘ K 可以快速打开。反馈前请遮盖代理订阅、节点和私人配置。</p>
+<div class="callout"><strong>发行和测试：</strong>当前正式版本为 v$version，三个固件共用同一入口。软件包安装与隔离测试不代替每台真实设备的 LAN、DNS、代理和恢复验收。</div>
