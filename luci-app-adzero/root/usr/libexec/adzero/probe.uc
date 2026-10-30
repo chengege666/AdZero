@@ -156,7 +156,17 @@ const opkg = has_command('opkg'), apk = has_command('apk');
 const opkg_db = !!(fs.stat(root + '/usr/lib/opkg/status') || fs.stat(root + '/var/lib/opkg/status'));
 const apk_db = !!fs.stat(root + '/lib/apk/db/installed');
 let manager = 'unknown', arch = 'unknown';
-if (opkg_db && apk_db) manager = 'ambiguous';
+// APK v3 can relocate its database or leave an old OPKG inventory behind.
+// A native query for every base package proves an active inventory; merely
+// finding an apk executable (or an empty database) does not.
+let apk_inventory = apk;
+let apk_args = root ? ['--root', root] : [];
+if (match(release.DISTRIB_ARCH ?? '', /^[a-zA-Z0-9_+-]+$/))
+	apk_args = [...apk_args, '--arch', release.DISTRIB_ARCH];
+if (apk) for (let name in ['base-files','luci-base','rpcd'])
+	if (command('apk', [...apk_args, 'info', '-e', name]) != name) apk_inventory = false;
+if (apk_inventory) manager = 'apk';
+else if (opkg_db && apk_db) manager = 'ambiguous';
 else if (opkg_db && opkg) manager = 'opkg';
 else if (apk_db && apk) manager = 'apk';
 else if (opkg && !apk) manager = 'opkg';

@@ -187,6 +187,20 @@ echo "ctl $1" >> "$MOCK_INSTALL_LOG"
 
         self.assertFalse((self.f.root / "tmp/adzero-install.lock").exists())
 
+    def test_uninstall_refuses_unowned_files_before_disabling(self):
+        self.installed_fixture(upgrade=False)
+        self.f.env['MOCK_PACKAGE_NOT_OWNED']='1'
+        out=self.run_menu('4\n0\n').stdout
+        self.assertIn('未确认插件归属',out)
+        self.assertFalse(self.f.log.exists())
+
+    def test_uninstall_keeps_package_when_controller_leaves_recovery_record(self):
+        self.installed_fixture(upgrade=False)
+        self.f.write('etc/adzero/adapter.json','retain recovery')
+        out=self.run_menu('4\nYES\n0\n').stdout
+        self.assertIn('恢复记录仍存在',out)
+        self.assertEqual(self.f.log.read_text().splitlines(),['ctl disable'])
+
     def test_uninstall_refuses_unknown_or_ambiguous_package_manager(self):
         self.installed_fixture(upgrade=False)
         self.f.write("lib/apk/db/installed", "fixture")
@@ -201,7 +215,7 @@ echo "ctl $1" >> "$MOCK_INSTALL_LOG"
                                 input="0\n", text=True, capture_output=True,
                                 env=self.f.env, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("v0.21.5", result.stdout)
+        self.assertIn("v0.22.0", result.stdout)
         self.assertFalse(self.f.log.exists())
 
 

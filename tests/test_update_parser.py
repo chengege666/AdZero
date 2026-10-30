@@ -47,7 +47,9 @@ class OfficialReleaseParserTest(unittest.TestCase):
         cases = [
             {"tag_name": "v0.21.4", "draft": False,
              "assets": [{"name": "install.sh", "digest": "sha256:" + "0" * 64}]},
-            {"tag_name": "v0.21.5", "draft": False, "prerelease": True,
+            {"tag_name": "v9.0.0", "draft": False, "prerelease": True,
+             "assets": [{"name": "install.sh", "digest": "sha256:" + "b" * 64}]},
+            {"tag_name": "v0.21.5", "draft": False, "prerelease": False,
              "assets": [{"name": "install.sh", "digest": "sha256:" + digest}]},
             {"tag_name": "v0.21.9", "draft": True,
              "assets": [{"name": "install.sh", "digest": "sha256:" + "9" * 64}]},

@@ -75,8 +75,10 @@ jobs:
           assert set(public["profiles"])==set(PROFILES)
           import re
           code=Path("scripts/install-auto.sh").read_text()
-          pin=re.search(r"PIN_ISTOREOS24108='([0-9a-f]{64})'",code)
-          assert pin and pin.group(1)==public["installer"]["sha256"]
+          import hashlib
+          pin=re.search(r"INSTALL_SHA256=([0-9a-f]{64})",code)
+          assert pin and pin.group(1)==hashlib.sha256(Path("scripts/install.sh").read_bytes()).hexdigest()
+          assert "PIN_ISTOREOS24108" not in code
           for profile,spec in PROFILES.items():
               row=public["profiles"][profile]
               assert row["target"]==spec["target"]

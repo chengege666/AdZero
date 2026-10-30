@@ -22,6 +22,11 @@ elif name == 'opkg':
     assert args == ['print-architecture']
     print('arch all 1\narch noarch 1\narch generic 5\narch ' + data.get('arch', 'x86_64') + ' 10')
 elif name == 'apk':
+    if 'info' in args:
+        if data.get('apk_inventory') and args[-1] in data['apk_inventory']:
+            print(args[-1])
+            raise SystemExit(0)
+        raise SystemExit(1)
     assert args == ['--print-arch']
     print(data.get('arch', 'x86_64'))
 else:
@@ -127,6 +132,19 @@ class ProbeTest(unittest.TestCase):
     def test_two_binaries_without_database_are_ambiguous(self):
         self.env["ADZERO_APK"] = str(self.root / "bin/apk")
         self.assertEqual(self.probe()["platform"]["package_manager"], "ambiguous")
+
+    def test_native_apk_inventory_handles_relocated_database_and_stale_opkg(self):
+        self.env['ADZERO_APK'] = str(self.root / 'bin/apk')
+        self.data['apk_inventory'] = ['base-files', 'luci-base', 'rpcd']
+        self.write('usr/lib/opkg/status', 'stale database')
+        self.assertEqual(self.probe()['platform']['package_manager'], 'apk')
+
+    def test_incomplete_apk_inventory_does_not_override_two_databases(self):
+        self.env['ADZERO_APK'] = str(self.root / 'bin/apk')
+        self.data['apk_inventory'] = ['base-files', 'luci-base']
+        self.write('usr/lib/opkg/status', 'old')
+        self.write('lib/apk/db/installed', 'incomplete')
+        self.assertEqual(self.probe()['platform']['package_manager'], 'ambiguous')
 
     def test_missing_tools_are_unknown(self):
         self.env["ADZERO_OPKG"] = str(self.root / "missing-opkg")

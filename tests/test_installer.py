@@ -43,6 +43,26 @@ class InstallerTest(unittest.TestCase):
 
     def executable(self, path, content):
         path.parent.mkdir(parents=True, exist_ok=True)
+        if path.name == 'apk':
+            # Legacy fixtures have a fixed-path DB, without a native APK
+            # inventory. Read-only detection must not count as an install.
+            content = content.replace('#!/bin/sh\n', '''#!/bin/sh
+if [ "$1" = --root ]; then shift 2; fi
+if [ "$1" = --arch ]; then shift 2; fi
+case "$*" in "info -e luci-app-adzero")
+  if [ -f "$ADZERO_INSTALL_ROOT/etc/config/adzero" ] && [ "${MOCK_PACKAGE_NOT_OWNED:-0}" != 1 ]; then echo luci-app-adzero; exit 0; fi
+  exit 1 ;;
+  "info -e "*) exit 1 ;;
+esac
+''', 1)
+        if path.name == 'opkg':
+            content = content.replace('#!/bin/sh\n', '''#!/bin/sh
+if [ "$1" = --offline-root ]; then shift 2; fi
+if [ "$1" = status ]; then
+  [ "${MOCK_PACKAGE_NOT_OWNED:-0}" != 1 ] || exit 1
+  printf 'Package: %s\\nStatus: install ok installed\\n' "$2"; exit 0
+fi
+''', 1)
         path.write_text(content)
         path.chmod(0o755)
 

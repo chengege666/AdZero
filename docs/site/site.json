@@ -1,13 +1,13 @@
 {
   "title": "AdZero",
   "url": "https://slobys.github.io/AdZero/",
-  "version": "0.21.5",
-  "release": "v0.21.5",
+  "version": "0.22.0",
+  "release": "v0.22.0",
   "groups": [
     {"title": "开始使用", "pages": [
       {"id":"index","title":"使用文档","description":"从确认固件、安装到日常广告过滤。"},
-      {"id":"installation","title":"安装与升级","description":"三个安装渠道、一键安装、备份和升级操作。"},
-      {"id":"compatibility","title":"支持的固件","description":"确认 OpenWrt、ImmortalWrt、iStoreOS 的精确版本及 Beta 范围。"},
+      {"id":"installation","title":"安装与升级","description":"三个固件共用一个正式版本，自动安装、升级与恢复。"},
+      {"id":"compatibility","title":"支持的固件","description":"本机原生依赖检查、IPK/APK 自动选择与兼容边界。"},
       {"id":"quick-start","title":"第一次使用","description":"选择规则、开启保护，并从电脑验证效果。"}
     ]},
     {"title": "日常设置", "pages": [

@@ -23,30 +23,25 @@ AdZero 是一款运行在 **OpenWrt、ImmortalWrt、iStoreOS** 软路由上的�
 
 > **注意**：DNS 过滤不是浏览器广告扩展。同域名视频广告、App 自带加密 DNS 或绕过路由器的流量，不一定能拦截。页面统计也不等于网页广告拦截率。
 
-## 一键安装：自动识别固件
+## 一键安装
 
-**不用选择安装版本或 CPU 架构。** 以 **root 身份登录软路由 SSH**，运行这一条命令：
+**OpenWrt、ImmortalWrt、iStoreOS 使用同一个正式版本、同一条命令。** 以 root 登录路由器 SSH：
 
 ```sh
-curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install-auto.sh -o /tmp/adzero-install-auto.sh && sh /tmp/adzero-install-auto.sh --menu
+wget -O /tmp/adzero-install-auto.sh https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install-auto.sh && sh /tmp/adzero-install-auto.sh --menu
 ```
 
-安装助手会自动检测 **OpenWrt / ImmortalWrt / iStoreOS** 的固件版本、设备 target、包架构和安装格式，再打开对应的中文菜单：
+选择「一键安装 / 自动升级」即可，无须选择固件渠道、CPU 型号或测试版。安装器自动使用本机原生的 **OPKG/IPK** 或 **APK**，检查依赖、校验下载文件，并备份原配置。
 
-| 自动选择的渠道 | 适用范围 |
+| 固件 | 安装方式 |
 | --- | --- |
-| **常规安装** | OpenWrt 24.10.8 / 25.12.5，ImmortalWrt 24.10.6 / 25.12.2 的指定目标 |
-| **ARM64 公测** | OpenWrt 25.12.6、ImmortalWrt 25.12.2 的 Rockchip / MediaTek Filogic |
-| **iStoreOS 公测** | iStoreOS 25.12.6（修订 2026102312）的 x86_64 / ARMSR / R6XS |
-| **iStoreOS 24.10 IPK 公测** | iStoreOS **24.10.8（修订 2026073111）** 的 x86_64 / ARM64 ARMSR / R6XS |
+| OpenWrt | 同一安装入口，依赖使用本机原有软件源 |
+| ImmortalWrt | 同一安装入口，依赖使用本机原有软件源 |
+| iStoreOS | 同一安装入口；原厂源缺少的依赖按固件版本、修订号与 ABI 自动补齐 |
 
-OpenWrt / ImmortalWrt ARM64 公测为 **Beta.2**；iStoreOS 25.12.6 已更新 **Beta.4**：已有 AdZero 也能从菜单安全修复、诊断或卸载，无需手动删除配置或找旧脚本。统一安装命令自动选版本；首次安装默认不启用 DNS 过滤。
+推荐带 LuCI 的 24.10 / 25.12 系列。插件本体是脚本与网页资源，共享一份 IPK 和一份 APK；原生依赖仍按本机固件匹配，不能跨固件强装。依赖缺失或存在系统包替换冲突会在停止旧保护前中止。[查看兼容范围](https://slobys.github.io/AdZero/compatibility.html)。
 
-iStoreOS **24.10.8** 已开放独立 **IPK/OPKG Beta.1**：三个目标已通过原厂源码打包和真实 OPKG 离线安装预检，仍待实体设备 DNS/代理验收；其他 24.10.x 版本不在安装名单。
-
-匹配不到就会**拒绝安装并说明原因**，不会强装其他架构的软件包。下载的安装脚本还会经过 SHA-256 校验。[查看完整固件兼容表](https://slobys.github.io/AdZero/compatibility.html)。
-
-**建议首次选择「安装但不启用过滤」**，先确认 SSH、LuCI、正常上网与原有代理没问题，再手动开启。公测版仍需更多真实设备测试，请先备份配置并准备本地恢复方式。
+**首次安装保持保护关闭，升级沿用原开关。** 装好后再到 LuCI 开启过滤。旧测试版可以从同一入口升级，不再单独发布 ARM64、iStoreOS 或 Beta 版本；历史下载链接保留。
 
 ## 装好以后怎么用？
 

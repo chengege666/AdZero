@@ -17,7 +17,7 @@ try {
 	if (type(releases)!='array') exit(2);
 	let found=null, parts=null;
 	for (let release in releases) {
-		if (release?.draft || type(release?.tag_name)!='string' || !match(release.tag_name,/^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/)) continue;
+		if (release?.draft || release?.prerelease || type(release?.tag_name)!='string' || !match(release.tag_name,/^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/)) continue;
 		let digits=split(substr(release.tag_name,1),'.');
 		if (length(digits)!=3) continue;
 		let values=[int(digits[0]),int(digits[1]),int(digits[2])];
