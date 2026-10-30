@@ -1,9 +1,12 @@
-name: iStoreOS ARM64 original-source checks
+name: iStoreOS ARM64 archived-origin checks
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - 'scripts/probe_istoreos_arm64.py'
+      - 'scripts/check_native_origins.py'
+      - 'scripts/build_unified_release.py'
+      - 'tests/test_native_origins.py'
       - 'scripts/prepare_istoreos_source.py'
       - 'scripts/inspect_istoreos_candidate.py'
       - 'scripts/build_istoreos_native.py'
@@ -52,7 +55,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Audit pinned firmware-source metadata (read-only, not an SDK build)
+      # The historical 2026102312 dependency bytes are immutable. The vendor's
+      # unversioned latest buildinfo URLs now describe a newer weekly image;
+      # app-only PRs must verify the bytes actually reused, not relabel new
+      # vendor buildinfo as the old firmware. Never update or weaken its pins.
+      - name: Verify immutable native dependency origins (not an SDK build)
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          python3 scripts/check_native_origins.py --profile "$PROFILE" > istoreos-arm64-origin-archives.json
+      - name: Audit live pinned firmware-source metadata (explicit read-only audit)
+        if: github.event_name == 'workflow_dispatch'
         env:
           PROFILE: ${{ matrix.profile }}
         run: |
@@ -68,8 +82,9 @@ jobs:
           python3 -m unittest discover -s tests -p test_istoreos_pilot.py -v
           python3 -m unittest discover -s tests -p test_istoreos_beta.py -v
           python3 -m unittest discover -s tests -p test_arm64_matrix.py -v
-      - name: Upload read-only firmware provenance (no installable APK)
+          python3 -m unittest discover -s tests -p test_native_origins.py -v
+      - name: Upload verified archive origins or explicit live audit (no installable APK)
         uses: actions/upload-artifact@v4
         with:
           name: istoreos-arm64-original-metadata-${{ matrix.profile }}
-          path: istoreos-arm64-provenance.json
+          path: istoreos-arm64-*.json

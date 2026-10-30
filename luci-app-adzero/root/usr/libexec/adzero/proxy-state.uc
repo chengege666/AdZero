@@ -219,8 +219,10 @@ export function nailink_state(root) {
 		let split_at = index(raw,'\n\n');
 		if (split_at < 0) die('invalid response');
 		let status = match(substr(raw,0,split_at),/(^|\n)Status: ([0-9]{3})/);
-		if (status && status[2] != '200') die('request rejected');
+		if (status && status[2] != '200' && !(query=='{coreStatus}'&&index(['400','422'],status[2])>=0)) die('request rejected');
 		let data = json(substr(raw,split_at+2));
+		if(query=='{coreStatus}'&&length(data?.errors??[])&&!length(filter(data.errors,e=>type(e?.message)=='string'&&match(e.message,/([Cc]annot query field|[Uu]nknown field).*coreStatus/))))die('core state unavailable');
+		if(status&&status[2]!='200'&&!length(data?.errors??[]))die('request rejected');
 		if(!length(data?.errors??[])&&query=='{coreStatus}'&&type(data?.data?.coreStatus)=='string'){
 			result=nailink_status(data.data.coreStatus);break;
 		}
