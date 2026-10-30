@@ -1,14 +1,29 @@
 """Native ucode sockets against isolated loopback UDP/TCP DNS fixtures."""
-import json,os,shlex,socket,struct,subprocess,tempfile,threading,time,unittest
+import errno,json,os,shlex,socket,struct,subprocess,tempfile,threading,time,unittest
 from pathlib import Path
 from test_dns_enhance import query,answer
 ROOT=Path(__file__).resolve().parents[1]
 UCODE=shlex.split(os.environ.get('ADZERO_UCODE',''))
+def bind_dns_fixture():
+    # TCP and UDP have separate ephemeral-port allocators. Reserve both before
+    # starting either fixture; an unrelated host TCP connection must not make
+    # this DNS regression fail before the relay has even been launched.
+    for _ in range(32):
+        tcp=socket.socket();udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        try:
+            tcp.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            tcp.bind(('127.0.0.1',0));udp.bind(tcp.getsockname())
+            tcp.listen();tcp.settimeout(.1);udp.settimeout(.1)
+            return udp,tcp
+        except OSError as error:
+            tcp.close();udp.close()
+            if error.errno!=errno.EADDRINUSE:raise
+    raise RuntimeError('No shared TCP/UDP fixture port available')
+
 @unittest.skipUnless(UCODE,'requires actual ucode/socket')
 class RelayTest(unittest.TestCase):
     def test_udp_tcp_cname_device_exemption_and_pipeline(self):
-        udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);udp.bind(('127.0.0.1',0));port=udp.getsockname()[1]
-        tcp=socket.socket();tcp.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);tcp.bind(('127.0.0.1',port));tcp.listen();tcp.settimeout(.1);udp.settimeout(.1)
+        udp,tcp=bind_dns_fixture();port=udp.getsockname()[1]
         self.addCleanup(udp.close);self.addCleanup(tcp.close);stop=threading.Event();self.addCleanup(stop.set)
         def respond(q):return answer(q,[('shop.example','ads.example')])
         def udp_run():
