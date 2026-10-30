@@ -28,13 +28,14 @@ let routing_data = null;
 let pending_nikki = null;
 let journal = null;
 let changed = false;
+let selected_core = null;
 let transaction_previous = null;
 let transaction_saved = false;
 let clear_nailink_pending, nailink_completed, rules_signature, passwall_engine;
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 let openclash_error = 'hook_failed';
-const native_runtime={passwall:proxy.dns_runtime(root,'passwall'),ssrplus:proxy.dns_runtime(root,'ssrplus')};
+const native_runtime={passwall:proxy.dns_runtime(root,'passwall'),passwall2:proxy.dns_runtime(root,'passwall2'),ssrplus:proxy.dns_runtime(root,'ssrplus')};
 let guard, finish_guard, pool_needed, prepare_pool, verify_pool, pool_preflight, strict_target, policy_prerequisites, passwall_pool_foreign, stop_pool;
 
 function quote(s) { return "'" + replace(s, /'/g, "'\\''") + "'"; }
@@ -143,6 +144,7 @@ function wait_native_dns(){
 	for(let attempt=0;native_needs_reload(value)&&attempt<4;attempt++){
 		progress.stage('confirming_proxy');sleep(1000);value=native_dns_state();
 	}
+	if(journal?.plugin=='passwall2'&&value.state!='ready')die('PassWall2 的实际 DNS 实例尚未确认载入过滤文件，未将本次接入记为成功；请检查其 DNS 重定向与默认实例。');
 	return value;
 }
 
@@ -292,6 +294,13 @@ function graphql(query, variables, readiness) {
 		die(e);
 	}
 }
+function nailink_runtime_state(with_modified){
+	let legacy=graphql(with_modified?'{general{dae{running modified}}}':'{general{dae{running}}}').general?.dae;
+	let current=null;
+	try{current=graphql('{coreStatus}').coreStatus;}catch(e){}
+	let state=proxy.nailink_status(current,legacy);
+	return {...legacy,...state};
+}
 function active_plugin() {
 	let inventory = getenv('ADZERO_ADAPTER_INVENTORY');
 	let data = inventory ? json(fs.readfile(inventory)) : json(capture(['/bin/sh', root + '/usr/libexec/adzero/probe']));
@@ -299,7 +308,7 @@ function active_plugin() {
 	let active = filter(data.plugins, proxy.active);
 	if (length(active) > 1) die('Multiple active proxy plugins require manual DNS review');
 	if (!length(active)) { if(split_enabled)timeout_helper();policy_prerequisites('none');return 'none'; }
-	if (index(['nailink','passwall','openclash','nikki','ssrplus'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
+	if (index(['nailink','passwall','passwall2','openclash','nikki','ssrplus'], active[0].id) < 0) die('Active proxy adapter is not supported yet');
 	if(active[0].id!='nailink')timeout_helper();
 	if(active[0].id=='passwall'){
 		if(split_enabled){
@@ -312,6 +321,11 @@ function active_plugin() {
 		}
 	}
 	if(active[0].id=='openclash')openclash_paths();
+	if(active[0].id=='passwall2'){
+		let helper=fs.readfile(root+'/usr/share/passwall2/helper_dnsmasq.lua',1048577)??'';
+		if(index(helper,'function copy_instance')<0||index(helper,'conf-dir=')<0||index(helper,'address=')<0||uci.get('adblock-fast','config','dns')!='dnsmasq.servers')die('当前 PassWall2 未确认可继承系统 dnsmasq 的过滤文件，原配置保持不变。');
+		if((uci.get('passwall2','@global[0]','dns_redirect')??'1')!='1')die('PassWall2 过滤接入需要其原生 DNS 重定向开启；AdZero 不会代为更改。');
+	}
 	if(active[0].id=='ssrplus'){
 		if(split_enabled&&action!='routing-check')die('SSR Plus+ 当前支持广告过滤；请先关闭 AdZero 自动分流，保留 SSR Plus+ 原生分流。');
 		let helper=fs.readfile(root+'/usr/share/shadowsocksr/gfw2ipset.sh',1048577)??'';
@@ -319,14 +333,17 @@ function active_plugin() {
 	}
 	// Check the real gateway/backend before ctl enables or restarts filtering.
 	// Merely recognizing a running process does not prove API authorization.
-	let nailink_runtime = active[0].id == 'nailink' ? graphql('{general{dae{running}}}').general?.dae : null;
+	selected_core=active[0].core??null;
+	let nailink_runtime = active[0].id == 'nailink' ? nailink_runtime_state() : null;
 	if (active[0].id == 'nailink' && type(nailink_runtime?.running) != 'bool') die('NaiLink returned invalid runtime state');
+	if(active[0].id=='nailink'&&selected_core&&nailink_runtime.core!=selected_core)die('NaiLink 正在切换内核，请等待其完成；原配置保持不变。');
+	if(active[0].id=='nailink')selected_core=nailink_runtime.core;
 	if (split_enabled && active[0].id!='ssrplus') {
 		if (active[0].id == 'nailink') {
 			if (nailink_runtime?.running !== true) {policy_prerequisites('none');return 'none';}
 		} else if (active[0].runtime == 'stopped') {policy_prerequisites('none');return 'none';}
 		else if (active[0].runtime != 'running') {
-			let expected=active[0].id=='passwall'?['xray','sing-box']:['mihomo','clash'];
+			let expected=index(['passwall','passwall2'],active[0].id)>=0?['xray','sing-box']:['mihomo','clash'];
 			if (!length(filter(data.cores??[],c=>index(expected,c)>=0))) die('无法确认当前代理内核状态，请检查代理服务。');
 		}
 	}
@@ -357,7 +374,7 @@ function apply_alias(plugin){
 	if(plugin!='nailink')return;
 	let dns=selected_dns(),traffic=null,next_dns=native.strip_dns(dns.dns.string,journal.alias),next=null,plan=null;
 	if(journal.alias){traffic=selected_traffic();next=native.strip_routing(traffic.text,journal.alias);}
-	if(alias_wanted()){
+	if(alias_wanted()&&(!selected_core||selected_core=='dae')){
 		// Validate both native profiles before changing either of them. Old
 		// cores/listeners remain usable when this optional capability is absent.
 		try{
@@ -370,7 +387,7 @@ function apply_alias(plugin){
 			graphql('query($raw:String!){parsedRouting(raw:$raw){string}}',{raw:routing});
 			plan={plugin:'nailink',port:5355,lan};next_dns=candidate;next=routing;delete journal.alias_unavailable;
 		}catch(e){journal.alias_unavailable='native_listener_or_routing_unavailable';}
-	}
+	}else if(alias_wanted())journal.alias_unavailable='native_core_listener_not_supported';
 	if(traffic&&journal.traffic&&(traffic.id!=journal.traffic.id||traffic.text!=journal.traffic.after))die('NaiLink 流量路由已被外部修改。');
 	if(journal.alias&&!same(journal.alias,plan))journal.alias_retire=journal.alias;
 	journal.alias=plan;
@@ -422,8 +439,9 @@ nailink_completed = function() {
 	let proof = journal?.nailink_completion;
 	if (proof?.schema != 1 || !proof.barrier) return false;
 	try {
-		let runtime = graphql('{general{dae{running modified}}}').general?.dae;
+		let runtime = nailink_runtime_state(true);
 		if (runtime?.running !== true || runtime?.modified !== false) return false;
+		if(proof.core&&proof.core!=runtime.core)return false;
 		let health = graphql('', null, true);
 		if (health?.ready !== true || health.configured !== true || health.listening !== true ||
 			health.initialized !== true || health.dns_ready !== true || health.routing_ready !== true) return false;
@@ -442,16 +460,17 @@ function prepare_nailink_completion() {
 		journal.nailink_completion=null;journal.nailink_run_identity=nailink_identity();
 		journal.nailink_reload_unconfirmed=true;save();return;
 	}
-	let dns=selected_dns(), runtime=graphql('{general{dae{running modified}}}').general?.dae;
+	let dns=selected_dns(), runtime=nailink_runtime_state(true);
 	// Updating only the DAT file leaves modified=false for both the old and
 	// new core. The native updateDns API increments the profile version even
 	// for identical text. Establish a version barrier before submitting run.
 	if (journal.stage=='restarting' && runtime?.running === true && runtime.modified === false) {
 		update_dns(dns.id,dns.dns.string);
-		runtime=graphql('{general{dae{running modified}}}').general?.dae;
+		runtime=nailink_runtime_state(true);
 	}
 	let traffic=journal.traffic?selected_traffic():null;
 	journal.nailink_completion={schema:1,forward:journal.stage=='restarting',
+		core:runtime.core,
 		barrier:runtime?.running===false || runtime?.running===true && runtime.modified===true,
 		dns:{id:dns.id,text:dns.dns.string},traffic:traffic?{id:traffic.id,text:traffic.text}:null,
 		input:rules_signature('nailink')};
@@ -484,7 +503,7 @@ function restart(plugin) {
 		return;
 	}
 	if (plugin == 'nailink') {
-		if(graphql('{general{dae{running}}}').general?.dae?.running !== true){
+		if(nailink_runtime_state().running !== true){
 			if(journal.stage=='restarting')die('NaiLink 内核在应用期间已停止。');
 			return; // restoring profiles must not start a core the user stopped
 		}
@@ -561,7 +580,11 @@ function restart(plugin) {
 	}
 }
 function apply_plugin(plugin, list) {
-	if(plugin=='ssrplus'){
+	if(plugin=='passwall2'){
+		// Its native helper copies servers-file from the system dnsmasq. The
+		// backend owns that file; do not inject PassWall v1 settings or hooks.
+		return;
+	}else if(plugin=='ssrplus'){
 		let candidates=[];
 		for(let file in ['black.list','white.list','netflix.list','gfw_list.conf','gfw_base.conf','oversea_list.conf']){
 			let raw=fs.readfile(root+'/etc/ssrplus/'+file,5000001)??'';if(length(raw)>5000000)die('SSR Plus+ 域名列表超过安全限制。');
@@ -677,6 +700,7 @@ function restore_passwall_option(section,option){
 }
 function apply_split(plugin) {
 	if(!split_enabled)return;
+	if(plugin=='passwall2'){journal.split={mode:'native',traffic_verified:false};return;}
 	journal.split ??= {mode:plugin=='none'?'direct':'proxy',target:null,traffic_verified:false};
 	if(plugin=='none'){
 		let instances=[];uci.foreach('dhcp','dnsmasq',s=>push(instances,s));
@@ -866,6 +890,7 @@ rules_signature = function(plugin) {
 	let dependencies={};
 	let paths=map(filter(configs,c=>c!='adblock-fast'),c=>'/etc/config/'+c);
 	if(plugin=='passwall')paths=[...paths,'/usr/share/passwall/app.sh','/usr/share/passwall/rules/chnlist','/usr/share/passwall/rules/chnroute','/usr/share/passwall/rules/gfwlist','/etc/passwall/rules/direct_host','/etc/passwall/rules/proxy_host'];
+	if(plugin=='passwall2')paths=[...paths,'/usr/share/passwall2/app.sh','/usr/share/passwall2/helper_dnsmasq.lua'];
 	if(plugin=='ssrplus')paths=[...paths,'/usr/share/shadowsocksr/gfw2ipset.sh',...map(['black.list','white.list','netflix.list','gfw_list.conf','gfw_base.conf','oversea_list.conf'],f=>'/etc/ssrplus/'+f)];
 	if(plugin=='nikki')push(paths,'/etc/nikki/run/config.yaml');
 	for(let c in configs)for(let delta in uci.changes(c)?.[c]??[]){
@@ -969,7 +994,7 @@ function reconfigure_passwall(with_rules){
 }
 
 function unchanged(plugin,signature) {
-	if(!journal||journal.stage!='configured_unverified'||journal.plugin!=plugin||!signature||!same(journal.rules_source,signature)||!!journal.split!=split_enabled)return false;
+	if(!journal||journal.stage!='configured_unverified'||journal.plugin!=plugin||!signature||!same(journal.rules_source,signature)||!!journal.split!=split_enabled||selected_core&&journal.core!=selected_core)return false;
 	if(split_enabled&&index(['nailink','nikki','openclash'],plugin)>=0&&!country_cached(plugin))return false;
 	for(let f in journal.files)if(!file_match(f.path,f.after,f.kind))return false;
 	for(let f in journal.flags)if(length(uci.changes(f.config)?.[f.config]??[])||!same(uci.get(f.config,f.section,f.option),f.after))return false;
@@ -1036,6 +1061,7 @@ strict_target=function(plugin){
 	return '127.0.0.1#'+port;
 };
 policy_prerequisites=function(plugin){
+	if(plugin=='passwall2'&&(dns_profile.strict||action=='dns-check'&&(dns_profile.domestic.mode=='parallel'||dns_profile.foreign.mode=='parallel')))die('PassWall2 当前沿用原生 DNS 与分流，不支持 AdZero 独立并发或严格模式；原设置保持不变。');
 	if(dns_profile.strict&&!split_enabled)die('严格 DNS 模式需要先应用自动分流。');
 	if(!split_enabled)return;
 	if(dns_profile.strict){
@@ -1069,8 +1095,8 @@ try {
 	journal = read_journal();
 	if (action == 'status') {
 		let protection;try{protection=json(fs.readfile(state_dir+'/dns-guard.json',16001));}catch(e){}
-		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
-			dns_policy:{domestic:dns_profile.domestic.mode??'single',foreign:dns_profile.foreign.mode??'single',strict:!!dns_profile.strict,guard:protection?.state??'off',scope:'default_lan_ipv4_dns',doh:'device_policy_required',passwall_dns_mode:index(['tcp','xray','sing-box','dns2socks'],uci.get('passwall','@global[0]','dns_mode'))>=0?uci.get('passwall','@global[0]','dns_mode'):null},
+		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', core:journal?.core??null, stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
+			dns_policy:{managed:journal?.plugin!='passwall2',domestic:dns_profile.domestic.mode??'single',foreign:dns_profile.foreign.mode??'single',strict:!!dns_profile.strict,guard:protection?.state??'off',scope:'default_lan_ipv4_dns',doh:'device_policy_required',passwall_dns_mode:index(['tcp','xray','sing-box','dns2socks'],uci.get('passwall','@global[0]','dns_mode'))>=0?uci.get('passwall','@global[0]','dns_mode'):null},
 			client_dns_verified:false, router_dns_verified:false,reload_pending:!!journal?.nailink_reload_unconfirmed,
 			runtime:native_runtime[journal?.plugin]?native_dns_state():null,
 			runtime_retry_exhausted:(journal?.runtime_retries??0)>=3,
@@ -1141,10 +1167,11 @@ try {
 		guard('hold');
 		if (journal && journal.plugin != plugin) restore();
 		if (plugin == 'none' && !split_enabled) {finish_guard(plugin);exit(0);}
-		if(split_enabled && plugin!='none' && plugin!='passwall'&&!country_cached(plugin))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
+		if(split_enabled && plugin!='none' && plugin!='passwall'&&plugin!='passwall2'&&!country_cached(plugin))routing_data=json(capture(['/bin/sh',getenv('ADZERO_ROUTING_DATA_PROGRAM')??'/usr/libexec/adzero/routing-data','prepare']));
 		let previous = journal ? sprintf('%J', journal) : null;
 		transaction_previous = previous;
 		journal ??= {schema:1, plugin, files:[], flags:[], stage:'preparing'};
+		journal.core=selected_core;
 		try {
 			if(journal.split && !split_enabled)die('分流设置变化，请先关闭并恢复。');
 			if(split_enabled)journal.split??={mode:plugin=='none'?'direct':'proxy',traffic_verified:false};
@@ -1155,7 +1182,7 @@ try {
 			if(native_runtime[plugin]){
 				let section;uci.foreach('passwall','global',s=>{section??=s['.name'];});
 				journal.dns_engine=plugin=='passwall'?(uci.get('passwall',section,'dns_shunt')??'dnsmasq'):null;
-				journal.runtime_supported=plugin=='ssrplus'||index(['dnsmasq','chinadns-ng'],journal.dns_engine)>=0&&(uci.get('passwall',section,'dns_redirect')??'1')=='1';
+				journal.runtime_supported=plugin=='ssrplus'||plugin=='passwall2'||index(['dnsmasq','chinadns-ng'],journal.dns_engine)>=0&&(uci.get('passwall',section,'dns_redirect')??'1')=='1';
 				journal.runtime_samples=uniq([list[0],list[int(length(list)/2)],list[length(list)-1]]);
 				runtime=native_dns_state();record_dns_runtime(runtime);
 			}

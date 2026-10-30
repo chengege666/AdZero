@@ -39,8 +39,19 @@ printf '%s' "$session" > /tmp/last-session
 access=$(ubus call session access "{\\"ubus_rpc_session\\":\\"$session\\",\\"scope\\":\\"access-group\\",\\"object\\":\\"luci-app-daed-router\\",\\"function\\":\\"write\\"}" | jsonfilter -e '@.access')
 [ "$access" = true ]
 body=$(cat)
+if [ "$body" = '{"query":"{coreStatus}"}' ]; then
+ case "$(cat /tmp/scenario)" in
+  native) printf 'Status: 200 OK\\r\\n\\r\\n{"data":{"coreStatus":"{\\"current\\":\\"sing-box\\",\\"runtime\\":\\"ready\\",\\"running\\":true}"}}';;
+  switching) printf 'Status: 200 OK\\r\\n\\r\\n{"data":{"coreStatus":"{\\"current\\":\\"mihomo\\",\\"runtime\\":\\"switching\\",\\"running\\":true}"}}';;
+  legacy422) printf 'Status: 422 Unprocessable Entity\\r\\n\\r\\n{"errors":[{"message":"Cannot query field coreStatus on type Query"}]}';;
+  core_denied) printf 'Status: 403 Forbidden\\r\\n\\r\\nPRIVATE-RESPONSE';;
+  *) printf 'Status: 200 OK\\r\\n\\r\\n{"errors":[{"message":"Cannot query field coreStatus"}]}';;
+ esac
+ exit 0
+fi
 [ "$body" = '{"query":"{general{dae{running}}}"}' ]
 case "$(cat /tmp/scenario)" in
+ legacy422) printf 'Status: 200 OK\\r\\n\\r\\n{"data":{"general":{"dae":{"running":true}}}}';;
  true|false) printf 'Status: 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n{"data":{"general":{"dae":{"running":%s}}}}' "$(cat /tmp/scenario)";;
  denied) printf 'Status: 403 Forbidden\\r\\n\\r\\nPRIVATE-RESPONSE';;
  errors) printf 'Status: 200 OK\\r\\n\\r\\n{"errors":[{"message":"PRIVATE-RESPONSE"}],"data":null}';;
@@ -58,7 +69,7 @@ esac
                 procs.append(subprocess.Popen(['chroot',tmp,*command],env=child,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL))
                 time.sleep(.2)
             rows=[]
-            for scenario,expected in [('true',True),('false',False),('denied',None),('errors',None),('invalid',None),('broken',None),('slow',None)]:
+            for scenario,expected in [('true',True),('false',False),('native',True),('switching',None),('legacy422',True),('core_denied',None),('denied',None),('errors',None),('invalid',None),('broken',None),('slow',None)]:
                 (base/'tmp/scenario').write_text(scenario)
                 started=time.monotonic();result=run('/usr/bin/ucode','/usr/libexec/adzero/probe-test.uc');elapsed=time.monotonic()-started
                 assert result.returncode==0,result.stderr

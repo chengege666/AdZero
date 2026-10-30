@@ -15,6 +15,7 @@ from test_observe import dns
 def main():
  archive=ROOT/'artifacts/runtime/openwrt-24.10.8-x86-64-rootfs.tar.gz'
  helper=ROOT/'artifacts/upstream/PassWall/helper_dnsmasq.lua';api=ROOT/'artifacts/upstream/PassWall/api.lua'
+ helper2=ROOT/'artifacts/upstream/Passwall2/helper_dnsmasq.lua'
  deps={'lua_5.1.5-r11_x86_64.ipk':'164795e16b225d71e776a5aa584f6b3af239a0012724da63de58dd808f6a3165','liblua5.1.5_5.1.5-r11_x86_64.ipk':'53875655f43c24dc00fe3f94a1a9e15294be48b80ee32d9fd5d6cddc65b01a70','coreutils-timeout_9.7-r1_x86_64.ipk':'8e529e06face73306c0cc66a7c002432643a7aa4697a4609bdf4ee297fbcbb3e'}
  if '--inside' not in sys.argv:
   if os.geteuid()!=0:raise SystemExit('Run in Linux/WSL as root')
@@ -30,6 +31,7 @@ def main():
   prefix='https://raw.githubusercontent.com/Openwrt-Passwall/openwrt-passwall/'+ref+'/luci-app-passwall/'
   fetch(helper,prefix+'root/usr/share/passwall/helper_dnsmasq.lua','e34aa1f98ecebf38ea691b90b51e3b73ebafebf20bb6f44efaa272a9fc46db81')
   fetch(api,prefix+'luasrc/passwall/api.lua','dfcc760005ec18681b72c9371344247034430d905d40fdafcfef93bcf5f3a7c4')
+  fetch(helper2,'https://raw.githubusercontent.com/Openwrt-Passwall/openwrt-passwall2/6e06876b7140a6451139dd8116635f80897ec3b3/luci-app-passwall2/root/usr/share/passwall2/helper_dnsmasq.lua','204ac1202b83ef571579ed21960a85ed5971a12a013c3da7159756eee96726bc')
   fetch(ROOT/'artifacts/upstream/SSRPlus/gfw2ipset.sh','https://raw.githubusercontent.com/fw876/helloworld/2abdc9aa9e19607774dc9789709212b70b8607c6/luci-app-ssr-plus/root/usr/share/shadowsocksr/gfw2ipset.sh','2d456af581fcca037e259c285c202f564bfdba00057186f95d626e0db2700309')
   for name,digest in deps.items():fetch(ROOT/'artifacts/runtime/passwall-extras'/name,'https://archive.openwrt.org/releases/24.10.8/packages/x86_64/'+('packages/' if name.startswith('coreutils-') else 'base/')+name,digest)
   return subprocess.call(['unshare','--net','--mount','--propagation','private',sys.executable,__file__,'--inside'])
@@ -201,8 +203,41 @@ restart() {
    finally:proc.terminate();proc.wait(timeout=3)
    run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','remove')
    assert (base/'etc/ssrplus/deny.list').read_text()=='user.example\n'
+   # Execute the pinned PassWall2 copy_instance with the same lightweight LuCI
+   # IO adapter, then query the real copied native dnsmasq over UDP and TCP.
+   native2=helper2.read_text()
+   assert hashlib.sha256(helper2.read_bytes()).hexdigest()=='204ac1202b83ef571579ed21960a85ed5971a12a013c3da7159756eee96726bc'
+   (base/'usr/lib/lua/luci/passwall2').mkdir(parents=True)
+   (base/'usr/lib/lua/luci/passwall2/api.lua').write_text(stub)
+   (base/'usr/share/passwall2').mkdir(parents=True)
+   shutil.copyfile(helper2,base/'usr/share/passwall2/helper_dnsmasq.lua')
+   prefix2=native2[:native2.index('local function backup_servers()')]
+   copy2=native2[native2.index('function copy_instance('):native2.index('\nfunction add_rule(')]
+   (base/'var/etc/dnsmasq.conf.fixture').write_text('no-hosts\nuser=root\nno-resolv\nservers-file=/var/run/adblock-fast/dnsmasq.servers\n')
+   generator=prefix2+copy2+"\nprint(table.concat(copy_instance({LISTEN_PORT=11400,['return']='1'}),'\\n'))\n"
+   (base/'tmp/passwall2-copy.lua').write_text(generator)
+   config2='/tmp/etc/passwall2/acl/acl_default_dnsmasq.conf'
+   (base/Path(config2).relative_to('/')).parent.mkdir(parents=True)
+   (base/Path(config2).relative_to('/')).write_text(run('/usr/bin/lua','/tmp/passwall2-copy.lua').stdout)
+   binary2=base/'tmp/etc/passwall2/bin/dnsmasq_acl_default';binary2.parent.mkdir(parents=True);binary2.symlink_to('/usr/sbin/dnsmasq')
+   (base/'etc/config/passwall2').write_text("config global 'main'\n option enabled '1'\n option dns_redirect '1'\n")
+   (base/'etc/init.d/passwall2').write_text('#!/bin/sh\nexit 0\n')
+   (base/'tmp/inventory.json').write_text(json.dumps({'plugins':[{'id':'passwall2','installed':True,'active':True,'runtime':'running'}]}))
+   proc=subprocess.Popen(['chroot',tmp,'/tmp/etc/passwall2/bin/dnsmasq_acl_default','--no-daemon','-C',config2,'--server='+up],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
+   try:
+    time.sleep(.12);assert proc.poll() is None,proc.stderr.read()
+    run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','apply')
+    state2=json.loads(run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','status').stdout)
+    assert state2['runtime']['state']=='ready',state2
+    for tcp in (False,True):
+     for kind in (1,28):
+      for name in ('doubleclick.net','sub.doubleclick.net','www.baidu.com'):
+       answer=query(11400,name,kind,tcp)
+       assert answer=={'rcode':0,'answers':1} if name=='www.baidu.com' else answer['answers']==0 and answer['rcode'] in (0,3),(name,tcp,kind,answer)
+    run('/usr/bin/ucode','-S','/usr/libexec/adzero/adapter.uc','--','remove')
+   finally:proc.terminate();proc.wait(timeout=3)
    upstream.shutdown();upstream.server_close()
-   result={'old_call_false_success':True,'native_rc_common':True,'udp_tcp_A_AAAA':24,'ssrplus_native_dns':True,'cases':results,'device_acceptance':'not_run'}
+   result={'old_call_false_success':True,'native_rc_common':True,'udp_tcp_A_AAAA':24,'ssrplus_native_dns':True,'passwall2_native_dns_queries':12,'cases':results,'device_acceptance':'not_run'}
    print(json.dumps(result,indent=2));(ROOT/'artifacts/runtime/passwall-runtime-result.json').write_text(json.dumps(result,indent=2))
   finally:subprocess.run(['umount',str(base/'proc')],check=True)
  return 0

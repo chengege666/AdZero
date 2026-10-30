@@ -1,12 +1,15 @@
 <h2 id="support">自动识别和适配范围</h2>
 <p>除了原插件的服务状态，AdZero 还核对代理进程所属的配置目录，避免把共用的 Xray、Mihomo 或 sing-box 内核归错插件。保存的启用开关不能覆盖已确认停止的内核；内核归属不明时先保留原设置。检测、校验和版本查询进程不算正在工作的代理。</p>
-<table><thead><tr><th>插件</th><th>当前范围</th></tr></thead><tbody><tr><td>NaiLink / dae</td><td>基础 DNS 与可选分流适配；区分管理服务和实际内核。</td></tr><tr><td>PassWall</td><td>原生屏蔽名单接入，保留 dnsmasq / ChinaDNS-NG。</td></tr><tr><td>OpenClash、Nikki</td><td>原生配置接口适配，保留代理选择。</td></tr><tr><td>SSR Plus+</td><td>原生域名屏蔽名单；需关闭 AdZero 自动分流。</td></tr><tr><td>PassWall 2、HomeProxy</td><td>目前仅检测，不代表已支持接管。</td></tr></tbody></table>
+<table><thead><tr><th>插件</th><th>当前范围</th></tr></thead><tbody><tr><td>NaiLink / dae、sing-box、mihomo</td><td>查询实际内核状态并核对进程归属；基础域名过滤与可选 DNS 分流使用同一组规范配置。切换中暂缓接入，稳定后自动同步。</td></tr><tr><td>PassWall</td><td>原生屏蔽名单接入，保留 dnsmasq / ChinaDNS-NG。</td></tr><tr><td>PassWall2</td><td>通过原生复制 dnsmasq 继承广告过滤，核对实际实例已载入过滤文件；保留原生 DNS 与分流。不修改节点、DNS 引擎或上游。</td></tr><tr><td>OpenClash、Nikki</td><td>原生配置接口适配，保留代理选择。</td></tr><tr><td>SSR Plus+</td><td>原生域名屏蔽名单；需关闭 AdZero 自动分流。</td></tr><tr><td>HomeProxy</td><td>目前仅检测，不代表已支持接管。</td></tr></tbody></table>
+<p>NaiLink 新版使用 coreStatus 接口，旧版继续使用原有接口；不会把常驻的 daed 管理进程当作代理内核。页面会显示实际的 dae、sing-box 或 mihomo。独立测试、配置校验、仅 API 模式、切换未完成或进程与状态不一致时，不显示为已接入。</p>
+<p>PassWall2 需要原生 DNS 重定向开启，并支持继承系统 dnsmasq 的 servers-file。AdZero 会在重载后核对过滤文件与样本域名；不满足条件时保留恢复记录。这里接入的是广告过滤，DNS 并发与上游请到 PassWall2 原插件设置，AdZero 保存的 DNS 组不会改写它。PassWall2 暂不支持 AdZero 严格模式，不能把识别成功当作已开启防泄露保护。</p>
+<p>NaiLink 的附加 CNAME／设备过滤监听入口目前仅适用于 dae 路径。切到 sing-box、mihomo 后不强行注入 dae 的绑定端口或直连规则；基础域名过滤继续保留。增强入口的未接入提示不代表广告名单失效。</p>
 <p>基础适配和<a href="enhancements.html#entry">增强 DNS 入口</a>支持范围不同。各插件不同版本仍需实机验证。无代理时可使用路由器 DNS；多个或状态不明的代理同时启用时，会暂缓接管。</p>
 <p>切换前同时核对<a href="dns.html#compatibility">DNS 并发兼容性</a>：NaiLink 的国外并发需要可用本机 SOCKS；PassWall 的 Xray / sing-box 使用国外单一＋备用。两者的国内本机并发均需普通 TCP 53 可达，UDP 通过不足以证明。OpenClash / Nikki 使用原生内核并发，不走同一个独立转发器。新路径检查失败时保留恢复记录，不为了同步显示而绕过校验。</p>
 <h2 id="switch">切换代理的建议顺序</h2>
 <p>普通模式可按下方顺序操作。严格模式保持启用时，先停旧代理、再开唯一新代理；接入未确认期间 DNS 保持阻断，后台尝试迁移。不要先关闭严格保护再把临时直连当作恢复成功。范围与引导解析例外见<a href="dns.html#strict">严格 DNS</a>。</p>
 <ol><li>有未应用草稿先应用或撤销。</li><li>关闭 AdZero 保护并等待恢复完成。</li><li>停止旧代理内核，开启新代理，确认它独立联网正常。</li><li>打开 AdZero，点击「重新检测」，再开启保护。</li><li>核对当前接入并从电脑做效果检测。</li></ol>
-<p>后台也会检查代理变化。切换过程中看到正在同步、等待锁或状态尚未确认时，先等待；不要同时反复开启、关闭或删锁。刷新只会更新显示，不能证明整条网络已恢复。</p>
+<p>后台每五秒检查插件、实际内核和运行实例，连续两次确认同一路径后同步，包括同一个 NaiLink 内部换核。切换过程中看到正在同步、等待锁或状态尚未确认时，先等待；不要同时反复开启、关闭或删锁。刷新只会更新显示，不能证明整条网络已恢复。</p>
 <h2 id="handoff">旧 DNS 会话与缓存</h2>
 <p>PassWall 默认 IPv4 LAN 模式会每五秒检查旧 UDP DNS 会话，入口稳定后只处理仍走旧入口的连接，不清空全网 conntrack。自定义 ACL、IPv6、未知规则或多代理会跳过，并给出原因。</p>
 <p>路由器无法远程清除电脑已缓存的坏答案。若每次切换都要清缓存才能用，应检查实际 DNS 路径和旧连接，而不是把清缓存当作常规修复。<a href="troubleshooting.html#dns">继续排查</a>。</p>

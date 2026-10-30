@@ -297,6 +297,68 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(result['dns']['active_proxies'],[])
         self.assertEqual(result['dns']['uncertain_proxies'],['passwall'])
 
+    def test_nailink_native_cores_are_not_mistaken_for_other_plugins(self):
+        self.data.update(running=['daed'],services={'openclash':True},uci={'daed.main.enabled':'1','passwall2.@global[0].enabled':'1','openclash.config.enable':'1'})
+        for core,args in [('sing-box','run\0-D\0/var/run/daed/cores/active-123\0-c\0/var/run/daed/cores/active-123/config.json\0'),('mihomo','-d\0/var/run/daed/cores/active-123\0-f\0/var/run/daed/cores/active-123/config.json\0')]:
+            with self.subTest(core=core):
+                Path(self.env['ADZERO_PROBE_NAILINK_FIXTURE']).write_text(json.dumps({'current':core,'runtime':'ready','running':True,'api_only':False,'private':'SECRET-CORE-STATUS'}))
+                self.write('proc/800/cmdline','/usr/bin/'+core+'\0'+args)
+                result=self.probe(); rows={p['id']:p for p in result['plugins']}
+                self.assertEqual(result['dns']['active_proxies'],['nailink'])
+                self.assertEqual(rows['nailink']['core'],core)
+                self.assertEqual(rows['openclash']['runtime'],'stopped')
+                self.assertEqual(result['dns']['uncertain_proxies'],[])
+                self.assertEqual(result['dns']['active_paths'][0]['core'],core)
+                self.assertNotIn('SECRET',json.dumps(result))
+                self.assertNotIn('/var/run',json.dumps(result))
+
+    def test_nailink_switching_and_api_only_are_never_reported_as_ready(self):
+        self.data.update(running=['daed'],uci={'daed.main.enabled':'1'})
+        self.write('proc/800/cmdline','/usr/bin/sing-box\0run\0-c\0/var/run/daed/cores/active-123/config.json\0')
+        for state in ({'current':'sing-box','runtime':'switching','running':True},{'current':'sing-box','runtime':'ready','running':True,'api_only':True},{'current':'mihomo','runtime':'ready','running':True}):
+            with self.subTest(state=state):
+                Path(self.env['ADZERO_PROBE_NAILINK_FIXTURE']).write_text(json.dumps(state))
+                result=self.probe()
+                self.assertEqual(result['dns']['active_proxies'],[])
+                self.assertEqual(result['dns']['uncertain_proxies'],['nailink'])
+
+    def test_nailink_validation_and_stale_core_status_cannot_claim_a_worker(self):
+        self.data.update(running=['daed'],uci={'daed.main.enabled':'1'})
+        Path(self.env['ADZERO_PROBE_NAILINK_FIXTURE']).write_text('{"current":"mihomo","runtime":"ready","running":true}')
+        for args in ('-t\0-d\0/var/run/daed/cores/check-123\0-f\0/var/run/daed/cores/check-123/config.json\0','-d\0/var/run/daed/cores/active-other/../check-123\0-f\0/var/run/daed/cores/check-123/config.json\0'):
+            self.write('proc/800/cmdline','/usr/bin/mihomo\0'+args)
+            self.assertEqual(self.probe()['dns']['active_proxies'],[])
+
+    def test_passwall2_native_and_legacy_clients_are_detected(self):
+        self.data['uci']={'passwall2.@global[0].enabled':'1'}
+        for core in ('xray','sing-box','ssr-local','sslocal'):
+            with self.subTest(core=core):
+                self.write('proc/800/cmdline','/usr/bin/'+core+'\0run\0--config=/tmp/etc/passwall2/acl/acl_default.json\0')
+                result=self.probe()
+                self.assertEqual(result['dns']['active_proxies'],['passwall2'])
+                self.assertEqual(next(p for p in result['plugins'] if p['id']=='passwall2')['core'],core)
+
+    def test_log_argument_is_not_process_configuration_ownership(self):
+        self.data['uci']={'passwall.@global[0].enabled':'1'}
+        self.write('proc/800/cmdline','/usr/bin/xray\0run\0-c\0/custom/config.json\0--log\0/tmp/etc/passwall/log.json\0')
+        self.assertEqual(self.probe()['dns']['active_proxies'],[])
+
+    def test_ssrplus_owned_xray_does_not_make_stopped_passwall_uncertain(self):
+        self.data['uci']={'shadowsocksr.@global[0].global_server':'saved_node','passwall.@global[0].enabled':'0','passwall2.@global[0].enabled':'0'}
+        self.write('proc/800/cmdline','/usr/bin/xray\0run\0-config\0/var/etc/ssrplus/tcp-ssr-retcp.json\0')
+        result=self.probe()
+        self.assertEqual(result['dns']['active_proxies'],['ssrplus'])
+        self.assertEqual(result['dns']['uncertain_proxies'],[])
+
+    def test_nailink_protocol_helper_is_not_a_second_transparent_core(self):
+        self.data.update(running=['daed'],uci={'daed.main.enabled':'1','passwall.@global[0].enabled':'0'})
+        Path(self.env['ADZERO_PROBE_NAILINK_FIXTURE']).write_text('{"current":"mihomo","runtime":"ready","running":true}')
+        self.write('proc/800/cmdline','/usr/bin/mihomo\0-f\0/var/run/daed/cores/active-123/config.json\0')
+        self.write('proc/801/cmdline','/usr/bin/sing-box\0run\0-c\0/var/run/daed/cores/active-123/extra/config.json\0')
+        result=self.probe()
+        self.assertEqual(result['dns']['active_proxies'],['nailink'])
+        self.assertEqual(result['dns']['uncertain_proxies'],[])
+
     def test_openclash_directory_does_not_match_a_similarly_named_plugin(self):
         self.data['uci']={'openclash.config.enable':'1'}
         self.write('proc/800/cmdline','/usr/bin/mihomo\0-d\0/etc/openclash-other\0-f\0/etc/openclash-other/config.yaml\0')

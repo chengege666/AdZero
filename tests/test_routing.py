@@ -256,6 +256,7 @@ from pathlib import Path
 p=Path(__file__).resolve().parents[1]/'profiles.json';data=json.loads(p.read_text());r=json.loads(Path(sys.argv[1]).read_text());q=r['query'];v=r['variables']
 if r.get('readiness'):out={k:data.get('healthy',True) for k in ['ready','configured','listening','initialized','dns_ready','routing_ready']}
 elif 'general{' in q:out={'general':{'dae':{'running':data['running'],'modified':data.get('modified',False)}}}
+elif 'coreStatus' in q:out={'coreStatus':json.dumps({'current':data['native_core'],'runtime':data.get('core_phase','ready'),'running':True,'api_only':False})} if data.get('native_core') else {}
 elif 'routings(' in q:out={'routings':[data['traffic']],'groups':[{'name':'proxy'}]}
 elif 'dnss(' in q:out={'dnss':[data['dns']]}
 elif 'updateDns' in q:data['dns']['dns']['string']=v['dns'];data['modified']=True;data['writes']=data.get('writes',0)+1;out={'updateDns':{'id':'dns'}}
@@ -271,6 +272,31 @@ else:out={}
 p.write_text(json.dumps(data));print(json.dumps(out))
 ''');api.chmod(0o755);self.env['ADZERO_NAILINK_API_FIXTURE']=str(api)
         return p
+
+    def test_nailink_native_core_uses_current_api_and_skips_dae_only_alias_listener(self):
+        p=self.nailink_fixture()
+        cfg=self.root/'etc/config/adzero';cfg.write_text(cfg.read_text()+" option dns_enhance '{\"enabled\":true,\"cname\":true}'\n")
+        for core in ('sing-box','mihomo'):
+            with self.subTest(core=core):
+                data=json.loads(p.read_text());data.update(native_core=core,running=False);p.write_text(json.dumps(data))
+                self.assertEqual(self.run_adapter('check').stdout.strip(),'nailink')
+                self.run_adapter('apply')
+                status=json.loads(self.run_adapter('status').stdout)
+                self.assertEqual(status['core'],core)
+                after=json.loads(p.read_text())
+                self.assertIn('adzero-geosite.dat',after['dns']['dns']['string'])
+                self.assertNotIn('5355',after['dns']['dns']['string'])
+                journal=json.loads((self.root/'etc/adzero/adapter.json').read_text())
+                self.assertIsNone(journal['alias'])
+                self.assertEqual(journal['alias_unavailable'],'native_core_listener_not_supported')
+                self.run_adapter('remove')
+
+    def test_nailink_core_switch_is_rejected_before_changing_profiles(self):
+        p=self.nailink_fixture();data=json.loads(p.read_text());data.update(native_core='mihomo',core_phase='switching');p.write_text(json.dumps(data))
+        original=data['dns']
+        self.run_adapter('apply',success=False)
+        self.assertEqual(json.loads(p.read_text())['dns'],original)
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
 
     def pending_reload(self):
         p=self.nailink_fixture();self.run_adapter('apply')

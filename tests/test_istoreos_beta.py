@@ -226,7 +226,7 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
     def test_legacy_migration_fails_closed_on_unknown_owner_version_or_changed_dependency_plan(self):
         self.seed_untagged_apk()
         for extra in ({"MOCK_FOREIGN_OWNER":"1"},
-                      {"MOCK_APP_VERSION":"0.22.0-r1"},
+                      {"MOCK_APP_VERSION":"0.23.0-r1"},
                       {"MOCK_REINSTALL_EXTRA":"1"},
                       {"MOCK_REINSTALL_FAIL":"1"}):
             with self.subTest(extra=extra):
@@ -433,7 +433,7 @@ cp "$MOCK_RELEASE/$(basename "$url")" "$out"
             self.assertRegex(row["sha256"],r"^[0-9a-f]{64}$")
         self.assertRegex(new["installer"]["sha256"],r"^[0-9a-f]{64}$")
         self.assertNotIn("PIN_ISTOREOS",auto)
-        self.assertIn("/download/v0.22.0/install.sh",auto)
+        self.assertIn("/download/v0.23.0/install.sh",auto)
         self.assertNotIn(previous["installer"]["sha256"],auto)
         self.assertTrue(new["security"]["stable_sdk_verified_unchanged"])
         self.assertTrue(new["security"]["cross_version_upgrade_forbidden"])

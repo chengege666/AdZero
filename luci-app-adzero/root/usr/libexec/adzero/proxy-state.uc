@@ -16,29 +16,65 @@ export function active(p) {
 // Only public states leave this function; full argv may contain credentials.
 export function core_states(root) {
 	root ??= '';
-	let kinds={passwall:['xray','v2ray','sing-box','singbox','ss-redir','ssr-redir','sslocal','ss-local','trojan','naive','hysteria','hysteria2','tuic-client','shadow-tls','ipt2socks'],passwall2:['xray','sing-box','singbox'],
+	let clients=['xray','v2ray','sing-box','singbox','ss-redir','ssr-redir','sslocal','ss-local','ssr-local','trojan','naive','hysteria','hysteria2','tuic-client','shadow-tls','ipt2socks'];
+	let kinds={nailink:['sing-box','singbox','mihomo'],passwall:clients,passwall2:clients,ssrplus:clients,
 		openclash:['mihomo','clash','clash_meta','clash_tun','clash_game','clash_dev'],nikki:['mihomo','clash','clash_meta'],homeproxy:['sing-box','singbox']};
 	let found={},unknown={},readable=false;
 	for(let path in fs.glob(root+'/proc/[0-9]*/cmdline')??[]){
 		let raw=fs.readfile(path,8193);if(raw==null||!length(raw))continue;
 		let args=split(raw,'\x00'),binary=fs.basename(args[0]??'');
+		let executable=fs.basename(fs.readlink(fs.dirname(path)+'/exe')??'');
+		if(index(['sing-box','mihomo','xray'],executable)>=0)binary=executable;
 		readable=true;
 		if(!length(filter(keys(kinds),id=>index(kinds[id],binary)>=0)))continue;
 		// Config checks and version probes are short-lived, not proxy workers.
 		if(length(filter(args,a=>index(['-t','-test','--test','-v','--version','--help','-h','version','check','test','format'],a)>=0)))continue;
-		let paths=map(args,a=>replace(a,/^(--?config|--?file|-[cdf])=/,'')),owner=null;
-		if(length(raw)<=8192)for(let id in ['passwall','passwall2','openclash','nikki']){
+		let paths=[],owner=null;
+		for(let i=1;i<length(args);i++){
+			if(binary=='naive'&&i==1&&match(args[i],/^\/.+[.]json$/))push(paths,args[i]);
+			if(index(['-c','-C','-f','-d','-D','-config','-confdir','--config','--config-dir','--config-directory','--directory','--file'],args[i])>=0&&i+1<length(args))push(paths,args[++i]);
+			else {let m=match(args[i],/^(--config|--config-dir|--config-directory|--directory|--file|-config|-confdir|-[cCfDd])=(.+)$/);if(m)push(paths,m[2]);}
+		}
+		paths=filter(paths,p=>substr(p,0,1)=='/'&&!length(filter(split(p,'/'),s=>s=='..'||s=='.')));
+		if(length(raw)<=8192&&index(kinds.nailink,binary)>=0&&length(filter(paths,p=>match(p,/^\/(var\/run|tmp\/run)\/daed\/cores\/active-[A-Za-z0-9_-]+(\/config[.]json)?$/))))owner='nailink';
+		// Optional protocol helpers belong to NaiLink too, but are not its
+		// active transparent core and must not create a second plugin conflict.
+		if(!owner&&index(kinds.nailink,binary)>=0&&length(filter(paths,p=>match(p,/^\/(var\/run|tmp\/run)\/daed\/cores\/active-[A-Za-z0-9_-]+\//))))continue;
+		if(!owner&&index(kinds.homeproxy,binary)>=0&&length(filter(paths,p=>match(p,/^\/(var\/run|tmp\/run)\/homeproxy\/sing-box-s[.]json$/))))continue;
+		if(length(raw)<=8192)for(let id in ['passwall','passwall2','ssrplus','openclash','nikki']){
+			if(owner)break;
 			if(index(kinds[id],binary)<0)continue;
-			let prefixes=id=='passwall'||id=='passwall2'?['/tmp/etc/'+id,'/var/etc/'+id]:['/etc/'+id,'/tmp/etc/'+id,'/var/etc/'+id];
+			let prefixes=index(['passwall','passwall2','ssrplus'],id)>=0?['/tmp/etc/'+id,'/var/etc/'+id]:['/etc/'+id,'/tmp/etc/'+id,'/var/etc/'+id];
 			if(length(filter(paths,p=>length(filter(prefixes,d=>p==d||index(p,d+'/')==0))))){owner=id;break;}
 		}
 		if(!owner&&index(kinds.homeproxy,binary)>=0&&length(filter(paths,p=>match(p,/^\/(var\/run|tmp\/run)\/homeproxy\/sing-box-c[.]json$/))))owner='homeproxy';
-		if(owner)found[owner]=true;
+		if(owner){
+			let pid=fs.basename(fs.dirname(path)),stat=fs.readfile(fs.dirname(path)+'/stat',4096)??'';
+			let start=split(substr(stat,index(stat,')')+2),' ')[19]??'';
+			let core=binary=='singbox'?'sing-box':index(['clash_meta','clash_tun','clash_game','clash_dev','clash'],binary)>=0?'mihomo':binary;
+			found[owner]??={cores:[],identities:[]};
+			if(index(found[owner].cores,core)<0)push(found[owner].cores,core);
+			push(found[owner].identities,pid+':'+start);
+		}
 		else for(let id in keys(kinds))if(index(kinds[id],binary)>=0)unknown[id]=true;
 	}
 	let states={};
-	for(let id in keys(kinds))states[id]=found[id]?{available:true,running:true}:!readable||unknown[id]?{available:readable,running:null}:{available:true,running:false};
+	for(let id in keys(kinds))states[id]=found[id]?{available:true,running:id=='nailink'&&length(found[id].cores)!=1?null:true,core:length(found[id].cores)==1?found[id].cores[0]:null,identity:join(',',sort(found[id].identities))}:!readable||unknown[id]?{available:readable,running:null}:{available:true,running:false};
 	return states;
+};
+
+// coreStatus is the public multi-core API. Older NaiLink versions only expose
+// general.dae; keep that fallback, but never treat a transition as a stopped core.
+export function nailink_status(value,legacy) {
+	if(type(value)=='string')try{value=json(value);if(type(value)!='object')return {running:null,core:null};}catch(e){return {running:null,core:null};}
+	if(type(value)=='object'&&index(['dae','sing-box','mihomo'],value.current)>=0){
+		let ready=value.runtime=='ready'&&value.running===true&&(value.api_only==null||value.api_only===false);
+		let stopped=value.runtime=='stopped'||value.runtime=='idle';
+		let phase=index(['ready','stopped','idle','starting','switching','failed','reloading','recovering'],value.runtime)>=0?value.runtime:'unknown';
+		return {running:ready?true:stopped?false:null,core:value.current,phase};
+	}
+	if(value!=null)return {running:null,core:null};
+	return {running:type(legacy?.running)=='bool'?legacy.running:null,core:'dae'};
 };
 
 // Structural evidence from PassWall's running default DNS, never an init exit
@@ -52,12 +88,13 @@ export function dns_runtime(root,plugin,reader) {
 	return function(samples,engine){
 		engine??='dnsmasq';
 		if(!length(samples??[])||fs.stat(root+'/proc')?.type!='directory')return {state:'unknown',reason:'runtime_unavailable'};
-		let conf=plugin=='passwall'?'/tmp/etc/passwall/acl/default/dnsmasq.conf':null,pid=null,processes={};
+		let conf=plugin=='passwall'?'/tmp/etc/passwall/acl/default/dnsmasq.conf':plugin=='passwall2'?'/tmp/etc/passwall2/acl/acl_default_dnsmasq.conf':null,pid=null,processes={};
 		for(let entry in fs.glob(root+'/proc/[0-9]*/comm')??[]){
 			if(index(trim(fs.readfile(entry)??''),'dnsmasq')!=0)continue;
 			let args=split(fs.readfile(fs.dirname(entry)+'/cmdline',8192)??'','\x00'),at=index(args,'-C');
 			if(at<0)continue;
 			if(plugin=='passwall'?args[0]=='/tmp/etc/passwall/bin/dnsmasq_default'&&args[at+1]==conf:
+				plugin=='passwall2'?match(args[0]??'',/^\/(tmp|var)\/etc\/passwall2\/bin\/dnsmasq_acl_default$/)&&match(args[at+1]??'',/^\/(tmp|var)\/etc\/passwall2\/acl\/acl_default_dnsmasq[.]conf$/):
 				match(args[0]??'',/\/dnsmasq$/)&&match(args[at+1]??'',/^\/(var|tmp)\/etc\/dnsmasq.conf[.][a-zA-Z0-9_]+$/)){
 				conf=args[at+1];let id=fs.basename(fs.dirname(entry));
 				let stat=fs.readfile(root+'/proc/'+id+'/stat',8192)??'',fields=split(substr(stat,index(stat,')')+2),' ');
@@ -71,6 +108,20 @@ export function dns_runtime(root,plugin,reader) {
 		if(mask&&(int(substr(mask[2],-8),16)&0x10000))return {state:'degraded',reason:'dns_sigchld_blocked'};
 		let path=root+conf,raw=fs.readfile(path,1048577);
 		if(raw==null||length(raw)>1048576)return {state:'missing',reason:'dns_config_missing'};
+		if(plugin=='passwall2'){
+			let file=null;
+			for(let line in split(raw,'\n'))if(trim(line)=='servers-file=/var/run/adblock-fast/dnsmasq.servers')file=root+'/var/run/adblock-fast/dnsmasq.servers';
+			if(!file)return {state:'missing',reason:'passwall2_filter_not_inherited'};
+			let key=join('|',[pid,identity(root+'/proc/'+pid+'/stat'),identity(path),identity(file),join(',',samples)]);
+			if(key==cached_key)return cached;
+			let data=reader(file,33554433),found={};
+			if(data!=null&&length(data)<=33554432)for(let line in split(data,'\n')){
+				let rule=match(trim(line),/^server=\/([a-z0-9.-]+)\/$/);
+				if(rule&&index(samples,rule[1])>=0)found[rule[1]]=true;
+			}
+			cached_key=key;cached=length(keys(found))==length(samples)?{state:'ready',reason:null}:{state:'missing',reason:'rules_stale'};
+			return cached;
+		}
 		if(plugin=='passwall'&&engine=='chinadns-ng'){
 			let native='/tmp/etc/passwall/acl/default/chinadns_ng.conf',child=null;
 			for(let entry in fs.glob(root+'/proc/[0-9]*/cmdline')??[]){
@@ -126,23 +177,23 @@ export function dns_runtime(root,plugin,reader) {
 	};
 };
 function quote(s) { return "'" + replace(s, /'/g, "'\\''") + "'"; }
-export function nailink(root) {
+export function nailink_state(root) {
 	// Query the core, not the always-on management process. No config or JWT
 	// is read; use a short-lived, scoped local session and always destroy it.
 	let fixture = getenv('ADZERO_PROBE_NAILINK_FIXTURE');
 	if (root && fixture) {
-		try { let data = json(fs.readfile(fixture)); return type(data?.running) == 'bool' ? data.running : null; }
-		catch(e) { return null; }
+		try { let data = json(fs.readfile(fixture)); return nailink_status(data.current?data:null,data); }
+		catch(e) { return {running:null,core:null}; }
 	}
-	let bus, session, input, output, created = [], result = null;
+	let bus, session, input, output, created = [], result = {running:null,core:null};
 	try {
 		bus = connect();
-		if (!bus) return null;
+		if (!bus) return result;
 		session = bus.call('session','create',{timeout:10})?.ubus_rpc_session;
 		if (!match(session ?? '', /^[a-f0-9]{32}$/)) die('session unavailable');
 		bus.call('session','grant',{ubus_rpc_session:session,scope:'access-group',objects:[['luci-app-daed-router','write']]});
 		if (bus.call('session','access',{ubus_rpc_session:session,scope:'access-group',object:'luci-app-daed-router',function:'write'})?.access !== true) die('access unavailable');
-		let payload = '{"query":"{general{dae{running}}}"}';
+		let payload = '';
 		input = (root ?? '') + '/tmp/adzero-proxy-' + session + '.in';
 		output = (root ?? '') + '/tmp/adzero-proxy-' + session + '.out';
 		for (let path in [input,output]) {
@@ -153,6 +204,9 @@ export function nailink(root) {
 			let written = file.write(data), closed = file.close();
 			if (written != length(data) || !closed) die('short write');
 		}
+		for(let query in ['{coreStatus}','{general{dae{running}}}']){
+		payload='{"query":"'+query+'"}';
+		if(fs.writefile(input,payload)!=length(payload))die('short write');
 		let argv = ['env','REQUEST_METHOD=POST','REQUEST_URI=/cgi-bin/daed-router/graphql',
 			'SCRIPT_NAME=/cgi-bin/daed-router','PATH_INFO=/graphql','SERVER_PROTOCOL=HTTP/1.1',
 			'HTTP_HOST=localhost','HTTP_ORIGIN=http://localhost','HTTP_COOKIE=daed_luci_session='+session,
@@ -165,9 +219,15 @@ export function nailink(root) {
 		let split_at = index(raw,'\n\n');
 		if (split_at < 0) die('invalid response');
 		let status = match(substr(raw,0,split_at),/(^|\n)Status: ([0-9]{3})/);
-		if (status && status[2] != '200') die('request rejected');
+		if (status && status[2] != '200' && !(query=='{coreStatus}'&&index(['400','422'],status[2])>=0)) die('request rejected');
 		let data = json(substr(raw,split_at+2));
-		if (!length(data?.errors ?? []) && type(data?.data?.general?.dae?.running) == 'bool') result = data.data.general.dae.running;
+		if(query=='{coreStatus}'&&length(data?.errors??[])&&!length(filter(data.errors,e=>type(e?.message)=='string'&&match(e.message,/([Cc]annot query field|[Uu]nknown field).*coreStatus/))))die('core state unavailable');
+		if(status&&status[2]!='200'&&!length(data?.errors??[]))die('request rejected');
+		if(!length(data?.errors??[])&&query=='{coreStatus}'&&type(data?.data?.coreStatus)=='string'){
+			result=nailink_status(data.data.coreStatus);break;
+		}
+		if(query!='{coreStatus}')result=nailink_status(null,data?.data?.general?.dae);
+		}
 	} catch(e) { /* Unknown is distinct from stopped. Never emit private responses. */ }
 	for (let path in created) fs.unlink(path);
 	if (bus) {
@@ -176,3 +236,4 @@ export function nailink(root) {
 	}
 	return result;
 };
+export function nailink(root) { return nailink_state(root).running; };
