@@ -101,7 +101,7 @@ function reset(overrides = {}) {
   app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
 	app.enhanceOpen=false;app.enhanceData=null;app.enhanceDraft=null;app.enhanceError=null;
 	enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[]},runtime:{state:'waiting',reason:'disabled'}};
-	updateFixture={ok:true,current:'v0.22.0',latest:'v0.23.0',available:true,compatible:true};
+	updateFixture={ok:true,current:'v0.23.0',latest:'v0.23.0',available:true,compatible:true};
 	updateFailure=false;app.updateOpen=false;app.updateData=null;app.updateError=null;app.updateBusy=null;app.updateConfirm=false;app.updateComplete=false;app.updateChecked=false;
   observationFixture={available:false,verification:{state:'idle'}};observationFailure=false;
   app.observation=null;app.observationReading=false;app.observationBusy=false;app.verificationCommands='';app.verificationNotice=null;app.networkOpen=false;
@@ -122,13 +122,13 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.22.0'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.23.0'), 'current CSS version prevents stale layout after upgrade');
   const brandLogo=nodes(root,n=>n.attrs&&n.attrs.class==='az-brand-mark')[0];
-  check(brandLogo.tag==='img'&&brandLogo.attrs.src==='/luci-static/resources/view/adzero/logo.png?v=0.22.0','page header uses the packaged approved Z shield instead of a generic status icon');
+  check(brandLogo.tag==='img'&&brandLogo.attrs.src==='/luci-static/resources/view/adzero/logo.png?v=0.23.0','page header uses the packaged approved Z shield instead of a generic status icon');
   check(brandLogo.attrs.alt===''&&brandLogo.attrs.draggable==='false','adjacent brand text names the logo without duplicate screen reader output');
   check(brandLogo.attrs.width==='44'&&brandLogo.attrs.height==='44','brand image reserves a square before loading');
   const brand=nodes(root,n=>n.attrs?.class==='az-brand')[0];
-  check(!!nodes(brand,n=>n.id==='az-version').length && text(brand).includes('v0.22.0'), 'clickable version now sits beside the top-left logo');
+  check(!!nodes(brand,n=>n.id==='az-version').length && text(brand).includes('v0.23.0'), 'clickable version now sits beside the top-left logo');
   check(!nodes(root,n=>n.attrs?.class==='az-page-eyebrow').length, 'old version text is removed from overview title');
   check(!find('az-update-panel'), 'update details are initially collapsed');
   await find('az-version').events.click();
@@ -144,11 +144,11 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(commands.includes('update_start') && app.updateComplete, 'confirmed upgrade follows the detached job and completes');
   check(find('az-update-reload'), 'successful upgrade prompts a fresh UI load for version verification');
   reset();
-  updateFixture={ok:true,current:'v0.22.0',latest:'v0.22.0',available:false,compatible:true};
+  updateFixture={ok:true,current:'v0.23.0',latest:'v0.23.0',available:false,compatible:true};
   await find('az-version').events.click();
   check(text(find('az-update-panel')).includes('已是当前发布通道的最新版本')&&!find('az-upgrade-ready'), 'up-to-date state never offers package mutation');
   reset();
-  updateFixture={ok:true,current:'v0.22.0',latest:'v0.23.0',available:true,compatible:false,message:'SDK target unsupported'};
+  updateFixture={ok:true,current:'v0.23.0',latest:'v0.23.0',available:true,compatible:false,message:'SDK target unsupported'};
   await find('az-version').events.click();
   check(!find('az-upgrade-ready') && text(find('az-update-panel')).includes('SDK target unsupported'), 'incompatible firmware cannot click upgrade');
   reset(); updateFailure=true;
@@ -163,9 +163,17 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(active === find('az-toggle'), 'focus restored to initiating control');
   check(!find('az-plugins') && !find('az-diagnostics'), 'technical inventory panels are not rendered');
   check(!text(root).includes('aarch64_generic') && !!find('az-connection')&&!find('az-connection').open, 'compatibility is available on demand without exposing architecture clutter');
-  await app.refreshStatus(); check(text(root).includes('NaiLink / daed'), 'current integration remains visible after refresh');
+  await app.refreshStatus(); check(text(root).includes('NaiLink'), 'current integration remains visible after refresh');
   await app.runAction('refresh'); check(app.notice.kind === 'success', 'update success inline');
   await app.runAction('disable'); check(state.state === 'disabled', 'disable works');
+  for(const core of ['dae','sing-box','mihomo']){
+    reset();state.compatibility.plugins[0].core=core;root=app.render(state);
+    check(text(root).includes('NaiLink / '+core),'NaiLink actual core is shown: '+core);
+    check(!text(root).includes('NaiLink / daed'),'management process is not presented as the proxy core');
+  }
+  reset({state:'configured_unverified',managed:true,adapter:{plugin:'nailink',core:'dae',stage:'configured_unverified'}});
+  state.compatibility.dns.active_proxies=['nailink'];state.compatibility.plugins[0].core='mihomo';root=app.render(state);
+  check(text(find('az-connection')).includes('待同步')&&text(root).includes('NaiLink / mihomo'),'core change is pending even when plugin id is unchanged');
   for (const overrides of [{ dns_mode_safe: false }, { adguardhome_running: true }, { state: 'external_owner' }, { state: 'unavailable' }, { state: 'error' }]) {
     reset(overrides); check(find('az-toggle').disabled, 'blocked switch'); await app.runAction('enable'); check(commands.length === 0, 'blocked action');
   }
@@ -572,7 +580,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   const resetButton=find('az-stats-reset');resetButton.focus();await poll.tick();
   check(resetButton===find('az-stats-reset')&&active===resetButton,'unchanged live poll preserves reset-button focus');
   reset({compatibility:{dns:{active_proxy_count:2,active_proxies:['nailink','passwall']}}});
-  check(text(root).includes('NaiLink / daed、PassWall')&&find('az-toggle').disabled,'real conflict names both proxies');
+  check(text(root).includes('NaiLink、PassWall')&&find('az-toggle').disabled,'real conflict names both proxies');
   reset({compatibility:{dns:{active_proxy_count:1,active_proxies:['passwall'],uncertain_proxies:[]}}});
   check(!find('az-toggle').disabled,'stopped NaiLink manager cannot lock PassWall enable control');
   reset({compatibility:{dns:{active_proxy_count:1,uncertain_proxies:['nailink']}}});

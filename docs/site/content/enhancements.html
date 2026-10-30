@@ -5,7 +5,7 @@
 <h2 id="entry">增强 DNS 入口适用范围</h2>
 <p><a href="dns.html#strict">严格 DNS 模式</a>使用独立保护路径，期间不接入此可选增强入口；普通广告过滤继续工作。</p>
 <p>支持确认可用的<strong>系统默认 dnsmasq.servers、PassWall、NaiLink 原生监听及 OpenClash 常规 DNS 的默认 IPv4 LAN 路径</strong>。开启增强入口与别名过滤并保存后，按当前唯一活动代理自动确认接入。无需另填公共 DNS 或 SOCKS 端口；入口默认关闭。</p>
-<p><strong>NaiLink：</strong>先通过原生 API 校验，再添加 LAN 地址的 TCP/UDP 5355 监听和只针对路由器 DNS 的 must_direct 路由，保留原生分流与缓存。增强进程退出时由 AdZero 自有表回到同一个原生监听。已有自定义 bind、端口占用或不支持该配置时保留原设置，不强行接入。</p>
+<p><strong>NaiLink / dae：</strong>先通过原生 API 校验，再添加 LAN 地址的 TCP/UDP 5355 监听和只针对路由器 DNS 的 must_direct 路由，保留原生分流与缓存。增强进程退出时由 AdZero 自有表回到同一个原生监听。已有自定义 bind、端口占用或不支持该配置时保留原设置，不强行接入。sing-box、mihomo 不使用这条 dae 专用增强入口，基础域名过滤与内核识别仍可工作；不要把未接入增强入口理解为未开启基础过滤。</p>
 <p><strong>OpenClash：</strong>保留 Fake-IP、节点和缓存，从最终运行配置读取本机 DNS 与控制接口，沿用现有认证。Fake-IP 应答同时通过原生真实解析 API 核对别名，干净请求仍返回原生 Fake-IP。首次解析会等待真实上游；接口失败或超过 1.5 秒时保留原生应答，并显示近期核对未完成提示。带客户端子网或 DNS 签名的请求不使用另一解析视图作为拦截依据。</p>
 <p>严格模式、OpenClash TUN、Nikki、自定义 ACL、IPv6 接管、多代理和不稳定切换期间不叠加入口。稳定代理变化由两次五秒采样发现，随后恢复与适配；实际重载另需时间，不能保证所有已有应用缓存立即更新。</p>
 <p>增强入口沿用原生上游与缓存，不新增共享缓存；仅使用 AdZero 自己的接管表。退出或服务不可用时尝试移除接管，回到原生路径。未知网络结构不会猜测接管。</p>

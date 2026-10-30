@@ -1,0 +1,38 @@
+{
+  "version": "0.23.0",
+  "upstream_contracts": {
+    "nailink": {
+      "commit": "67fc7698813f7cf57e3725c8e1b186dfa085f05f",
+      "query": "{coreStatus}",
+      "legacy_query": "{general{dae{running}}}",
+      "core_names": ["dae", "sing-box", "mihomo"],
+      "native_config_scope": "/var/run/daed/cores/active-*/config.json"
+    },
+    "passwall2": {
+      "repository": "Openwrt-Passwall/openwrt-passwall2",
+      "commit": "6e06876b7140a6451139dd8116635f80897ec3b3",
+      "helper_blob": "8520ea0098319dcb432bad896cedd91a064c390a",
+      "helper_sha256": "204ac1202b83ef571579ed21960a85ed5971a12a013c3da7159756eee96726bc",
+      "native_extension": "copy_instance inherits system dnsmasq servers-file",
+      "dns_engine_or_node_changes": false
+    }
+  },
+  "isolated_validation": {
+    "nailink_transport": "real OpenWrt ucode/ubus/rpcd with controlled CGI replies",
+    "nailink_native_configuration": "real AdZero transactions with controlled new and legacy API replies",
+    "passwall2_dns": "pinned native Lua copy_instance and real OpenWrt dnsmasq in a private network namespace",
+    "passwall2_queries": 12,
+    "passwall2_protocols": ["UDP", "TCP"],
+    "passwall2_types": ["A", "AAAA"],
+    "passwall2_results": "blocked domain and child blocked; normal domain answered",
+    "public_upstream_or_node_acceptance": "not_run"
+  },
+  "boundaries": {
+    "live_router": "read_only",
+    "live_upgrade_restart_or_proxy_switch": false,
+    "device_acceptance": "not_run",
+    "passwall2_strict_dns": "unsupported",
+    "passwall2_dns_routing": "native_plugin_managed",
+    "nailink_optional_alias_listener": "dae_only"
+  }
+}

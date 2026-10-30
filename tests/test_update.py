@@ -114,7 +114,7 @@ class UpdateTest(unittest.TestCase):
         self.assertFalse((self.state / "approved").exists())
 
     def test_current_version_greater_than_release_is_not_update(self):
-        self.version.write_text("0.22.0\n")
+        self.version.write_text("0.23.0\n")
         reply = json.loads(self.call("check").stdout)
         self.assertFalse(reply["available"])
 

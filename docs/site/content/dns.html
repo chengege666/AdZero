@@ -11,7 +11,7 @@
 <p>PassWall 保留原有 dnsmasq 或 ChinaDNS-NG 引擎和原生节点、分组策略。AdZero 不保证任意代理引擎或自定义 ACL 都支持自动分流；无法确认时会提示，不强制转换引擎。</p>
 <h2 id="compatibility">并发兼容性</h2>
 <table><thead><tr><th>接入</th><th>并发路径</th><th>限制</th></tr></thead><tbody><tr><td>OpenClash / Nikki</td><td>内核原生多上游，国外各项绑定当前代理组</td><td>保留 Fake-IP 与节点选择；并发本身无需 SOCKS</td></tr><tr><td>NaiLink</td><td>国内普通 TCP，国外经本机 SOCKS5 TCP；沿用原生缓存</td><td>国内 TCP 路径必须可达；国外并发和严格模式必须有可用本机 SOCKS5</td></tr><tr><td>PassWall</td><td>国内使用本机 TCP 并发；国外要求原生 TCP DNS 模式和经验证的本机 SOCKS5</td><td>国内也须通过 TCP 预检；Xray / sing-box 国外并发会拒绝，不静默改引擎</td></tr><tr><td>无代理</td><td>国内组使用 dnsmasq 多上游</td><td>不使用国外组，不支持严格模式</td></tr></tbody></table>
-<p>独立并发进程不会自动继承 NaiLink 内核内部的 DNS 出口。UDP 查询成功不代表 TCP 53 可用；不能盲目改为 UDP，以免再次进入透明 DNS 而回环。SSR Plus+ 仅适配广告名单，PassWall 2 / HomeProxy 仅识别，未宣称支持这些并发能力。</p>
+<p>独立并发进程不会自动继承 NaiLink 内核内部的 DNS 出口。UDP 查询成功不代表 TCP 53 可用；不能盲目改为 UDP，以免再次进入透明 DNS 而回环。NaiLink 切换 dae、sing-box、mihomo 后需重新确认本机 SOCKS5 监听与实际出口，不保证旧端口仍然适用。SSR Plus+ 仅适配广告名单；PassWall2 接入广告过滤但保留原生 DNS 与分流，DNS 上游和并发请在原插件设置，不支持 AdZero 严格模式。HomeProxy 目前仅识别。</p>
 <h2 id="strict">严格 DNS 防旁路</h2>
 <p>默认关闭，需要自动分流与唯一活动的受支持代理、单个默认 IPv4 LAN、端口 53 的单个 dnsmasq，以及 nft / conntrack。代理接入未确认时阻断 DNS；通过 UDP/TCP 应答检查后开放。切换期间通常在下一轮五秒检查中发起恢复，实际耗时取决于代理；不会因代理失败回落到国内组或直连。</p>
 <ul><li>接管默认 IPv4 LAN 的 UDP/TCP 53，阻断该 LAN 的 IPv6 DNS 与 TCP/UDP 853；其他 IPv6 数据继续保留。</li><li>国内生效 DNS 组保留为代理节点引导解析例外。这不是零外发承诺；其他进程显式查询这些例外地址也不在“国外组不直连”保证内。</li><li>浏览器／应用内置 DoH 经 HTTPS 443，需在设备侧关闭或统一管理。此版不解密 HTTPS，不阻断全部 443，也不声称覆盖任意 DoH、其他 VLAN、VPN 或绕过本路由器的流量。</li><li>PassWall 严格模式要求默认 DNS 接管与本机代理开启，没有启用的自定义 ACL。SSR Plus+ 暂不支持。</li><li>严格模式期间不接入可选 CNAME／设备增强入口，也不提供临时暂停。关闭并恢复仍可使用；恢复冲突保留记录，不覆盖手动设置。</li></ul>

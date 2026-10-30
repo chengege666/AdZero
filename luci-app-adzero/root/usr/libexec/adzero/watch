@@ -7,7 +7,7 @@ previous_path= stable_path=
 while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
 	# Require two matching samples before migrating. A temporary overlap must
 	# not bounce between two proxies, nor wait a full minute after it settles.
-	current_path=$(/usr/libexec/adzero/probe | jsonfilter -e '@.dns.active_proxies' -e '@.dns.uncertain_proxies' 2>/dev/null)
+	current_path=$(/usr/libexec/adzero/probe | jsonfilter -e '@.dns.active_proxies' -e '@.dns.uncertain_proxies' -e '@.dns.active_paths' 2>/dev/null)
 	path_changed=
 	if [ -n "$current_path" ] && [ "$current_path" = "$previous_path" ] && [ "$current_path" != "$stable_path" ]; then
 		path_changed=1

@@ -123,6 +123,20 @@ class PassWallRuntimeTest(unittest.TestCase):
         self.write('proc/100/status','SigBlk:\t0000000000000000\n')
         self.assertEqual(json.loads(self.run_adapter('status').stdout)['runtime']['state'],'ready')
 
+    def test_passwall2_runtime_requires_inherited_current_filter_file(self):
+        self.select('passwall2')
+        self.write('usr/share/passwall2/helper_dnsmasq.lua','function copy_instance() -- conf-dir= address=\nend\n')
+        self.write('proc/100/comm','dnsmasq_acl_default\n')
+        self.write('proc/100/cmdline','/tmp/etc/passwall2/bin/dnsmasq_acl_default\0-C\0/tmp/etc/passwall2/acl/acl_default_dnsmasq.conf\0')
+        conf=self.write('tmp/etc/passwall2/acl/acl_default_dnsmasq.conf','servers-file=/var/run/adblock-fast/dnsmasq.servers\n')
+        self.run_adapter('apply')
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['runtime']['state'],'ready')
+        conf.write_text('port=11400\n')
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['runtime']['reason'],'passwall2_filter_not_inherited')
+        conf.write_text('servers-file=/var/run/adblock-fast/dnsmasq.servers\n')
+        (self.root/'var/run/adblock-fast/dnsmasq.servers').write_text('server=/other.example/\n')
+        self.assertEqual(json.loads(self.run_adapter('status').stdout)['runtime']['reason'],'rules_stale')
+
     def test_chinadns_native_chain_requires_process_forward_and_block_group(self):
         self.native()
         self.write('etc/config/passwall',"config global\n option enabled '1'\n option dns_shunt 'chinadns-ng'\n")

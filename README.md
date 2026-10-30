@@ -19,7 +19,7 @@ AdZero 是一款运行在 **OpenWrt、ImmortalWrt、iStoreOS** 软路由上的�
 - **规则管理**：添加订阅、自定义拦截与放行；网站误拦时可以临时暂停或放行。
 - **看过滤效果**：查看 DNS 请求、拦截数量和响应耗时，并从电脑实际检测。
 - **设置 DNS**：修改国内/国外 DNS、备用地址；分流与严格模式按需启用。
-- **兼容常用代理**：适配 NaiLink、PassWall、OpenClash、Nikki 等，尽量保留原有代理设置。
+- **兼容常用代理**：识别 NaiLink 的 dae／sing-box／mihomo，适配 PassWall、PassWall2、OpenClash、Nikki 等；各插件的 DNS 能力分别确认，保留原有代理设置。
 
 > **注意**：DNS 过滤不是浏览器广告扩展。同域名视频广告、App 自带加密 DNS 或绕过路由器的流量，不一定能拦截。页面统计也不等于网页广告拦截率。
 
