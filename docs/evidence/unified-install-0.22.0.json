@@ -102,7 +102,20 @@
     "installed_database_unchanged": true,
     "snapshot_source": "read_only_current_router_package_inventory",
     "router_configuration_modified": false,
-    "device_installation": "not_run"
+    "device_installation": "not_run",
+    "native_snapshot_uninstall": {
+      "transaction": "real_apk_against_local_inventory_snapshot",
+      "package_hooks": "disabled_in_snapshot_test",
+      "removed": [
+        "luci-app-adzero"
+      ],
+      "retained": [
+        "adblock-fast",
+        "ucode-mod-socket"
+      ],
+      "dependency_version_pins_added": false,
+      "live_router_modified": false
+    }
   },
   "physical_device_installation": "not_run",
   "native_vendor_dependency_simulations": "prior_pinned_reports_retained; dependency_contract_equivalence_checked_this_release"

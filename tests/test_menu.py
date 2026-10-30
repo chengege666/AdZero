@@ -261,6 +261,26 @@ echo "ctl $1" >> "$MOCK_INSTALL_LOG"
         self.assertEqual(self.f.log.read_text().splitlines(),
                          ["ctl disable", "apk del"])
 
+    def test_apk_uninstall_preserves_dependencies_without_package_upgrades(self):
+        self.f.arm_apk();self.installed_fixture(upgrade=False)
+        self.f.env.update(MOCK_REMOVE_DEPS='1',MOCK_KEEP_MARKER=str(self.f.base/'retained'))
+        out=self.run_menu('4\nYES\n0\n').stdout
+        self.assertIn('卸载完成',out)
+        self.assertEqual(self.f.log.read_text().splitlines(),['apk keep-dependencies','ctl disable','apk del'])
+
+    def test_apk_dependency_retention_rejects_a_system_change_before_disable(self):
+        self.f.arm_apk();self.installed_fixture(upgrade=False)
+        self.f.env.update(MOCK_REMOVE_DEPS='1',MOCK_KEEP_UNSAFE='1',MOCK_KEEP_MARKER=str(self.f.base/'retained'))
+        out=self.run_menu('4\nYES\n0\n').stdout
+        self.assertIn('尚未关闭保护',out)
+        self.assertFalse(self.f.log.exists())
+
+    def test_opkg_extra_removal_is_refused_before_disabling(self):
+        self.installed_fixture(upgrade=False);self.f.env['MOCK_REMOVE_EXTRA']='1'
+        out=self.run_menu('4\nYES\n0\n').stdout
+        self.assertIn('尚未关闭保护',out)
+        self.assertFalse(self.f.log.exists())
+
     def test_installed_unconfirmed_root_never_attempts_uninstall(self):
         self.installed_fixture(upgrade=False)
         out = self.run_menu("4\n0\n").stdout

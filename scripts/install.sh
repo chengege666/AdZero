@@ -285,6 +285,7 @@ menu_uninstall() (
 		return 0
 	fi
 	printf '%s\n' 'AdZero: 卸载前会先恢复它管理的设置；如果恢复失败，将停止卸载。'
+	printf '%s\n' 'AdZero: 保留已安装的依赖，只移除 AdZero 插件。'
 	printf '%s' '确认卸载请输入 YES: '
 	IFS= read -r confirmation || return 0
 	[ "$confirmation" = YES ] || {
@@ -305,8 +306,53 @@ menu_uninstall() (
 		printf '%s\n' 'AdZero: 另一个安装或卸载操作正在进行，拒绝并行卸载。'
 		return 0
 	fi
-	trap 'rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :' 0
+	remove_tmp=$(mktemp -d "${TMPDIR:-/tmp}/adzero-remove.XXXXXX") || {
+		rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :
+		printf '%s\n' 'AdZero: 无法创建卸载预检目录，未关闭保护。'; return 0
+	}
+	trap 'rm -f "$remove_tmp/plan" "$remove_tmp/keep" "$remove_tmp/preserve-plan"; rmdir "$remove_tmp" 2>/dev/null || :; rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :' 0
 	trap 'exit 130' 1 2 3 15
+	if [ "$pm" = apk ]; then
+		if ! apk_native del --simulate --no-network --repositories-file /dev/null luci-app-adzero > "$remove_tmp/plan" 2>&1; then
+			printf '%s\n' 'AdZero: 原生卸载预检失败，尚未关闭保护。'; return 0
+		fi
+		# APK garbage-collects automatic dependencies when deleting a world
+		# package. Mark existing dependencies as manually retained without
+		# changing packages, running hooks or pinning future version updates.
+		awk '/^\([0-9]+\/[0-9]+\) Purging / && $3!="luci-app-adzero" {v=$4;gsub(/[()]/,"",v);print $3 "=" v}' "$remove_tmp/plan" > "$remove_tmp/keep"
+		if [ -s "$remove_tmp/keep" ]; then
+			set --
+			while IFS= read -r keep_spec; do
+				case "$keep_spec" in ''|*[!a-zA-Z0-9._+=~:-]*) printf '%s\n' 'AdZero: 卸载依赖计划格式无效，未关闭保护。'; return 0 ;; esac
+				keep_name=${keep_spec%%=*}
+				case "$keep_name" in [a-zA-Z0-9]*) ;; *) printf '%s\n' 'AdZero: 依赖名称无效，未关闭保护。'; return 0 ;; esac
+				set -- "$@" "$keep_name"
+			done < "$remove_tmp/keep"
+			if ! apk_native add --simulate --no-scripts --no-network --repositories-file /dev/null "$@" > "$remove_tmp/preserve-plan" 2>&1 ||
+			   grep -Eq '(Installing|Upgrading|Downgrading|Reinstalling|Purging|Removing)[[:space:]]' "$remove_tmp/preserve-plan"; then
+				printf '%s\n' 'AdZero: 保留依赖会触发包变更，已停止；尚未关闭保护。'; return 0
+			fi
+			apk_native add --no-scripts --no-network --repositories-file /dev/null "$@" > "$remove_tmp/preserve-plan" 2>&1 || {
+				printf '%s\n' 'AdZero: 未能保留已安装依赖，尚未关闭保护。'; return 0;
+			}
+			apk_native del --simulate --no-network --repositories-file /dev/null luci-app-adzero > "$remove_tmp/plan" 2>&1 || return 0
+		fi
+		if ! awk '
+		  /^\([0-9]+\/[0-9]+\) Purging / {if($3!="luci-app-adzero")bad=1;else own++}
+		  /(Installing|Upgrading|Downgrading|Reinstalling|Removing)[[:space:]]/ {bad=1}
+		  END{exit bad || own!=1}' "$remove_tmp/plan"; then
+			printf '%s\n' 'AdZero: 卸载仍会更改其他组件，已停止；尚未关闭保护。'; return 0
+		fi
+	else
+		if ! opkg_native --noaction remove luci-app-adzero > "$remove_tmp/plan" 2>&1; then
+			printf '%s\n' 'AdZero: OPKG 卸载依赖检查失败，尚未关闭保护。'; return 0
+		fi
+		if ! awk '/^Removing package /{if($3!="luci-app-adzero")bad=1;else own++}
+		  /(Installing|Upgrading|Downgrading|Reinstalling)[[:space:]]/{bad=1}
+		  END{exit bad || own!=1}' "$remove_tmp/plan"; then
+			printf '%s\n' 'AdZero: OPKG 卸载会更改其他组件，尚未关闭保护。'; return 0
+		fi
+	fi
 	if ! "$ROOT/usr/libexec/adzero/ctl" disable; then
 		printf '%s\n' 'AdZero: 关闭及恢复失败，已停止卸载。请保留恢复记录。'
 		return 0
@@ -322,7 +368,7 @@ menu_uninstall() (
 			printf '%s\n' 'AdZero: OPKG 卸载失败；保护已关闭，请核对包状态。'
 		fi
 	else
-		if apk_native del luci-app-adzero; then
+		if apk_native del --no-network --repositories-file /dev/null luci-app-adzero; then
 			printf '%s\n' 'AdZero: 卸载完成。'
 		else
 			printf '%s\n' 'AdZero: APK 卸载失败；保护已关闭，请核对包状态。'

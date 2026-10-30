@@ -49,6 +49,28 @@ class InstallerTest(unittest.TestCase):
             content = content.replace('#!/bin/sh\n', '''#!/bin/sh
 if [ "$1" = --root ]; then shift 2; fi
 if [ "$1" = --arch ]; then shift 2; fi
+if [ "$1" = del ]; then
+  for arg in "$@"; do
+    if [ "$arg" = --simulate ]; then
+      echo '(1/1) Purging luci-app-adzero (0.21.5-r1)'
+      if [ "${MOCK_REMOVE_DEPS:-0}" = 1 ] && { [ ! -e "$MOCK_KEEP_MARKER" ] || [ "${MOCK_KEEP_NO_EFFECT:-0}" = 1 ]; }; then
+        echo '(2/3) Purging adblock-fast (1.2.4-r4)'
+        echo '(3/3) Purging ucode-mod-socket (2026.01.16~85922056-r2)'
+      fi
+      exit 0
+    fi
+  done
+  echo 'apk del' >> "$MOCK_INSTALL_LOG"; exit 0
+fi
+if [ "$1" = add ]; then
+  preserve=0;dry=0
+  for arg in "$@"; do [ "$arg" != --no-scripts ] || preserve=1; [ "$arg" != --simulate ] || dry=1; done
+  if [ "$preserve" = 1 ]; then
+    if [ "${MOCK_KEEP_UNSAFE:-0}" = 1 ]; then echo '(1/1) Upgrading libc (1 -> 2)'; exit 0; fi
+    if [ "$dry" = 0 ]; then : > "$MOCK_KEEP_MARKER"; echo 'apk keep-dependencies' >> "$MOCK_INSTALL_LOG"; fi
+    echo 'OK: unchanged installed packages'; exit 0
+  fi
+fi
 case "$*" in "info -e luci-app-adzero")
   if [ -f "$ADZERO_INSTALL_ROOT/etc/config/adzero" ] && [ "${MOCK_PACKAGE_NOT_OWNED:-0}" != 1 ]; then echo luci-app-adzero; exit 0; fi
   exit 1 ;;
@@ -58,6 +80,11 @@ esac
         if path.name == 'opkg':
             content = content.replace('#!/bin/sh\n', '''#!/bin/sh
 if [ "$1" = --offline-root ]; then shift 2; fi
+if [ "$1" = --noaction ] && [ "$2" = remove ]; then
+  echo 'Removing package luci-app-adzero from root...'
+  [ "${MOCK_REMOVE_EXTRA:-0}" != 1 ] || echo 'Removing package adblock-fast from root...'
+  exit 0
+fi
 if [ "$1" = status ]; then
   [ "${MOCK_PACKAGE_NOT_OWNED:-0}" != 1 ] || exit 1
   printf 'Package: %s\\nStatus: install ok installed\\n' "$2"; exit 0
