@@ -10,11 +10,11 @@ export LC_ALL
 
 REGULAR_URL='https://raw.githubusercontent.com/slobys/AdZero/eecd25ff3d7911530fdea1dfded5f3a399aee777/scripts/install.sh'
 ARM64_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh'
-ISTOREOS_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.3/install-istoreos-beta.sh'
+ISTOREOS_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.4/install-istoreos-beta.sh'
 ISTOREOS24108_URL='https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-24108-beta.1/install-istoreos-24108-beta.sh'
 PIN_REGULAR='85b1a1b80bfc5c7b05bfd220ebd368739053f2b5bcf0cfb0b973014d5565c333'
 PIN_ARM64='77f6ff5e6cccaca1895d6d24092ea89e80f8f0a90bc399af4fa8569c093900ed'
-PIN_ISTOREOS='120920acb4f7ed2e2e48d3537bea671da927bf09ca4150a7c9afaed00133dfcd'
+PIN_ISTOREOS='e7e85a73cab36b228c438fa5f08e6baf93faad3a342543cccb7189e7fa41aad2'
 PIN_ISTOREOS24108='d30c309e650442708dcfda552fa4f62e1530916e93ac2d9341f25db5503a2766'
 
 fail() {
@@ -144,7 +144,7 @@ case "$CHANNEL" in
         URL=$ARM64_URL
         EXPECTED_SHA=$PIN_ARM64 ;;
     istoreos)
-        DESCRIPTION='iStoreOS 公测（v0.21.5-istoreos-beta.3）'
+        DESCRIPTION='iStoreOS 公测（v0.21.5-istoreos-beta.4）'
         URL=$ISTOREOS_URL
         EXPECTED_SHA=$PIN_ISTOREOS ;;
     istoreos24108)

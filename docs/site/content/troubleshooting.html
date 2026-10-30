@@ -20,12 +20,12 @@
 <p>24.10.8（revision 2026073111）使用 OPKG/IPK，不能直接安装 iStoreOS 25.12 的 APK。本项目只对 x86_64、ARMSR 和原厂 R6XS 三种精确 target 开放 <a href="installation.html#istoreos-24108">24.10 Beta.1 公测</a>。运行统一安装命令会自动识别。其他 24.10.x、不同 revision 或错误架构必须停止，不要强制安装或更改系统标识。</p>
 <p>请先从菜单选择只读预检，再尝试「安装但不启用过滤」。本通道包含原厂真实 OPKG 格式 IPK 和七份匹配的依赖包；若模拟提示安装其他包、升级系统软件或恢复失败，请保留错误详情并提交反馈。</p>
 <h2 id="apk-db">iStoreOS 25.12.6 提示「目标需要 APK，当前包管理器或数据库不匹配」</h2>
-<p>这条报错可能来自旧版统一安装器使用固定数据库路径或将历史 OPKG 状态文件当成有效包管理器。请重新执行<a href="installation.html#install">最新的一条命令</a>下载新版安装助手；它会自动选择 iStoreOS Beta.3，通过真正的 <code>apk info -e</code> 查询本机软件包，而不是凭遗留路径判断。</p>
+<p>这条报错可能来自旧版统一安装器使用固定数据库路径或将历史 OPKG 状态文件当成有效包管理器。请重新执行<a href="installation.html#install">最新的一条命令</a>下载新版安装助手；它会自动选择 iStoreOS Beta.4，通过真正的 <code>apk info -e</code> 查询本机软件包，而不是凭遗留路径判断。</p>
 <p>如新版本仍报错，可只读执行 <code>cat /etc/openwrt_release</code>、<code>apk --print-arch</code>、<code>apk info -e base-files luci-base rpcd tcpdump</code> 并反馈脱敏后的结果。若这些必要组件确实不存在，程序仍会安全拒绝安装。不要删除 OPKG/APK 数据库、强制安装或绕过 SHA-256 校验。</p>
 <h2 id="beta-deps">公测版依赖下载失败 / 软件包被拒绝</h2>
 <p>ARM64 Beta.2 缺少依赖时，只接受当前固件对应的官方 HTTPS 软件源，或已经列入白名单的中科大对应厂商 HTTPS 镜像。使用其他镜像、旧补丁版本源、混合两种版本，或原厂依赖无法获取，安装器会停止。先检查路由器原有仓库是否匹配固件，不要关闭 SHA 验证、禁用证书校验或手动添加其他固件的 feeds。</p>
-<p>iStoreOS Beta 则自带每种目标的原厂依赖，安装前检查全部 APK。如果提示压缩包 SHA-256 不匹配、原厂 <code>tcpdump</code> 将被替换、板型不符或已有 AdZero，应该停止，保留错误信息；不要用 <code>--force</code> 或人工改包名绕过。</p>
-<p>如果已安装 iStoreOS Beta.1 / Beta.2，统一安装入口会选择最新 Beta.3 菜单；OpenWrt / ImmortalWrt ARM64 继续选择 Beta.2。先在对应菜单执行「安全卸载」（需确认关闭和恢复 DNS/代理），再安装新版本；不要通过覆盖安装或删除安装标记升级。</p>
+<p>iStoreOS Beta 自带每种目标的原厂依赖。<strong>25.12 Beta.4</strong> 对已安装的 AdZero 会先检查真实 APK 登记、控制文件归属与包版本：匹配版本可选择菜单 2 自动修复，无标记的旧版也可以选择菜单 4 安全卸载。只有出现来源冲突、意外依赖改动、DNS 恢复失败或安装不完整时才拒绝，不要使用 <code>--force</code> 或手动删配置。</p>
+<p>如果已安装 iStoreOS 25.12 Beta.1/Beta.2/Beta.3，统一入口会选择最新 Beta.4 菜单；已有受认可的 Beta 会保持安装状态，不重复覆盖。若旧版没有 Beta 安装标记，菜单 5 可只读查看来源，菜单 2 安全修复同版本，或者菜单 4 安全卸载后再选 2 安装；无需另找 SSH 卸载命令。OpenWrt / ImmortalWrt ARM64 与 iStoreOS 24.10 仍使用各自独立安装渠道。</p>
 <h2 id="upgrade">升级失败</h2>
 <p>“没有唯一匹配的 SDK 包”需核对完整固件版本、设备 target 和包架构；“软件源更新失败”需检查对应固件的官方软件源。独立 ARM64 / iStoreOS Beta <strong>不会通过 LuCI 常规更新按钮自动升级</strong>，需要使用各自的独立菜单。已有可用版本时先保留配置和状态，不要为了重试而直接删掉旧包。</p>
 <h2 id="report">反馈时提供什么</h2>

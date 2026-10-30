@@ -22,12 +22,13 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --menu) MODE=menu ;;
         --check) MODE=check ;;
+        --status) MODE=status ;;
         --install) MODE=install ;;
         --uninstall) MODE=uninstall ;;
         --enable) ENABLE=1 ;;
         --accept-network-risk) RISK=1 ;;
         --local-dir) [ "$#" -ge 2 ] || fail '缺少离线目录'; LOCAL_DIR=$2; shift ;;
-        *) fail '仅支持 --menu、--check、--install、--uninstall、--enable --accept-network-risk、--local-dir。' ;;
+        *) fail '仅支持 --menu、--status、--check、--install、--uninstall、--enable --accept-network-risk、--local-dir。' ;;
     esac
     shift
 done
@@ -90,23 +91,110 @@ done
 CTL="$ROOT/usr/libexec/adzero/ctl"
 MARKDIR="$ROOT/etc/adzero-beta"
 MARKER="$MARKDIR/installed"
-installed() {
-    apk --root "${ROOT:-/}" --arch "$ARCH" info -e luci-app-adzero >/dev/null 2>&1 ||
-        [ -e "$ROOT/etc/config/adzero" ] || [ -e "$CTL" ]
+REMOVED="$MARKDIR/removed"
+CONFIG="$ROOT/etc/config/adzero"
+apk_installed() {
+    apk --root "${ROOT:-/}" --arch "$ARCH" info -e luci-app-adzero >/dev/null 2>&1
+}
+app_version() {
+    # APK 3.0.5 "info -v" means verbose DESCRIPTION, not package version.
+    # list --manifest returns exactly "name version" for installed packages.
+    manifest=$(apk --root "${ROOT:-/}" --arch "$ARCH" list --installed --manifest luci-app-adzero 2>/dev/null) ||
+        return 1
+    printf '%s\n' "$manifest" |
+        awk '$1=="luci-app-adzero" && NF==2 && $2 ~ /^[0-9][0-9A-Za-z.+_~-]*$/ {v=$2; n++}
+             END {if(n==1) print v; else exit 1}'
+}
+known_tag() {
+    case "$1" in
+        "$TAG"|v0.21.5-istoreos-beta.1|v0.21.5-istoreos-beta.2|v0.21.5-istoreos-beta.3) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+trusted_record() {
+    file=$1
+    [ -f "$file" ] && [ ! -L "$file" ] || return 1
+    grep -Fxq "profile=$PROFILE" "$file" &&
+        grep -Fxq "target=$TARGET" "$file" || return 1
+    tag_line=$(sed -n 's/^tag=//p' "$file")
+    [ -n "$tag_line" ] && known_tag "$tag_line"
+}
+owned_app() {
+    # No marker means no beta ownership. Only the native APK's own file
+    # inventory can authorize a migration/uninstall, never an orphan UCI file.
+    apk_installed || return 1
+    [ -f "$CONFIG" ] && [ ! -L "$CONFIG" ] &&
+        [ -x "$CTL" ] && [ ! -L "$CTL" ] || return 1
+    owner=$(apk --root "${ROOT:-/}" --arch "$ARCH" info -W /usr/libexec/adzero/ctl 2>/dev/null) || return 1
+    # Require the exact package-ownership statement, not a substring that
+    # could appear in an unrelated diagnostic or "not owned by" message.
+    case "$owner" in
+        "/usr/libexec/adzero/ctl is owned by luci-app-adzero-"[0-9]*)
+            case "$owner" in
+                *'
+'*) return 1 ;;
+                *) return 0 ;;
+            esac ;;
+        *) return 1 ;;
+    esac
+}
+install_state() {
+    # Output is a controlled state token, not untrusted user configuration.
+    if [ -e "$MARKER" ] || [ -L "$MARKER" ]; then
+        if trusted_record "$MARKER" && owned_app; then echo beta; else echo blocked; fi
+    elif apk_installed; then
+        if owned_app; then echo legacy; else echo blocked; fi
+    elif [ -e "$CTL" ] || [ -L "$CTL" ] ||
+         [ -e "$CONFIG" ] || [ -L "$CONFIG" ]; then
+        if trusted_record "$REMOVED" && [ ! -e "$CTL" ] && [ ! -L "$CTL" ]; then
+            echo residual
+        else
+            echo blocked
+        fi
+    else
+        echo fresh
+    fi
+}
+show_status() {
+    state=$(install_state)
+    printf 'AdZero 本机检查：固件 %s / %s，目标 %s\n' "$VER" "$REV" "$TARGET"
+    if apk_installed; then
+        version=$(app_version) || version=
+        printf 'APK 软件包：已安装，版本 %s\n' "${version:-无法确认}"
+    else
+        say 'APK 软件包：未安装'
+    fi
+    case "$state" in
+        beta) say '安装来源：已记录的 iStoreOS Beta；可用菜单 4 安全卸载，重复安装无须执行。' ;;
+        legacy) say '安装来源：已有 APK 安装，但无 Beta 标记。可选 2 安全修复，或 4 备份并卸载旧版。' ;;
+        residual) say '安装来源：此前由本助手安全卸载，保留原配置；可选 2 重新安装。' ;;
+        fresh) say '安装来源：未安装；可选 2 一键安装。' ;;
+        *) say '安装状态：不完整、来源冲突或文件不属于 AdZero APK；已禁止自动修改，请保留现场。' ;;
+    esac
+    if [ -e "$ROOT/etc/adzero/managed" ] || [ -e "$ROOT/etc/adzero/adapter.json" ]; then
+        say '网络状态：检测到旧版 DNS/代理管理记录；安装时必须先安全恢复。'
+    else
+        say '网络状态：未发现 AdZero 接管记录（不等于 LAN 已完成测试）。'
+    fi
+    say '以上为只读判断，没有修改网络或配置。'
 }
 ensure_root() {
     [ "$(id -u)" -eq 0 ] || [ "${ADZERO_BETA_TEST_MODE:-}" = 1 ] ||
         fail '安装与卸载需以 root SSH 运行。'
 }
 no_conflict() {
-    [ ! -L "$MARKDIR" ] && [ ! -L "$ROOT/etc/config/adzero" ] &&
-        [ ! -L "$CTL" ] || fail '已有符号链接管理状态，不尝试覆盖。'
+    [ ! -L "$MARKDIR" ] && [ ! -L "$CONFIG" ] && [ ! -L "$CTL" ] &&
+        [ ! -L "$MARKER" ] && [ ! -L "$REMOVED" ] &&
+        [ ! -L "$ROOT/etc/adzero" ] &&
+        [ ! -L "$ROOT/etc/adzero/managed" ] &&
+        [ ! -L "$ROOT/etc/adzero/adapter.json" ] ||
+        fail '存在符号链接管理状态，拒绝自动修改。'
     [ ! -e "$ROOT/tmp/adzero.lock" ] && [ ! -L "$ROOT/tmp/adzero.lock" ] ||
         fail '保护任务操作锁存在，请勿并发安装。'
     [ ! -e "$ROOT/tmp/adzero-install.lock" ] && [ ! -L "$ROOT/tmp/adzero-install.lock" ] ||
         fail '安装任务锁存在，拒绝并发操作。'
-    [ ! -e "$ROOT/etc/adzero/managed" ] && [ ! -e "$ROOT/etc/adzero/adapter.json" ] ||
-        fail '已有未恢复 DNS/代理管理状态，先关闭原有保护。'
+    # Old protection may still be active. Read-only checks may inspect it,
+    # but the installing transaction must restore it *after* making a backup.
 }
 confirm() {
     printf '%s [y/N]: ' "$1"
@@ -188,123 +276,241 @@ simulate() {
     [ "$has_app" = 1 ] || fail '预检没有计划安装 AdZero 本体。'
     grep -q 'OK:' "$TMP/simulation" || fail '依赖解算未成功。'
 }
+simulate_reinstall() {
+    apk --root "${ROOT:-/}" --arch "$ARCH" add --simulate --force-reinstall \
+        --no-network --repositories-file /dev/null --allow-untrusted \
+        "$TMP/package/packages/luci-app-adzero-0.21.5-r1.apk" > "$TMP/simulation" 2>&1 ||
+        fail '已安装版本的离线安全修复预检失败；没有修改系统，可通过菜单 4 安全卸载旧版。'
+    # The only permitted mutation is reinstallation of AdZero itself.
+    grep -Eq '^\([0-9]+/[0-9]+\) Reinstalling luci-app-adzero \(' "$TMP/simulation" ||
+        fail 'APK 未确认只重新安装 AdZero，拒绝自动接管旧版。'
+    if grep -E '^\([0-9]+/[0-9]+\) (Installing|Reinstalling|Upgrading|Downgrading|Removing|Purging) ' "$TMP/simulation" |
+        grep -Ev '^\([0-9]+/[0-9]+\) Reinstalling luci-app-adzero \(' | grep -q .; then
+        fail 'APK 预检还要改动其他软件包，拒绝自动迁移。'
+    fi
+    grep -q 'OK:' "$TMP/simulation" || fail 'APK 安全修复未返回成功确认。'
+}
 preflight() {
     no_conflict
-    installed && fail '本机已安装 AdZero，测试版不会擅自覆盖原有安装，请先备份并安全卸载。'
+    KIND=$(install_state)
+    case "$KIND" in
+        beta)
+            say '本机已安装已登记的 AdZero Beta；不会重复覆盖，现有配置保留。'
+            return 0 ;;
+        legacy)
+            existing_version=$(app_version) || existing_version=
+            [ "$existing_version" = 0.21.5-r1 ] ||
+                fail "已安装旧版 AdZero（${existing_version:-无法确认版本}），不强制跨版本覆盖。可用菜单 4 自动备份、安全卸载后再选 2 安装。"
+            KIND=reinstall ;;
+        residual|fresh)
+            [ ! -e "$ROOT/etc/adzero/managed" ] &&
+                [ ! -e "$ROOT/etc/adzero/adapter.json" ] ||
+                fail '不存在 APK 本体却残留 DNS/代理管理记录，拒绝安装，避免断网。'
+            KIND=fresh ;;
+        *) fail '已有 AdZero 的 APK 归属/安装标记或配置不完整；拒绝覆盖，请使用菜单 5 查看状态。' ;;
+    esac
     make_temp
     fetch_bundle
-    set +f
-    set -- "$TMP"/package/packages/*.apk
-    set -f
-    simulate "$@"
-    say "固件、revision、板型、ABI、哈希与依赖预检通过：$PROFILE，7 个 APK。"
+    if [ "$KIND" = reinstall ]; then
+        simulate_reinstall
+        say '已核对旧版 APK 所有权与完整发行包，允许只重装 AdZero 本体；不会重装其他系统依赖。'
+    else
+        set +f
+        set -- "$TMP"/package/packages/*.apk
+        set -f
+        simulate "$@"
+        say "固件、revision、板型、ABI、哈希与依赖预检通过：$PROFILE，7 个 APK。"
+    fi
 }
 run_check() (
     preflight
-    say '只读检测成功。未安装软件或修改 DNS/代理。'
+    if [ "$KIND" = beta ]; then
+        say '只读检查确认了现有 Beta 的 APK 归属和标记；未重新下载或校验发行包。'
+    else
+        say '只读发行包与依赖检测成功；没有安装、卸载或修改 DNS/代理。'
+    fi
 )
+save_backup() {
+    [ -d "$ROOT/etc/config" ] && [ ! -L "$ROOT/etc/config" ] &&
+        [ ! -L "$ROOT/etc/adzero-backups" ] && [ ! -L "$MARKDIR" ] ||
+        fail '配置或备份目录异常，无法安全备份。'
+    mkdir -p "$ROOT/etc/adzero-backups" "$MARKDIR" || fail '无法创建安全备份父目录。'
+    chmod 700 "$ROOT/etc/adzero-backups" "$MARKDIR"
+    backup=$(mktemp -d "$ROOT/etc/adzero-backups/istoreos-beta-$(date +%Y%m%d-%H%M%S).XXXXXXXX") ||
+        fail '无法创建独立备份目录，拒绝继续。'
+    chmod 700 "$backup"
+    tar -czf "$backup/config.tar.gz" -C "$ROOT/etc" config ||
+        fail '保存原配置失败，未触碰网络设置。'
+    if [ -d "$ROOT/etc/adzero" ]; then
+        [ ! -L "$ROOT/etc/adzero" ] || fail '旧版状态目录为符号链接，拒绝操作。'
+        tar -czf "$backup/state.tar.gz" -C "$ROOT/etc" adzero ||
+            fail '备份旧版恢复记录失败。'
+        chmod 600 "$backup/state.tar.gz"
+    fi
+    chmod 600 "$backup/config.tar.gz"
+    say "原配置已安全备份：$backup"
+}
 do_install() (
     ensure_root
     enabled=$1
     preflight
-    [ -d "$ROOT/etc/config" ] && [ ! -L "$ROOT/etc/config" ] ||
-        fail '配置目录不可用，无法生成备份。'
-    mkdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null ||
-        fail '并发安装锁存在。'
+    if [ "$KIND" = beta ]; then
+        say '无需重复安装；当前 Beta 的卸载/管理入口已可使用。'
+        exit 0
+    fi
+    mkdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || fail '已有安装任务正在运行。'
     trap 'rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :; rm -rf "$TMP"' 0
-    [ ! -e "$MARKER" ] && [ ! -L "$MARKER" ] || fail '存在历史测试版标记，拒绝覆盖。'
-    [ ! -L "$ROOT/etc/adzero-backups" ] || fail '配置备份父目录是符号链接，拒绝写入。'
-    [ ! -L "$MARKDIR" ] || fail '测试版标记目录是符号链接，拒绝写入。'
-    stamp=$(date +%Y%m%d-%H%M%S)
-    backup="$ROOT/etc/adzero-backups/istoreos-beta-$stamp"
-    [ ! -e "$backup" ] && [ ! -L "$backup" ] || fail '相同备份目录已存在。'
-    mkdir -p "$backup" "$MARKDIR" || fail '备份目录创建失败。'
-    chmod 700 "$ROOT/etc/adzero-backups" "$backup" "$MARKDIR"
-    tar -czf "$backup/config.tar.gz" -C "$ROOT/etc" config ||
-        fail '配置备份失败，拒绝安装。'
-    chmod 600 "$backup/config.tar.gz"
-    set +f
-    set -- "$TMP"/package/packages/*.apk
-    set -f
-    say "正在通过离线原厂 APK 安装；已备份配置：$backup。"
-    apk --root "${ROOT:-/}" --arch "$ARCH" add --no-network \
-        --repositories-file /dev/null --allow-untrusted "$@" ||
-        fail '安装失败。请保留配置备份，联系维护者检查原有网络状态。'
-    [ -x "$CTL" ] || fail '安装后找不到控制程序，保留备份以便人工修复。'
-    printf 'tag=%s\nprofile=%s\ntarget=%s\n' "$TAG" "$PROFILE" "$TARGET" > "$MARKER"
-    chmod 600 "$MARKER"
+    # Recheck after acquiring the mutation lock. We do not adopt an app
+    # appearing between the read-only simulation and the actual operation.
+    now=$(install_state)
+    case "$KIND:$now" in
+        reinstall:legacy|fresh:fresh|fresh:residual) ;;
+        *) fail '预检后系统安装状态发生变化，拒绝继续操作。' ;;
+    esac
+    save_backup
+    if [ "$KIND" = reinstall ]; then
+        say '检测到无 Beta 标记的旧版 APK；先关闭并恢复旧版 DNS/代理，再仅重装同版本 AdZero。'
+        "$CTL" disable ||
+            fail '旧版恢复 DNS/代理失败；未重新安装。备份已保留，防止断网。'
+        [ ! -e "$ROOT/etc/adzero/managed" ] &&
+            [ ! -e "$ROOT/etc/adzero/adapter.json" ] ||
+            fail '旧版 DNS/代理接管记录未清除，已停止迁移并保留备份。'
+        apk --root "${ROOT:-/}" --arch "$ARCH" add --force-reinstall --no-network \
+            --repositories-file /dev/null --allow-untrusted \
+            "$TMP/package/packages/luci-app-adzero-0.21.5-r1.apk" ||
+            fail '本地安全重装失败；不会强制删除旧版，请保留备份与 APK 状态。'
+    else
+        set +f
+        set -- "$TMP"/package/packages/*.apk
+        set -f
+        say '正在从已经校验的原厂 APK 离线安装。'
+        apk --root "${ROOT:-/}" --arch "$ARCH" add --no-network \
+            --repositories-file /dev/null --allow-untrusted "$@" ||
+            fail 'APK 安装失败，配置备份已保留。'
+    fi
+    apk_installed && owned_app ||
+        fail '安装后未确认 AdZero 的 APK 软件包、控制文件归属和配置完整，保留备份。'
+    [ ! -e "$MARKER" ] && [ ! -L "$MARKER" ] || fail '安装记录冲突，保留备份。'
+    mark_tmp=$(mktemp "$MARKDIR/.installed.XXXXXXXX") ||
+        fail '无法创建安全的 Beta 记录临时文件，配置备份保留。'
+    printf 'tag=%s\nprofile=%s\ntarget=%s\n' "$TAG" "$PROFILE" "$TARGET" > "$mark_tmp"
+    chmod 600 "$mark_tmp"
+    mv "$mark_tmp" "$MARKER" || fail '写入 Beta 来源记录失败，保留备份。'
     if [ "$enabled" = 1 ]; then
         if ! "$CTL" enable; then
             "$CTL" disable || :
             fail '主动启用失败，已尝试恢复配置，测试备份保留。'
         fi
-        # Mirror the established stable installer: persist the user's
-        # explicit enable choice for subsequent router boots.
         if [ -x "$ROOT/etc/init.d/adzero" ]; then
             if ! "$ROOT/etc/init.d/adzero" enable || ! "$ROOT/etc/init.d/adzero" start; then
                 "$CTL" disable || :
                 fail '开机启用或启动服务失败，已尝试撤回保护；请检查配置备份。'
             fi
         fi
-        say '已安装并启用。请立即检查 LAN 上网、DNS 和代理状态。'
+        say '已安装并按确认启用，请检查 LAN 上网、DNS 和代理状态。'
     else
-        # The factory package is installed disabled. Do not call disable
-        # just after installation: that can unnecessarily invoke native DNS
-        # adapters on a system that has never enabled AdZero.
         if [ -e "$ROOT/etc/adzero/managed" ] || [ -e "$ROOT/etc/adzero/adapter.json" ]; then
-            "$CTL" disable || fail '安装后意外发现已接管 DNS 状态且恢复失败；保留备份。'
-            fail '安装后发现意外的 DNS 管理状态；已尝试关闭，暂不宣称安装安全。'
+            "$CTL" disable || fail '安装后出现 DNS 管理状态且无法恢复；保留备份。'
+            fail '安装后发现意外 DNS 管理状态；已尝试关闭，暂不宣称成功。'
         fi
-        say '安装成功；未主动启用 DNS 过滤。请在 LuCI 中确认后手动开启。'
+        say '安装或安全修复完成；DNS 过滤保持关闭，无需手动删除旧版。'
     fi
+    rm -f "$REMOVED"
 )
 do_uninstall() (
     ensure_root
-    [ -f "$MARKER" ] && [ ! -L "$MARKER" ] ||
-        fail '未找到本测试版安装标记，拒绝卸载其他 AdZero 版本。'
-    # Keep both previously released beta.1 and beta.2 installs safely
-    # uninstallable after the launcher moves to beta.3.
-    { grep -Fxq "tag=$TAG" "$MARKER" ||
-      grep -Fxq 'tag=v0.21.5-istoreos-beta.1' "$MARKER" ||
-      grep -Fxq 'tag=v0.21.5-istoreos-beta.2' "$MARKER"; } &&
-        grep -Fxq "profile=$PROFILE" "$MARKER" &&
-        grep -Fxq "target=$TARGET" "$MARKER" ||
-        fail '安装记录与当前固件、目标或已知测试版不匹配，拒绝卸载。'
-    [ -x "$CTL" ] && [ ! -L "$CTL" ] || fail '控制程序不可用，拒绝卸载。'
-    [ ! -e "$ROOT/tmp/adzero.lock" ] && [ ! -L "$ROOT/tmp/adzero.lock" ] ||
-        fail '存在保护任务锁，拒绝并发卸载。'
-    mkdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || fail '有其他安装任务正在运行。'
-    trap 'rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :' 0
-    "$CTL" disable || fail '关闭过滤或恢复代理/DNS 失败，拒绝卸载。'
-    [ ! -e "$ROOT/etc/adzero/managed" ] && [ ! -e "$ROOT/etc/adzero/adapter.json" ] ||
-        fail '仍有未恢复的代理/DNS 状态，拒绝卸载。'
-    apk --root "${ROOT:-/}" del luci-app-adzero || fail 'APK 卸载失败，配置备份已保留。'
+    no_conflict
+    original_state=$(install_state)
+    case "$original_state" in
+        beta|legacy) ;;
+        residual|fresh) say '未检测到待卸载的 AdZero APK，已安全退出。'; exit 0 ;;
+        *) fail '包来源、控制程序或安装标记不完整，拒绝删除；请用菜单 5 查看只读诊断。' ;;
+    esac
+    make_temp
+    # APK itself decides the dependency closure. Refuse any transaction
+    # that would remove unrelated packages, even if the user chose uninstall.
+    apk --root "${ROOT:-/}" --arch "$ARCH" del --simulate --no-network \
+        --repositories-file /dev/null luci-app-adzero > "$TMP/removal-plan" 2>&1 ||
+        fail 'APK 不能安全模拟卸载，不修改已安装的软件包。'
+    grep -Eq '^\([0-9]+/[0-9]+\) (Purging|Removing) luci-app-adzero ' "$TMP/removal-plan" ||
+        fail '未确认待卸载包属于 AdZero，操作已停止。'
+    if grep -E '^\([0-9]+/[0-9]+\) (Purging|Removing|Upgrading|Downgrading|Installing|Reinstalling) ' "$TMP/removal-plan" |
+        grep -Ev '^\([0-9]+/[0-9]+\) (Purging|Removing) luci-app-adzero ' | grep -q .; then
+        fail 'APK 计划连带修改其他已安装依赖，拒绝卸载；保留原系统与 DNS 状态。'
+    fi
+    mkdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || fail '另一安装任务正在运行。'
+    trap 'rmdir "$ROOT/tmp/adzero-install.lock" 2>/dev/null || :; rm -rf "$TMP"' 0
+    [ "$(install_state)" = "$original_state" ] || fail '卸载预检之后安装状态已变化。'
+    save_backup
+    say '正在关闭 AdZero 并恢复原 DNS/代理；恢复失败将停止卸载。'
+    "$CTL" disable || fail 'DNS/代理恢复失败，未卸载任何软件包；已保留备份。'
+    [ ! -e "$ROOT/etc/adzero/managed" ] &&
+        [ ! -e "$ROOT/etc/adzero/adapter.json" ] ||
+        fail '原 DNS/代理仍存在接管记录，拒绝卸载；备份已保留。'
+    apk --root "${ROOT:-/}" --arch "$ARCH" del --no-network \
+        --repositories-file /dev/null luci-app-adzero ||
+        fail 'APK 卸载失败，保留备份和当前安装记录。'
+    apk_installed && fail 'APK 未确认已卸载，保留恢复记录。'
+    removed_tmp=$(mktemp "$MARKDIR/.removed.XXXXXXXX") ||
+        fail '已卸载，但无法创建安全恢复记录临时文件；配置备份保留。'
+    printf 'tag=%s\nprofile=%s\ntarget=%s\n' "$TAG" "$PROFILE" "$TARGET" > "$removed_tmp"
+    chmod 600 "$removed_tmp"
+    mv "$removed_tmp" "$REMOVED" || fail '已卸载，但写入恢复标记失败；配置备份保留。'
     rm -f "$MARKER"
-    say '安全卸载完成。保留原厂依赖与配置备份，避免影响其他插件。'
+    say 'AdZero 已安全卸载，原系统依赖与配置备份保留；可直接选择菜单 2 重新安装。'
 )
+menu_action() {
+    # Isolate errors: a failed check or install returns to this menu instead
+    # of forcing the user to fetch and launch the script again via SSH.
+    if [ -n "$LOCAL_DIR" ]; then
+        sh "$0" "$@" --local-dir "$LOCAL_DIR"
+    else
+        sh "$0" "$@"
+    fi
+}
 menu() {
     while :; do
         printf '\n%s\n' '=========== AdZero iStoreOS 公开测试版 ==========='
         printf '发行：%s  固件：%s %s  target=%s\n' "$TAG" "$FW" "$VER" "$TARGET"
-        printf '%s\n' ' 1) 只读检测固件/哈希/依赖'
-        printf '%s\n' ' 2) 一键安装（默认关闭过滤，推荐）'
-        printf '%s\n' ' 3) 安装并启用过滤（有断网风险，需要再次确认）'
-        printf '%s\n' ' 4) 安全卸载（恢复 AdZero 管理的配置）'
+        case "$(install_state)" in
+            beta) say '状态：当前 Beta 已安装' ;;
+            legacy) say '状态：发现旧版 AdZero APK（未登记 Beta）；可直接修复或安全卸载' ;;
+            residual) say '状态：上次已安全卸载；旧配置已保留' ;;
+            fresh) say '状态：尚未安装 AdZero' ;;
+            *) say '状态：原有安装记录不完整（只允许诊断，禁止覆盖）' ;;
+        esac
+        printf '%s\n' ' 1) 只读检查安装包与依赖'
+        printf '%s\n' ' 2) 一键安装 / 安全修复已有 AdZero（默认关闭过滤）'
+        printf '%s\n' ' 3) 安装并启用过滤（需再次确认风险）'
+        printf '%s\n' ' 4) 安全卸载当前 AdZero（含无 Beta 标记的旧版）'
+        printf '%s\n' ' 5) 检测安装来源/版本/恢复状态（只读）'
         printf '%s\n' ' 0) 退出'
-        printf '%s' '请输入 [0-4]: '
+        printf '%s' '请输入 [0-5]: '
         IFS= read -r choice || return 0
         case "$choice" in
-            1) run_check ;;
-            2) if confirm '确认安装 iStoreOS beta？'; then do_install 0; fi ;;
-            3) if confirm '确认安装并准备启用 DNS 拦截？' && risk_confirm; then do_install 1; fi ;;
-            4) if confirm '确认关闭、恢复并卸载 beta？'; then do_uninstall; fi ;;
+            1) menu_action --check || say '预检未通过。可查看上方原因和菜单 5，无需重新运行 SSH 命令。' ;;
+            2)
+                if confirm '确认一键安装或修复？如旧版正在过滤，将先备份并恢复 DNS/代理，完成后保持关闭。'; then
+                    menu_action --install || say '未完成安装/修复；请查看上方原因，原配置备份不会删除。'
+                fi ;;
+            3)
+                if confirm '确认安装并准备启用 DNS 拦截？' && risk_confirm; then
+                    menu_action --install --enable --accept-network-risk ||
+                        say '未完成启用；请检查上方恢复信息。'
+                fi ;;
+            4)
+                if confirm '确认备份、恢复 DNS/代理并卸载本机 AdZero APK（仅限 APK 已确认归属的旧版）？'; then
+                    menu_action --uninstall || say '安全卸载未完成；请查看上方拒绝原因。'
+                fi ;;
+            5) show_status ;;
             0) return 0 ;;
-            *) say '请输入 0 至 4。' ;;
+            *) say '请输入 0 至 5。' ;;
         esac
     done
 }
 case "$MODE" in
     menu) menu ;;
+    status) show_status ;;
     check) run_check ;;
     uninstall) do_uninstall ;;
     install)
