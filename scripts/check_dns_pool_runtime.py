@@ -12,7 +12,7 @@ from prepare_dns_socket import prepare,install
 from build_sdk import source_hash
 from check_dns_core import question,recv_exact
 TIMEOUT='coreutils-timeout_9.7-r1_x86_64.ipk'
-TIMEOUT_SHA='145a99ab15600f4634df00d4a08c7c55ae05b274ae1d9afff3d96fed2f75f686'
+TIMEOUT_SHA='8e529e06face73306c0cc66a7c002432643a7aa4697a4609bdf4ee297fbcbb3e'
 
 def response(raw):
     kind=struct.unpack('!H',raw[-4:-2])[0];ip=socket.inet_pton(socket.AF_INET6 if kind==28 else socket.AF_INET,'2001:db8::9' if kind==28 else '192.0.2.9')
@@ -24,7 +24,7 @@ def main():
     if not a.inside:
         if os.geteuid()!=0:raise SystemExit('Run in Linux/WSL as root')
         prepare(ROOT,None)
-        for path,url,digest in [(rootfs,URL,SHA256),(extra,'https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/packages/'+TIMEOUT,TIMEOUT_SHA)]:
+        for path,url,digest in [(rootfs,URL,SHA256),(extra,'https://archive.openwrt.org/releases/24.10.8/packages/x86_64/packages/'+TIMEOUT,TIMEOUT_SHA)]:
             if not path.exists():
                 path.parent.mkdir(parents=True,exist_ok=True)
                 with urllib.request.urlopen(url,timeout=60) as r:path.write_bytes(r.read(20*1024*1024))

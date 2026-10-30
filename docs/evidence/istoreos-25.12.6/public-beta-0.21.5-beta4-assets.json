@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "release_tag": "v0.21.5-istoreos-beta.4",
+  "supersedes_beta": "v0.21.5-istoreos-beta.3",
+  "release_type": "public_opt_in_prerelease",
+  "firmware": "istoreos",
+  "release": "25.12.6",
+  "revision": "2026102312",
+  "old_beta_installer_sha256": "120920acb4f7ed2e2e48d3537bea671da927bf09ca4150a7c9afaed00133dfcd",
+  "app_package": "luci-app-adzero-0.21.5-r1.apk",
+  "app_apk_sha256": "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52",
+  "app_package_source_sha256": "8df7589827fdc1adc418c3b83887097589b257a4a7654ac0dd91ddf878ee60c9",
+  "vendor_source_commit": "283d02639c740f8ae6e9425b48be8c61f152c6b8",
+  "archives": [
+    {
+      "profile": "x86_64",
+      "target": "x86/64",
+      "arch": "x86_64",
+      "name": "adzero-istoreos-x86_64-beta.tar.gz",
+      "sha256": "bc2a8bd284feda18ef99c8dd80d4472f0e4349b202489f91bd57e60cf3124a76",
+      "dependency_count": 6
+    },
+    {
+      "profile": "armsr",
+      "target": "armsr/armv8",
+      "arch": "aarch64_generic",
+      "name": "adzero-istoreos-armsr-beta.tar.gz",
+      "sha256": "8ef0bd41993bc51e3cc186d4f690f5f004fec2d07730f18907c79c7a419b02d7",
+      "dependency_count": 6
+    },
+    {
+      "profile": "rockchip-r6xs",
+      "target": "rockchip/armv8",
+      "arch": "aarch64_generic",
+      "name": "adzero-istoreos-rockchip-r6xs-beta.tar.gz",
+      "sha256": "5a8145b2ed4d72c6049a230bdb790ae2394d7b499f72f0b9dd948a95925791aa",
+      "dependency_count": 6
+    }
+  ],
+  "installer": {
+    "name": "install-istoreos-beta.sh",
+    "sha256": "e7e85a73cab36b228c438fa5f08e6baf93faad3a342543cccb7189e7fa41aad2"
+  },
+  "build_script": "scripts/build_istoreos_beta.py",
+  "source_script": "scripts/install_istoreos_beta.sh",
+  "security": {
+    "native_apk_and_dependencies_identical_to_beta3": true,
+    "stable_sdk_verified_unchanged": true,
+    "other_release_assets_unchanged": true,
+    "only_exact_vendor_revision_target_arch": true,
+    "sha256_locked_vendor_payload": true,
+    "accepts_unmarked_app_only_after_apk_file_owner_attestation": true,
+    "unknown_or_orphaned_install_rejected": true,
+    "same_version_unmarked_reinstall_only_this_apk": true,
+    "cross_version_upgrade_forbidden": true,
+    "apk_simulation_forbids_unrelated_changes": true,
+    "control_disable_and_dns_proxy_restore_before_mutation": true,
+    "backup_config_and_state_before_mutation": true,
+    "safe_legacy_uninstall_preserves_shared_dependencies": true,
+    "repeat_menu_actions_do_not_require_script_redownload": true,
+    "default_filtering_enabled": false
+  },
+  "real_factory_guest": {
+    "platform": "iStoreOS 25.12.6 x86/64 2026102312",
+    "raw_image_sha256": "833e203e667fb49b27dd69ce8a8a8176a563d5f7154ba95ac219bed0af5da3c9",
+    "environment": "offline QEMU TCG, disposable qcow2 overlay",
+    "existing_beta3_exact_public_assets_sha256_verified": true,
+    "installed_previous_public_beta3_into_original_factory_image": true,
+    "reproduced_unmarked_existing_apk": true,
+    "original_guest_apk_tools": "3.0.5",
+    "observed_installed_version": "0.21.5-r1",
+    "real_apk_file_owner_attested": true,
+    "new_beta4_readonly_status_and_preflight_passed": true,
+    "new_beta4_single_app_real_force_reinstall_passed": true,
+    "new_beta4_real_apk_uninstall_passed": true,
+    "post_uninstall_apk_no_app_installed": true,
+    "original_guest_app_config_default_filter_disabled": true,
+    "guest_terminal_success_marker": "ADZERO_GUEST_BETA4_LIFECYCLE_PASS",
+    "host_qemu_timeout_terminated_after_success": true,
+    "guest_reboot_tested": false,
+    "guest_live_dns_proxy_tested": false,
+    "status": "passed_real_offline_guest_install_reinstall_uninstall"
+  },
+  "physical_router_acceptance": "not_run",
+  "arm64_guest_lifecycle": "not_run",
+  "LAN_DNS_proxy_reboot_recovery": "not_run"
+}

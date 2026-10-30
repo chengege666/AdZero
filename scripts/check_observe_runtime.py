@@ -40,7 +40,7 @@ def prepare_extras(download):
         cache=ROOT/'artifacts/runtime/observe-extras'/filename
         if not cache.exists():
             if not download:raise RuntimeError('Prepare observer dependencies before network isolation')
-            with urllib.request.urlopen('https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base/'+filename,timeout=30) as response:data=response.read()
+            with urllib.request.urlopen('https://archive.openwrt.org/releases/24.10.8/packages/x86_64/base/'+filename,timeout=30) as response:data=response.read()
             if hashlib.sha256(data).hexdigest()!=digest:raise ValueError('Observer dependency SHA-256 mismatch')
             cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(data)
         if hashlib.sha256(cache.read_bytes()).hexdigest()!=digest:raise ValueError('Cached observer dependency SHA-256 mismatch')

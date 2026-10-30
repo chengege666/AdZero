@@ -92,7 +92,7 @@ echo "$url" >> "$MOCK_CURL_LOG"
 case "$url" in
     https://raw.githubusercontent.com/slobys/AdZero/*/scripts/install.sh) base=install.sh ;;
     https://github.com/slobys/AdZero/releases/download/v0.21.5-arm64-beta.2/install-arm64-beta.sh) base=install-arm64-beta.sh ;;
-    https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.3/install-istoreos-beta.sh) base=install-istoreos-beta.sh ;;
+    https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-beta.4/install-istoreos-beta.sh) base=install-istoreos-beta.sh ;;
     https://github.com/slobys/AdZero/releases/download/v0.21.5-istoreos-24108-beta.1/install-istoreos-24108-beta.sh) base=install-istoreos-24108-beta.sh ;;
     *) echo wrong-provenance >&2; exit 74 ;;
 esac
@@ -345,7 +345,7 @@ exit 0
         self.assertEqual(sha_from("PIN_REGULAR"), sha(REPO/"scripts/install.sh"))
         for name,path in (
             ("PIN_ARM64", "docs/evidence/arm64-public-beta-0.21.5-beta2-assets.json"),
-            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta3-assets.json"),
+            ("PIN_ISTOREOS", "docs/evidence/istoreos-25.12.6/public-beta-0.21.5-beta4-assets.json"),
             ("PIN_ISTOREOS24108", "docs/evidence/istoreos-24.10.8/public-beta-0.21.5-native-build-assets.json")
         ):
             metadata = json.loads((REPO/path).read_text(encoding="utf-8"))

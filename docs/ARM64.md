@@ -11,8 +11,8 @@
 | OpenWrt | 25.12.6 / mediatek/filogic | 官方 SDK 编译、APK/LuCI 检查通过；独立 ARM64 Beta 公开试装，真机待测 |
 | ImmortalWrt | 25.12.2 / rockchip/armv8 | 独立厂商 SDK 编译、APK/LuCI 检查通过；独立 ARM64 Beta 公开试装，真机待测 |
 | ImmortalWrt | 25.12.2 / mediatek/filogic | 独立厂商 SDK 编译、APK/LuCI 检查通过；独立 ARM64 Beta 公开试装，真机待测 |
-| iStoreOS | 25.12.6-2026102312 / armsr/armv8 | 原生 APK 编译通过；6 依赖闭环、7 包离线模拟通过；独立 iStoreOS Beta 已公开，真机待测 |
-| iStoreOS | 25.12.6-2026102312 / rockchip/armv8（R6XS） | 原生 APK 编译通过；6 依赖闭环、7 包离线模拟通过；独立 iStoreOS Beta 已公开，真机待测 |
+| iStoreOS | 25.12.6-2026102312 / armsr/armv8 | 原生 APK 编译通过；6 依赖闭环、7 包离线模拟通过；[独立 Beta.4](RELEASE_ISTOREOS_BETA_0.21.5_BETA4.md) 已公开测试，真机待测 |
+| iStoreOS | 25.12.6-2026102312 / rockchip/armv8（R6XS） | 原生 APK 编译通过；6 依赖闭环、7 包离线模拟通过；[独立 Beta.4](RELEASE_ISTOREOS_BETA_0.21.5_BETA4.md) 已公开测试，真机待测 |
 
 四个已通过 CI 的候选包均来自提交 `61e1334`，下载后的 APK SHA-256 与相应 SDK 构建清单一致；详细记录在 [`evidence/arm64-pr10-sdk-builds.json`](evidence/arm64-pr10-sdk-builds.json)。**`ci_passed_unreleased` 仍只表示 SDK 编译与静态检查，不能直接成为稳定 `sdk_verified`**。这些原生 APK 通过 [独立 ARM64 Beta.2 安装渠道](RELEASE_ARM64_BETA_0.21.5_BETA2.md) 公开供自愿测试者使用：4 个固件专用包哈希固定，默认不启用过滤，依赖来自对应官方 HTTPS 源或经限定的中科大镜像（同厂商、精确版本或固件滚动 25.12，且 target/架构必须一致）；不覆盖已发布 v0.21.5，也不会出现在稳定版的普通 LuCI 在线更新中。
 

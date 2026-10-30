@@ -20,7 +20,7 @@ from probe_istoreos import SOURCE_COMMIT
 from probe_istoreos_arm64 import PROFILES as ARM_PROFILES
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_TAG = "v0.21.5-istoreos-beta.3"
+RELEASE_TAG = "v0.21.5-istoreos-beta.4"
 RELEASE_FW = "25.12.6"
 RELEASE_REVISION = "2026102312"
 PACKAGE_HASH = "b579f94fe847da6b6a0230fbdb7efa833d39a6bc80c9b6c726e8da7b10dc0f52"

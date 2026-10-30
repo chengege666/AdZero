@@ -40,7 +40,7 @@ curl -fL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.c
 | **iStoreOS 公测** | iStoreOS 25.12.6（修订 2026102312）的 x86_64 / ARMSR / R6XS |
 | **iStoreOS 24.10 IPK 公测** | iStoreOS **24.10.8（修订 2026073111）** 的 x86_64 / ARM64 ARMSR / R6XS |
 
-OpenWrt / ImmortalWrt ARM64 公测为 **Beta.2**；iStoreOS 已更新 **Beta.3**，修复 APK 环境误判并保留旧版安全卸载。统一安装命令会自动选择对应版本。
+OpenWrt / ImmortalWrt ARM64 公测为 **Beta.2**；iStoreOS 25.12.6 已更新 **Beta.4**：已有 AdZero 也能从菜单安全修复、诊断或卸载，无需手动删除配置或找旧脚本。统一安装命令自动选版本；首次安装默认不启用 DNS 过滤。
 
 iStoreOS **24.10.8** 已开放独立 **IPK/OPKG Beta.1**：三个目标已通过原厂源码打包和真实 OPKG 离线安装预检，仍待实体设备 DNS/代理验收；其他 24.10.x 版本不在安装名单。
 
