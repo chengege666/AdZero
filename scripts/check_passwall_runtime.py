@@ -15,7 +15,7 @@ from test_observe import dns
 def main():
  archive=ROOT/'artifacts/runtime/openwrt-24.10.8-x86-64-rootfs.tar.gz'
  helper=ROOT/'artifacts/upstream/PassWall/helper_dnsmasq.lua';api=ROOT/'artifacts/upstream/PassWall/api.lua'
- deps={'lua_5.1.5-r11_x86_64.ipk':'164795e16b225d71e776a5aa584f6b3af239a0012724da63de58dd808f6a3165','liblua5.1.5_5.1.5-r11_x86_64.ipk':'53875655f43c24dc00fe3f94a1a9e15294be48b80ee32d9fd5d6cddc65b01a70','coreutils-timeout_9.7-r1_x86_64.ipk':'145a99ab15600f4634df00d4a08c7c55ae05b274ae1d9afff3d96fed2f75f686'}
+ deps={'lua_5.1.5-r11_x86_64.ipk':'164795e16b225d71e776a5aa584f6b3af239a0012724da63de58dd808f6a3165','liblua5.1.5_5.1.5-r11_x86_64.ipk':'53875655f43c24dc00fe3f94a1a9e15294be48b80ee32d9fd5d6cddc65b01a70','coreutils-timeout_9.7-r1_x86_64.ipk':'8e529e06face73306c0cc66a7c002432643a7aa4697a4609bdf4ee297fbcbb3e'}
  if '--inside' not in sys.argv:
   if os.geteuid()!=0:raise SystemExit('Run in Linux/WSL as root')
   prepare_socket(ROOT,None)
@@ -31,7 +31,7 @@ def main():
   fetch(helper,prefix+'root/usr/share/passwall/helper_dnsmasq.lua','e34aa1f98ecebf38ea691b90b51e3b73ebafebf20bb6f44efaa272a9fc46db81')
   fetch(api,prefix+'luasrc/passwall/api.lua','dfcc760005ec18681b72c9371344247034430d905d40fdafcfef93bcf5f3a7c4')
   fetch(ROOT/'artifacts/upstream/SSRPlus/gfw2ipset.sh','https://raw.githubusercontent.com/fw876/helloworld/2abdc9aa9e19607774dc9789709212b70b8607c6/luci-app-ssr-plus/root/usr/share/shadowsocksr/gfw2ipset.sh','2d456af581fcca037e259c285c202f564bfdba00057186f95d626e0db2700309')
-  for name,digest in deps.items():fetch(ROOT/'artifacts/runtime/passwall-extras'/name,'https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/'+('packages/' if name.startswith('coreutils-') else 'base/')+name,digest)
+  for name,digest in deps.items():fetch(ROOT/'artifacts/runtime/passwall-extras'/name,'https://archive.openwrt.org/releases/24.10.8/packages/x86_64/'+('packages/' if name.startswith('coreutils-') else 'base/')+name,digest)
   return subprocess.call(['unshare','--net','--mount','--propagation','private',sys.executable,__file__,'--inside'])
  subprocess.run(['ip','link','set','lo','up'],check=True)
  assert hashlib.sha256(archive.read_bytes()).hexdigest()=='6c94190246a54088e3984fc0c4cbbb518972abb2b10a28e30a0c41554eea8b9d'

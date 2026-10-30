@@ -50,7 +50,7 @@ def main():
         fetch(cache/'mihomo.gz',CORE_URL,CORE_SHA256)
         packages={}
         for feed in ('base','packages'):
-            prefix=f'https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/{feed}/'
+            prefix=f'https://archive.openwrt.org/releases/24.10.8/packages/x86_64/{feed}/'
             index=gzip.decompress(fetch(cache/(feed+'-Packages.gz'),prefix+'Packages.gz')).decode()
             for block in index.split('\n\n'):
                 info=dict(line.split(': ',1) for line in block.splitlines() if ': ' in line)
