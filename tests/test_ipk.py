@@ -44,7 +44,8 @@ def list_tar(content):
 class IpkPackagingTest(unittest.TestCase):
     def test_ar_structure_and_control(self):
         package, version = build_ipk.build_bytes()
-        self.assertEqual(version, "0.23.0-r1")
+        expected=(ROOT/'luci-app-adzero/root/usr/share/adzero/version').read_text().strip()+'-r1'
+        self.assertEqual(version, expected)
         members = parse_ar(package)
         self.assertEqual(set(members), {"debian-binary", "control.tar.gz", "data.tar.gz"})
         self.assertEqual(members["debian-binary"], b"2.0\n")
@@ -52,7 +53,7 @@ class IpkPackagingTest(unittest.TestCase):
         self.assertEqual(set(control), {"control", "conffiles", "postinst", "prerm"})
         body = control["control"][1].decode()
         self.assertIn("Package: luci-app-adzero\n", body)
-        self.assertIn("Version: 0.23.0-r1\n", body)
+        self.assertIn('Version: '+expected+'\n', body)
         self.assertIn("Architecture: all\n", body)
         self.assertIn("Depends: luci-base, adblock-fast, curl, rpcd-mod-file, rpcd-mod-ucode, ca-bundle, ucode, ucode-mod-fs, ucode-mod-uci, ucode-mod-ubus, ucode-mod-uloop, ucode-mod-socket, tcpdump, conntrack, coreutils-timeout\n", body)
         self.assertEqual(control["conffiles"][1], b"/etc/config/adzero\n")
