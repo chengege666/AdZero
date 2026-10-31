@@ -396,6 +396,99 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.run_adapter('settle',success=False)
         self.assertTrue(json.loads((self.root/'etc/adzero/adapter.json').read_text())['nailink_reload_unconfirmed'])
 
+    def test_completed_reload_can_settle_after_native_core_switch(self):
+        p=self.pending_reload()
+        current=json.loads(p.read_text());current.update(native_core='mihomo',modified=False)
+        p.write_text(json.dumps(current));before=p.read_bytes()
+        self.run_adapter('settle')
+        self.assertEqual(p.read_bytes(),before,'confirming completion must not submit another reload')
+        state=json.loads((self.root/'etc/adzero/adapter.json').read_text())
+        self.assertFalse(state.get('nailink_reload_unconfirmed'))
+        self.assertEqual(state['stage'],'configured_unverified')
+
+    def test_completed_cross_core_reload_can_restore_without_daemon_restart(self):
+        p=self.pending_reload();current=json.loads(p.read_text())
+        current.update(native_core='sing-box',modified=False);p.write_text(json.dumps(current))
+        (self.root/'hold-reload').unlink()
+        self.run_adapter('remove')
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+        restored=json.loads(p.read_text())
+        self.assertNotIn('ADZERO MANAGED BEGIN',restored['dns']['dns']['string'])
+        self.assertEqual(restored['native_core'],'sing-box','restoration must preserve the user selected core')
+
+    def test_cross_core_transition_cannot_confirm_pending_reload(self):
+        p=self.pending_reload();current=json.loads(p.read_text())
+        current.update(native_core='mihomo',core_phase='switching',modified=False)
+        p.write_text(json.dumps(current));before=p.read_bytes()
+        self.run_adapter('settle',success=False)
+        self.run_adapter('remove',success=False)
+        self.assertEqual(p.read_bytes(),before)
+
+    def lost_receipt(self):
+        p=self.pending_reload();data=json.loads(p.read_text())
+        data.update(native_core='mihomo',modified=False);p.write_text(json.dumps(data))
+        record=self.root/'etc/adzero/adapter.json';state=json.loads(record.read_text())
+        state['nailink_completion']['barrier']=False
+        state['nailink_run_identity']={'boot':'fixture','pid':10,'start':'1'}
+        record.write_text(json.dumps(state))
+        identity=self.write('identity.json',json.dumps(state['nailink_run_identity']))
+        self.env['ADZERO_NAILINK_IDENTITY_FIXTURE']=str(identity)
+        service=self.write('etc/init.d/daed', '''#!/bin/sh
+printf restart >> '''+shlex.quote(str(self.root/'manager-restarts'))+'''
+printf '%s' '{"boot":"fixture","pid":11,"start":"2"}' > '''+shlex.quote(str(identity))+'''
+''');service.chmod(0o755)
+        return p,record
+
+    def test_explicit_close_recovers_old_unprovable_receipt_without_router_restart(self):
+        p,record=self.lost_receipt();(self.root/'hold-reload').unlink()
+        self.run_adapter('remove')
+        self.assertEqual((self.root/'manager-restarts').read_text(),'restart')
+        self.assertFalse(record.exists())
+        self.assertEqual(json.loads(p.read_text())['native_core'],'mihomo')
+
+    def test_background_sync_never_restarts_manager_for_lost_receipt(self):
+        p,record=self.lost_receipt();before=record.read_bytes()
+        self.run_adapter('settle',success=False)
+        self.assertEqual(record.read_bytes(),before)
+        self.assertFalse((self.root/'manager-restarts').exists())
+
+    def test_lost_receipt_does_not_restart_or_overwrite_external_profile_edit(self):
+        p,record=self.lost_receipt();data=json.loads(p.read_text())
+        data['dns']['dns']['string']+='\n# user edit';p.write_text(json.dumps(data));before=p.read_bytes()
+        self.run_adapter('remove',success=False)
+        self.assertFalse((self.root/'manager-restarts').exists())
+        self.assertEqual(p.read_bytes(),before)
+
+    def test_transition_during_explicit_close_keeps_all_provider_files(self):
+        p=self.nailink_fixture();self.run_adapter('apply')
+        data=json.loads(p.read_text());data.update(native_core='mihomo',core_phase='switching')
+        p.write_text(json.dumps(data));before=p.read_bytes()
+        record=self.root/'etc/adzero/adapter.json';original=record.read_bytes()
+        self.run_adapter('remove',success=False)
+        self.assertEqual(record.read_bytes(),original)
+        self.assertEqual(p.read_bytes(),before)
+        self.assertTrue((self.root/'etc/daed/adzero-geosite.dat').exists())
+
+    def test_core_status_transport_error_is_not_treated_as_legacy_dae(self):
+        p=self.nailink_fixture();api=Path(self.env['ADZERO_NAILINK_API_FIXTURE'])
+        api.write_text(api.read_text().replace("elif 'coreStatus' in q:","elif 'coreStatus' in q:sys.exit(1)\nelif False:"))
+        before=p.read_bytes();self.run_adapter('apply',success=False)
+        self.assertEqual(p.read_bytes(),before)
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+
+    def test_native_legacy_stopped_barrier_requires_the_run_commit(self):
+        p=self.nailink_fixture();data=json.loads(p.read_text())
+        data.update(native_core='sing-box',running=False);p.write_text(json.dumps(data))
+        api=Path(self.env['ADZERO_NAILINK_API_FIXTURE'])
+        api.write_text(api.read_text().replace("'modified':data.get('modified',False)","'modified':data.get('modified',False) if data['running'] else False"))
+        self.write('hold-reload','1');self.run_adapter('apply',success=False)
+        state=json.loads((self.root/'etc/adzero/adapter.json').read_text())
+        self.assertTrue(state['nailink_completion']['legacy_start'])
+        self.run_adapter('settle',success=False)
+        data=json.loads(p.read_text());data.update(running=True,modified=False);p.write_text(json.dumps(data))
+        self.run_adapter('settle')
+        self.assertEqual(json.loads(p.read_text())['runs'],1)
+
     def test_external_profile_change_blocks_pending_completion(self):
         p=self.pending_reload();data=json.loads(p.read_text());data['modified']=False
         data['dns']['dns']['string']+='\n# manual edit';p.write_text(json.dumps(data));before=p.read_bytes()

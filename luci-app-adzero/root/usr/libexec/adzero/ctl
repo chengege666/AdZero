@@ -29,6 +29,7 @@ TLS_BACKUP=$STATE_DIR/download_allow_insecure.previous
 PROBE=${ADZERO_PROBE:-$(dirname "$0")/probe}
 RULES_LIBRARY=${ADZERO_RULES_LIBRARY:-$(dirname "$0")/rules.sh}
 ADAPTER=${ADZERO_ADAPTER:-$(dirname "$0")/adapter}
+LOCK_PROGRAM=${ADZERO_LOCK_PROGRAM:-$(dirname "$0")/lock}
 OBSERVE=${ADZERO_OBSERVE:-$(dirname "$0")/observe}
 BACKEND_CHECK=${ADZERO_BACKEND_CHECK:-$(dirname "$0")/backend}
 POLICY=${ADZERO_POLICY:-$(dirname "$0")/policy}
@@ -344,17 +345,53 @@ release_lock() {
 	lock_record=
 	[ -f "$LOCK_DIR/owner" ] && read -r lock_record < "$LOCK_DIR/owner"
 	[ "$lock_record" = "$lock_identity" ] || return 0
-	rm -f "$LOCK_DIR/identity" "$LOCK_DIR/owner" && rmdir "$LOCK_DIR" 2>/dev/null || :
+	rm -f "$LOCK_DIR/identity" "$LOCK_DIR/owner" "$LOCK_DIR/lease" && rmdir "$LOCK_DIR" 2>/dev/null || :
 }
+retire_stale_lock() (
+	# Called only while descriptor 9 holds the kernel lease. A killed ctl's
+	# descendants inherit that lease, so an orphan still writing cannot be stolen.
+	[ ! -L "$LOCK_DIR" ] && [ -d "$LOCK_DIR" ] || exit 1
+	[ ! -L "$LOCK_DIR/lease" ] && [ -f "$LOCK_DIR/lease" ] || exit 1
+	[ "$(cat "$LOCK_DIR/lease")" = 'AdZero kernel lease v1' ] || exit 1
+	set +f
+	for entry in "$LOCK_DIR"/* "$LOCK_DIR"/.[!.]* "$LOCK_DIR"/..?*; do
+		[ -e "$entry" ] || [ -L "$entry" ] || continue
+		case "$entry" in "$LOCK_DIR/lease"|"$LOCK_DIR/owner"|"$LOCK_DIR/identity") ;; *) exit 1 ;; esac
+		[ -f "$entry" ] && [ ! -L "$entry" ] || exit 1
+	done
+	owner=; [ ! -f "$LOCK_DIR/owner" ] || read -r owner < "$LOCK_DIR/owner"
+	set -- $owner
+	if [ "$#" -gt 0 ]; then
+		case "$1" in ''|*[!0-9]*) exit 1 ;; esac
+		# Also protect a live owner if its lease file was replaced externally.
+		live_start=$(process_start "$1")
+		if [ -n "$live_start" ]; then
+			identity=; read -r identity < "$LOCK_DIR/identity" || exit 1
+			[ "$identity" != "$owner $live_start" ] || exit 1
+			old_start=${identity#"$owner "}
+			case "$old_start" in ''|*[!0-9]*) exit 1 ;; esac
+		fi
+	fi
+	rm -f "$LOCK_DIR/identity" "$LOCK_DIR/owner" "$LOCK_DIR/lease" && rmdir "$LOCK_DIR"
+)
 acquire_lock() {
 	progress waiting_lock
 	lock_action=$1
-	lock_wait=${ADZERO_LOCK_WAIT_SECONDS:-30}
+	default_wait=30; maximum_wait=60
+	[ "$lock_action" != disable ] || { default_wait=300; maximum_wait=300; }
+	lock_wait=${ADZERO_LOCK_WAIT_SECONDS:-$default_wait}
 	case "$lock_wait" in ''|*[!0-9]*) error '操作锁等待时间无效。' ;; esac
-	[ "$lock_wait" -le 60 ] 2>/dev/null || error '操作锁等待时间应为 0 至 60 秒。'
+	[ "$lock_wait" -le "$maximum_wait" ] 2>/dev/null || error '操作锁等待时间超出允许范围。'
 	lock_elapsed=0
-	while ! mkdir "$LOCK_DIR" 2>/dev/null; do
-		[ -d "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] || error '无法创建操作锁，请检查临时目录。'
+	[ -d "$(dirname "$LOCK_DIR")" ] || error '无法创建操作锁，请检查临时目录。'
+	[ ! -L "$LOCK_DIR.lease" ] && { [ ! -e "$LOCK_DIR.lease" ] || [ -f "$LOCK_DIR.lease" ]; } || error '操作租约文件无效。'
+	exec 9>>"$LOCK_DIR.lease" || error '无法创建操作锁，请检查临时目录。'
+	while :; do
+		if "$LOCK_PROGRAM"; then
+			if mkdir "$LOCK_DIR" 2>/dev/null; then break; fi
+			if retire_stale_lock && mkdir "$LOCK_DIR" 2>/dev/null; then break; fi
+		fi
+		[ ! -L "$LOCK_DIR" ] && { [ ! -e "$LOCK_DIR" ] || [ -d "$LOCK_DIR" ]; } || error '无法创建操作锁，请检查临时目录。'
 		# A scheduled sync is optional; don't compete with a user's operation.
 		[ "$lock_action" != reconcile ] || return 1
 		if [ "$lock_elapsed" -ge "$lock_wait" ]; then
@@ -365,6 +402,7 @@ acquire_lock() {
 		sleep 1
 		lock_elapsed=$((lock_elapsed + 1))
 	done
+	printf '%s\n' 'AdZero kernel lease v1' > "$LOCK_DIR/lease" || error '无法记录操作租约。'
 	lock_identity="$$ $lock_action"
 	if ! printf '%s\n' "$lock_identity" > "$LOCK_DIR/owner"; then
 		# This directory was just created by us. No recursive removal.

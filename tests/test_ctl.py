@@ -8,6 +8,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from lock_fixture import install as install_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 CTL = ROOT / "luci-app-adzero/root/usr/libexec/adzero/ctl"
@@ -136,6 +137,7 @@ exit 0
             "ADZERO_BACKEND_CHECK": str(self.backend_check),
             "ADZERO_STATE_DIR": str(self.state),
             "ADZERO_LOCK_DIR": str(self.lock),
+            "ADZERO_LOCK_PROGRAM": install_lock(base,shlex.split(os.environ.get('ADZERO_UCODE',''))),
             "ADZERO_LOCK_WAIT_SECONDS": "0",
             "ADZERO_NAILINK_CONFIG": str(self.nailink),
             "ADZERO_DAED_CONFIG": str(self.daed_config),
@@ -722,6 +724,80 @@ exit 0
         self.assertEqual(self.config(), before)
         self.assertEqual(owner.read_text(), "999999999 refresh\n")
         self.assertFalse(self.log.exists())
+
+    def test_verified_orphan_lock_is_recovered_without_reboot(self):
+        self.lock.mkdir()
+        (self.lock/'lease').write_text('AdZero kernel lease v1\n')
+        (self.lock/'owner').write_text('999999999 reconcile\n')
+        (self.lock/'identity').write_text('999999999 reconcile 1\n')
+        self.run_ctl('disable')
+        self.assertFalse(self.lock.exists())
+        self.assertFalse(self.status()['operation']['locked'])
+
+    def test_orphan_lock_with_unknown_files_is_not_removed(self):
+        self.lock.mkdir()
+        (self.lock/'lease').write_text('AdZero kernel lease v1\n')
+        (self.lock/'owner').write_text('999999999 reconcile\n')
+        (self.lock/'identity').write_text('999999999 reconcile 1\n')
+        unknown=self.lock/'external';unknown.write_text('keep')
+        self.run_ctl('disable',success=False)
+        self.assertEqual(unknown.read_text(),'keep')
+
+    def test_kernel_lease_prevents_stealing_a_live_orphan_child(self):
+        import fcntl
+        lease=Path(str(self.lock)+'.lease')
+        with lease.open('a') as handle:
+            fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            self.lock.mkdir()
+            (self.lock/'lease').write_text('AdZero kernel lease v1\n')
+            (self.lock/'owner').write_text('999999999 reconcile\n')
+            (self.lock/'identity').write_text('999999999 reconcile 1\n')
+            self.run_ctl('disable',success=False)
+            self.assertTrue(self.lock.exists())
+        self.run_ctl('disable')
+        self.assertFalse(self.lock.exists())
+
+    def test_killed_controller_keeps_lease_until_its_child_finishes(self):
+        self.run_ctl('enable')
+        held=Path(self.tmp.name)/'hold';held.touch()
+        child_pid=Path(self.tmp.name)/'active-child'
+        self.adapter.write_text('''#!/usr/bin/env python3
+import fcntl,sys,time
+from pathlib import Path
+if sys.argv[1]=='apply':
+ fcntl.fcntl(9,fcntl.F_GETFD)
+ Path('''+repr(str(child_pid))+''').write_text(str(__import__('os').getpid()))
+ while Path('''+repr(str(held))+''').exists():time.sleep(.02)
+''')
+        command=shlex.split(os.environ.get('ADZERO_TEST_SHELL','/bin/sh'))+[str(CTL),'reconcile']
+        first=subprocess.Popen(command,env=self.env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            deadline=time.monotonic()+8
+            while not child_pid.exists() and first.poll() is None and time.monotonic()<deadline:time.sleep(.02)
+            self.assertTrue(child_pid.exists(),'the active mutation must inherit descriptor 9')
+            first.kill();first.wait(timeout=5)
+            self.run_ctl('disable',success=False)
+            self.assertTrue(self.lock.exists(),'the still-active orphan child must retain serialization')
+        finally:
+            held.unlink(missing_ok=True)
+            if first.poll() is None:first.kill();first.wait(timeout=5)
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline:
+            if child_pid.exists() and not Path('/proc/'+child_pid.read_text()).exists():break
+            time.sleep(.02)
+        self.run_ctl('disable')
+
+    def test_reused_pid_does_not_keep_a_verified_orphan_lock_busy(self):
+        child=subprocess.Popen(['sleep','10'])
+        try:
+            self.lock.mkdir()
+            (self.lock/'lease').write_text('AdZero kernel lease v1\n')
+            (self.lock/'owner').write_text(f'{child.pid} reconcile\n')
+            (self.lock/'identity').write_text(f'{child.pid} reconcile 1\n')
+            self.run_ctl('disable')
+            self.assertFalse(self.lock.exists())
+            self.assertIsNone(child.poll())
+        finally:child.terminate();child.wait(timeout=5)
 
     def test_status_can_be_read_while_mutation_lock_exists(self):
         self.lock.mkdir()

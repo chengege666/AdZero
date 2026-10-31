@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const declaredVersion=fs.readFileSync(path.join(__dirname,'../luci-app-adzero/root/usr/share/adzero/version'),'utf8').trim();
 const source = fs.readFileSync(process.argv[2] || path.join(__dirname, '../luci-app-adzero/htdocs/luci-static/resources/view/adzero/overview.js'), 'utf8');
 let root, active, assertions = 0;
 function nodes(n, pred) {
@@ -101,7 +102,7 @@ function reset(overrides = {}) {
   app.dnsOpen=false;app.dnsForm=null;app.dnsFormBase=null;
 	app.enhanceOpen=false;app.enhanceData=null;app.enhanceDraft=null;app.enhanceError=null;
 	enhanceFixture={config:{enabled:false,cname:true,failover:false,proxy_port:0,devices:[]},runtime:{state:'waiting',reason:'disabled'}};
-	updateFixture={ok:true,current:'v0.23.1',latest:'v0.23.1',available:true,compatible:true};
+	updateFixture={ok:true,current:'v'+declaredVersion,latest:'v'+declaredVersion,available:true,compatible:true};
 	updateFailure=false;app.updateOpen=false;app.updateData=null;app.updateError=null;app.updateBusy=null;app.updateConfirm=false;app.updateComplete=false;app.updateChecked=false;
   observationFixture={available:false,verification:{state:'idle'}};observationFailure=false;
   app.observation=null;app.observationReading=false;app.observationBusy=false;app.verificationCommands='';app.verificationNotice=null;app.networkOpen=false;
@@ -122,18 +123,18 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!nodes(root, n => n.scalarHtml).length, 'all dynamic content reaches native DOM as text arrays');
   check(!find('az-update'), 'cannot update while off');
   check(find('az-toggle').attrs['aria-checked'] === 'false', 'off announced');
-  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v=0.23.1'), 'current CSS version prevents stale layout after upgrade');
+  check(nodes(root, n => n.tag === 'link')[0].attrs.href.includes('overview.css?v='+declaredVersion), 'current CSS version prevents stale layout after upgrade');
   const brandLogo=nodes(root,n=>n.attrs&&n.attrs.class==='az-brand-mark')[0];
-  check(brandLogo.tag==='img'&&brandLogo.attrs.src==='/luci-static/resources/view/adzero/logo.png?v=0.23.1','page header uses the packaged approved Z shield instead of a generic status icon');
+  check(brandLogo.tag==='img'&&brandLogo.attrs.src==='/luci-static/resources/view/adzero/logo.png?v='+declaredVersion,'page header uses the packaged approved Z shield instead of a generic status icon');
   check(brandLogo.attrs.alt===''&&brandLogo.attrs.draggable==='false','adjacent brand text names the logo without duplicate screen reader output');
   check(brandLogo.attrs.width==='44'&&brandLogo.attrs.height==='44','brand image reserves a square before loading');
   const brand=nodes(root,n=>n.attrs?.class==='az-brand')[0];
-  check(!!nodes(brand,n=>n.id==='az-version').length && text(brand).includes('v0.23.1'), 'clickable version now sits beside the top-left logo');
+  check(!!nodes(brand,n=>n.id==='az-version').length && text(brand).includes('v'+declaredVersion), 'clickable version now sits beside the top-left logo');
   check(!nodes(root,n=>n.attrs?.class==='az-page-eyebrow').length, 'old version text is removed from overview title');
   check(!find('az-update-panel'), 'update details are initially collapsed');
   await find('az-version').events.click();
   check(commands.includes('update_check') && find('az-update-panel'), 'version button opens online update check');
-  check(find('az-upgrade-ready') && text(find('az-upgrade-ready')).includes('v0.23.1'), 'compatible release offers an upgrade');
+  check(find('az-upgrade-ready') && text(find('az-upgrade-ready')).includes('v'+declaredVersion), 'compatible release offers an upgrade');
   check(nodes(brand,n=>n.id==='az-version').length===1, 'version button identity stays stable');
   await find('az-upgrade-ready').events.click();
   check(find('az-upgrade-confirm') && find('az-upgrade-cancel'), 'upgrade requires a second explicit confirmation');
@@ -144,11 +145,11 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(commands.includes('update_start') && app.updateComplete, 'confirmed upgrade follows the detached job and completes');
   check(find('az-update-reload'), 'successful upgrade prompts a fresh UI load for version verification');
   reset();
-  updateFixture={ok:true,current:'v0.23.1',latest:'v0.23.1',available:false,compatible:true};
+  updateFixture={ok:true,current:'v'+declaredVersion,latest:'v'+declaredVersion,available:false,compatible:true};
   await find('az-version').events.click();
   check(text(find('az-update-panel')).includes('已是当前发布通道的最新版本')&&!find('az-upgrade-ready'), 'up-to-date state never offers package mutation');
   reset();
-  updateFixture={ok:true,current:'v0.23.1',latest:'v0.23.1',available:true,compatible:false,message:'SDK target unsupported'};
+  updateFixture={ok:true,current:'v'+declaredVersion,latest:'v'+declaredVersion,available:true,compatible:false,message:'SDK target unsupported'};
   await find('az-version').events.click();
   check(!find('az-upgrade-ready') && text(find('az-update-panel')).includes('SDK target unsupported'), 'incompatible firmware cannot click upgrade');
   reset(); updateFailure=true;
@@ -157,7 +158,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset(); updateFixture={ok:false,message:'Metadata unavailable',api_status:'403',entry_status:'000'};
   await find('az-version').events.click();
   check(text(find('az-update-diagnostic')).includes('HTTP 403')&&text(find('az-update-diagnostic')).includes('未收到 HTTP 应答'),'update failure separates API refusal from connection failure');
-  reset(); updateFixture={ok:true,current:'v0.22.0',latest:'v0.23.1',available:true,compatible:true,metadata_source:'official_entry'};
+  reset(); updateFixture={ok:true,current:'v0.22.0',latest:'v'+declaredVersion,available:true,compatible:true,metadata_source:'official_entry'};
   await find('az-version').events.click();
   check(find('az-update-source')&&find('az-upgrade-ready'),'verified official entry fallback identifies its source and retains normal confirmation');
   reset();
@@ -236,11 +237,12 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   state=closed;for(let n=0;n<6;n++)await poll.tick();
   check(app.currentStatus.state==='disabled'&&app.notice.kind==='error'&&app.notice.detail.includes('restore denied'),'a genuine failed job remains visible even if later status becomes healthy');
   reset({state:'inconsistent',managed:true,operation:{active:true,locked:true,action:'reconcile'},adapter:{plugin:'nailink',stage:'restoring'}});
-  check(text(root).includes('正在同步代理接入')&&!text(root).includes('请关闭并恢复后再开启')&&find('az-toggle').disabled,'live background switch is pending synchronization, not recovery guidance');
+  check(text(root).includes('正在同步代理接入')&&!text(root).includes('请关闭并恢复后再开启')&&!find('az-toggle').disabled&&text(find('az-toggle')).includes('排队关闭'),'live background switch offers a serialized close request');
   check(text(find('az-live-metrics')).includes('同步中')&&!text(find('az-live-metrics')).includes('未开启'),'connection card does not label an in-progress switch as disabled');
   check(!find('az-status').disabled,'manual status inspection remains available while another operation holds the lock');
-  await app.runAction('disable');await app.runSource('source_refresh',[]);await app.runPolicy('pause',[300]);
-  check(!commands.length,'live operation cannot queue another disable, subscription refresh or pause');
+  await app.runSource('source_refresh',[]);await app.runPolicy('pause',[300]);
+  check(!commands.length,'live operation still blocks subscription refresh and pause');
+  await app.runAction('disable');check(commands.filter(v=>v==='disable').length===1,'explicit close queues exactly once during background reconciliation');
   state={...state,state:'configured_unverified',operation:{active:false,locked:false},adapter:{plugin:'passwall',stage:'configured_unverified'}};
   for(let n=0;n<7;n++)await poll.tick();
   check(app.currentStatus.adapter.plugin==='passwall'&&!find('az-toggle').disabled&&text(root).includes('广告过滤已开启'),'live synchronization resolves to PassWall without page refresh');
@@ -255,7 +257,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   reset({state:'configured_unverified',managed:true});staleResult=true;
   jobSteps=[()=>{state={...state,state:'inconsistent',operation:{active:true,locked:true,action:'reconcile'}};return {ok:false,pending:false,reason:'lock_busy'};}];
   await app.runAction('disable');
-  check(find('az-toggle').disabled&&text(root).includes('正在同步代理接入')&&app.notice.text.includes('关闭未执行'),'a raced timeout preserves the live owner and does not offer another conflicting close');
+  check(!find('az-toggle').disabled&&text(find('az-toggle')).includes('排队关闭')&&text(root).includes('正在同步代理接入')&&app.notice.text.includes('关闭未执行'),'a raced timeout preserves the live owner and permits only a new explicit serialized close');
   state={...state,state:'configured_unverified',operation:{active:false,locked:false},adapter:{plugin:'passwall',stage:'configured_unverified'}};
   for(let n=0;n<7;n++)await poll.tick();
   check(!find('az-toggle').disabled&&app.notice.text.includes('关闭未执行')&&commands.filter(v=>v==='disable').length===1,'late background completion leaves accurate previous-action context and unlocks normal controls');
@@ -263,7 +265,7 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(!find('az-toggle').disabled&&text(root).includes('关闭并恢复'),'unverified stale lock does not pretend a live synchronization or hide recovery');
   reset({state:'inconsistent',managed:true,operation:{active:true,locked:true,action:'reconcile'}});await app.initialObservationRequest;
   commands.length=0;for(let n=0;n<70;n++)await poll.tick();
-  check(commands.length>12&&find('az-toggle').disabled,'a live restart can outlast the old one-minute recovery budget without exposing conflicting controls');
+  check(commands.length>12&&!find('az-toggle').disabled&&text(find('az-toggle')).includes('排队关闭'),'long synchronization stays observable and permits a serialized close');
   state={...state,operation:{active:false,locked:false},adapter:{plugin:'nailink',stage:'recovery_required'}};
   for(let n=0;n<7;n++)await poll.tick();
   check(!find('az-toggle').disabled&&text(root).includes('配置需要检查'),'an exited owner immediately exposes actual recovery failure instead of continuing synchronization');

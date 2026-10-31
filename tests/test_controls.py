@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from lock_fixture import install as install_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 UCODE = shlex.split(os.environ.get('ADZERO_UCODE', ''))
@@ -33,6 +34,7 @@ class ControlsTest(unittest.TestCase):
         self.env = {**os.environ, 'ADZERO_SERVICE_TIMEOUT': shutil.which('timeout') or '/usr/bin/timeout', 'ADZERO_UCI': str(uci), 'ADZERO_POLICY_ROOT': str(self.root), 'ADZERO_SOURCES_ROOT': str(self.root),
                     'ADZERO_ADAPTER_ROOT': str(self.root), 'ADZERO_BACKEND_ROOT': str(self.root),
                     'ADZERO_STATE_DIR': str(self.root/'etc/adzero'), 'ADZERO_LOCK_DIR': str(self.root/'lock'),
+                    'ADZERO_LOCK_PROGRAM': install_lock(self.root,UCODE),
                     'ADZERO_ADAPTER_INVENTORY': str(self.root/'inventory.json'),
                     'ADZERO_BACKEND_SERVICE_FIXTURE': str(self.root/'service.json'),
                     'ADZERO_PIDOF': str(self.write('bin/pidof', '#!/bin/sh\nexit 1\n', True)),
