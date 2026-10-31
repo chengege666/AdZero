@@ -157,6 +157,20 @@ esac
                     if not reply.get('pending'): return reply
                     time.sleep(.1)
                 raise AssertionError('worker did not finish')
+            update=base/'usr/libexec/adzero/update'
+            update.write_text('#!/bin/sh\nsleep 2\nprintf \'{"ok":true,"current":"v0.22.0","latest":"v0.23.1","available":true,"compatible":true}\\n\'\n')
+            update.chmod(0o755)
+            started=time.monotonic();receipt=call('update_check',{})
+            update_launch_seconds=round(time.monotonic()-started,4)
+            assert update_launch_seconds<.9,'update lookup held rpcd past its one-second fixture deadline'
+            update_reply=finished(receipt)
+            assert update_reply['ok'] and update_reply['update']['latest']=='v0.23.1',update_reply
+            result_path=base/'tmp/adzero-jobs'/receipt['job']/'update.json'
+            result_path.write_text('{"private":"not public"}')
+            assert not call('job_status',{'job':receipt['job']})['ok'],'invalid metadata is not a successful check'
+            result_path.unlink();result_path.symlink_to(base/'tmp/nested.json')
+            assert not call('job_status',{'job':receipt['job']})['ok'],'metadata symlinks must not be read'
+            assert 'update_check' in json.loads((base/'usr/share/rpcd/acl.d/luci-app-adzero.json').read_text())['luci-app-adzero']['read']['ubus']['adzero']
             reply=call('lookup',{'domain':'HTTPS://Example.COM/path'})
             assert reply.get('data',{}).get('domain')=='example.com',reply
             assert (base/'tmp/nested.json').exists()
@@ -279,8 +293,8 @@ esac
             assert not (base/'tmp/service-was-called').exists(),'observation invoked network lifecycle'
             report={'runtime':'pinned OpenWrt 24.10.8 rpcd/ubusd/ucode in isolated chroot',
                     'source_sha256':source_hash(ROOT/'luci-app-adzero'),
-                    'checks':72,'dns_pool_reason_and_recovery_outcome':'passed','empty_ruleset_and_unknown_capacity_reasons':'passed','controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
-                    'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed',
+                    'checks':75,'dns_pool_reason_and_recovery_outcome':'passed','empty_ruleset_and_unknown_capacity_reasons':'passed','controls_private_batch_and_write_acl':'passed','stats_reset_unavailable_rejected':'passed','observation_snapshot_seconds':observed,'observation_no_network_lifecycle':'passed','unavailable_verification_rejected':'passed','recent_typed_write_and_stop':'passed','rpcd_exec_timeout_seconds':1,'old_direct_exec_orphan_lock':'reproduced','private_batch_payload_and_detached_apply':'passed','finished_elapsed_is_fixed':'passed',
+                    'nested_rpcd_call':'passed','typed_input_and_no_log_leak':'passed','detached_source_job':'passed','update_check_detached_seconds':update_launch_seconds,'update_check_survives_rpc_timeout':'passed',
                     'enable_disable_refresh_survive_timeout':'passed','routing_on_off_survive_timeout':'passed','public_stage_and_reason':'passed','interrupted_worker_record':'passed','large_status':large_status,'router':'not_touched'}
             (ROOT/'artifacts/runtime/rpc-result.json').write_text(json.dumps(report,indent=2)+'\n')
             print(json.dumps(report,indent=2))

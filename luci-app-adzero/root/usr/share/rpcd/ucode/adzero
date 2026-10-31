@@ -85,16 +85,7 @@ return {adzero:{
 		if(code==0&&result?.code==0)try{value=json(result.stdout);}catch(e){}
 		r.reply(value);
 	})},
-	update_check:{call:r=>bus.defer('file','exec',{
-		command:'/usr/libexec/adzero/update',params:['check'],timeout:240000
-	},function(code,result){
-		let value={ok:false,message:'更新检查未完成，请检查 GitHub 连接或稍后重试。'};
-		if(code==0 && result?.code==0)try{
-			let parsed=json(result.stdout);
-			if(type(parsed)=='object' && type(parsed.ok)=='bool')value=parsed;
-		}catch(e){}
-		r.reply(value);
-	})},
+	update_check:{call:r=>job(r,'update-check',[])},
 	update_start:{args:{version:''},call:r=>{
 		let v=r.args.version;
 		if(type(v)!='string'||!match(v,/^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/))return {ok:false,message:'目标版本无效，请重新检查更新。'};
@@ -118,6 +109,7 @@ return {adzero:{
 		if (!match(id ?? '',/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)) return {ok:false,message:'任务标识无效。'};
 		let path='/tmp/adzero-jobs/'+id;
 		if (!fs.stat(path)) return {ok:false,message:'任务记录不存在，设备可能已重启。请重新检测。'};
+		let is_update=trim(fs.readfile(path+'/action',64)??'')=='update-check';
 		let code=fs.readfile(path+'/result');
 		let phase=trim(fs.readfile(path+'/stage')??'queued');
 		let started=int(trim(fs.readfile(path+'/created')??''));
@@ -140,12 +132,21 @@ return {adzero:{
 					// The worker may have committed its result between our first
 					// read and /proc inspection. Re-read before calling it lost.
 					code=fs.readfile(path+'/result');
-					if(code==null)return {ok:false,pending:false,reason:'interrupted',message:progress.messages.interrupted,progress:metadata};
+					if(code==null)return {ok:false,pending:false,reason:'interrupted',message:is_update?'更新检查已中断，请重新检查；未执行升级。':progress.messages.interrupted,progress:metadata};
 				}
 			}
 			if(code==null)return {ok:true,pending:true,progress:metadata};
 		}
 		let reason=trim(fs.readfile(path+'/reason')??'');
+		if(is_update){
+			if(int(trim(code))!=0)return {ok:false,pending:false,reason:'update_check_failed',message:'更新检查任务未完成，请稍后重试；未执行升级。',progress:metadata};
+			let file=path+'/update.json',stat=fs.lstat(file);
+			if(stat?.type=='file'&&stat.size<=8192&&(stat.mode&077)==0)try{
+				let update=json(fs.readfile(file));
+				if(type(update)=='object'&&type(update.ok)=='bool')return {ok:true,pending:false,update,progress:metadata};
+			}catch(e){}
+			return {ok:false,pending:false,reason:'unknown',message:'更新检查未返回有效结果，请重新检查。',progress:metadata};
+		}
 		let recovery=trim(fs.readfile(path+'/recovery',128)??'');if(index(['restored','unconfirmed'],recovery)<0)recovery=null;
 		return int(trim(code)) == 0 ? {ok:true,pending:false,progress:metadata} : {ok:false,pending:false,reason:progress.messages[reason]?reason:'unknown',message:progress.message(reason,recovery),...(recovery?{recovery}:{}),progress:metadata};
 	}},

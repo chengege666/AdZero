@@ -88,7 +88,7 @@ function waitJob(reply,self) {
    failures=0;
    if (!result || !result.ok) { if(self)self.jobUncertain=false;throw taskError(result,_('任务结果未知，请重新检测。')); }
    showProgress(self,result.progress || {stage:'checking'});
-   if (!result.pending) { if(self)self.jobUncertain=false;return; }
+   if (!result.pending) { if(self)self.jobUncertain=false;return result; }
    if (++attempts>1200) throw new Error(_('任务仍在后台，点击重新检测继续核对，勿重复提交。'));
    return delay(2000).then(check);
   },function(error) {
@@ -711,7 +711,14 @@ return view.extend({
 		var self=this;
 		if(self.updateBusy||self.busy)return Promise.resolve();
 		self.updateBusy='check';self.updateChecked=true;self.updateError=null;self.updateConfirm=false;self.paint();
-		return updateCalls.check().then(function(d){
+		var saved=sessionValue('update-check');
+		if(saved&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(saved.job||'')){saved=null;sessionValue('update-check',null);}
+		return (saved?Promise.resolve({ok:true,job:saved.job}):updateCalls.check()).then(function(d){
+			if(!d||!d.job)return d; // A still-loaded older RPC can reply directly.
+			if(!d.ok||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(d.job))throw Error(_('更新检查未返回有效任务回执。'));
+			sessionValue('update-check',{job:d.job});
+			return waitJob(d).then(function(result){sessionValue('update-check',null);return result.update;},function(error){if(error.reason)sessionValue('update-check',null);throw error;});
+		}).then(function(d){
 			if(!d||typeof d.ok!=='boolean')throw Error(_('更新服务未返回有效结果。'));
 			if(d.latest&&!/^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/.test(d.latest))throw Error(_('官方版本格式无效。'));
 			self.updateData=d;
