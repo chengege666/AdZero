@@ -799,6 +799,33 @@ if sys.argv[1]=='apply':
             self.assertIsNone(child.poll())
         finally:child.terminate();child.wait(timeout=5)
 
+    def test_explicit_close_waits_for_background_commit_then_restores(self):
+        import threading
+        self.run_ctl('enable')
+        held=Path(self.tmp.name)/'hold';held.touch();ready=Path(self.tmp.name)/'ready'
+        self.adapter.write_text('''#!/usr/bin/env python3
+import sys,time
+from pathlib import Path
+if sys.argv[1]=='apply':
+ Path('''+repr(str(ready))+''').touch()
+ while Path('''+repr(str(held))+''').exists():time.sleep(.02)
+''')
+        command=shlex.split(os.environ.get('ADZERO_TEST_SHELL','/bin/sh'))+[str(CTL),'reconcile']
+        first=subprocess.Popen(command,env=self.env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        try:
+            deadline=time.monotonic()+8
+            while not ready.exists() and first.poll() is None and time.monotonic()<deadline:time.sleep(.02)
+            self.assertTrue(ready.exists())
+            release=threading.Timer(.3,lambda:held.unlink(missing_ok=True));release.start()
+            self.env['ADZERO_LOCK_WAIT_SECONDS']='3'
+            self.run_ctl('disable');release.join(timeout=2)
+            first.communicate(timeout=5);self.assertEqual(first.returncode,0)
+            self.assertEqual(self.config()['adzero.main.enabled'],'0')
+            self.assertFalse(self.lock.exists())
+        finally:
+            held.unlink(missing_ok=True)
+            if first.poll() is None:first.kill();first.communicate(timeout=5)
+
     def test_status_can_be_read_while_mutation_lock_exists(self):
         self.lock.mkdir()
         self.assertEqual(self.status()["state"], "disabled")
