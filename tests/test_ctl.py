@@ -326,6 +326,24 @@ exit 0
         self.assertEqual(self.config()["adzero.main.enabled"], "1")
         self.assertEqual(self.config()["adblock-fast.config.enabled"], "1")
 
+    def test_failed_close_persists_intent_and_background_finishes_it(self):
+        self.run_ctl('enable');self.backend_fail.touch()
+        self.run_ctl('disable',success=False)
+        self.assertEqual(json.loads(self.run_ctl('status').stdout)['state'],'closing')
+        self.assertTrue((self.state/'close-requested').exists())
+        before=self.config();self.run_ctl('enable',success=False);self.assertEqual(self.config(),before)
+        self.backend_fail.unlink();self.run_ctl('reconcile')
+        self.assertEqual(self.config()['adzero.main.enabled'],'0')
+        self.assertFalse((self.state/'close-requested').exists())
+
+    def test_close_intent_survives_lock_timeout(self):
+        self.state.mkdir(exist_ok=True)
+        self.lock.mkdir();(self.lock/'owner').write_text('external-lock')
+        self.run_ctl('disable',success=False)
+        self.assertTrue((self.state/'close-requested').exists())
+        (self.lock/'owner').unlink();self.lock.rmdir()
+        self.run_ctl('reconcile');self.assertFalse((self.state/'close-requested').exists())
+
     def test_stale_marker_can_be_cleared_without_external_side_effect(self):
         self.state.mkdir()
         (self.state / "managed").touch()

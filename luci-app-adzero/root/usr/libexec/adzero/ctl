@@ -26,6 +26,7 @@ DAED_CHECK=$ADZERO_DAED_CHECK
 MANAGED_MARKER=$STATE_DIR/managed
 FORCE_BACKUP=$STATE_DIR/force_dns.previous
 TLS_BACKUP=$STATE_DIR/download_allow_insecure.previous
+CLOSE_REQUEST=$STATE_DIR/close-requested
 PROBE=${ADZERO_PROBE:-$(dirname "$0")/probe}
 RULES_LIBRARY=${ADZERO_RULES_LIBRARY:-$(dirname "$0")/rules.sh}
 ADAPTER=${ADZERO_ADAPTER:-$(dirname "$0")/adapter}
@@ -40,6 +41,32 @@ SOURCES=${ADZERO_SOURCES:-$(dirname "$0")/sources}
 error() {
 	printf 'AdZero: %s\n' "$*" >&2
 	exit 1
+}
+close_requested() {
+	[ ! -L "$CLOSE_REQUEST" ] && [ -f "$CLOSE_REQUEST" ] && [ "$(cat "$CLOSE_REQUEST")" = 'AdZero close request v1' ]
+}
+request_close() {
+	[ ! -L "$STATE_DIR" ] && mkdir -p "$STATE_DIR" || error '无法保存关闭请求。'
+	[ ! -e "$CLOSE_REQUEST" ] && [ ! -L "$CLOSE_REQUEST" ] || { close_requested || error '关闭请求记录无效，已保留现场。'; return; }
+	close_temp=$STATE_DIR/.close-requested.$$
+	[ ! -e "$close_temp" ] && [ ! -L "$close_temp" ] || error '关闭请求临时文件冲突。'
+	printf '%s\n' 'AdZero close request v1' > "$close_temp" && mv "$close_temp" "$CLOSE_REQUEST" || error '无法保存关闭请求。'
+}
+ensure_close_worker() {
+	# Do not replace a running service: DNS helpers can still be in use until
+	# adapter restoration completes. A missing watcher can resume persisted intent.
+	[ "$STATE_DIR" = /etc/adzero ] && [ -x /etc/init.d/adzero ] || return 0
+	/etc/init.d/adzero status >/dev/null 2>&1 || /etc/init.d/adzero start >/dev/null 2>&1 || :
+}
+finish_close() {
+	close_requested && rm -f "$CLOSE_REQUEST"
+	[ ! -e "$CLOSE_REQUEST" ] && [ ! -L "$CLOSE_REQUEST" ] || error '关闭已完成，但请求记录尚未清理。'
+	[ "$STATE_DIR" = /etc/adzero ] && [ -x /etc/init.d/adzero ] || return 0
+	if [ "${ADZERO_FROM_WATCH:-0}" = 1 ]; then
+		# Stopping procd from its own child would kill ctl before the receipt and
+		# lease are released. Close descriptor 9 before the short deferred stop.
+		(exec 9>&-; sleep 1; [ "$(uci -q get adzero.main.enabled)" != 1 ] && /etc/init.d/adzero stop >/dev/null 2>&1) </dev/null >/dev/null 2>&1 &
+	else /etc/init.d/adzero stop >/dev/null 2>&1 || :; fi
 }
 progress() {
 	[ -n "$ADZERO_JOB_CONTEXT" ] && [ -d "$ADZERO_JOB_CONTEXT" ] || return 0
@@ -333,12 +360,14 @@ print_status() {
 		handoff_status=$("$(dirname "$0")/dns-handoff" status 2>/dev/null) || handoff_status=null
 		[ -n "$handoff_status" ] || handoff_status=null
 	fi
-	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":%s,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s,"policy":%s,"observation":%s,"operation":%s,"dns_handoff":%s}\n' \
+	shutdown_requested=false
+	if close_requested; then state=closing; shutdown_requested=true; fi
+	printf '{"state":"%s","managed":%s,"configured":%s,"backend_enabled":%s,"resolver":"%s","nailink_detected":%s,"nailink_running":%s,"nailink_enabled":%s,"adguardhome_running":%s,"dns_mode_safe":%s,"dns_review_needed":%s,"dnsmasq_port_hint":"%s","force_dns":"%s","tls_download":"%s","client_dns_verified":%s,"rule_sources":"%s","compatibility":%s,"adapter":%s,"backend":%s,"policy":%s,"observation":%s,"operation":%s,"dns_handoff":%s,"shutdown":{"requested":%s}}\n' \
 		"$state" "$(json_bool "$owner")" "$(json_bool "$configured")" \
 		"$(json_bool "$actual")" "$(resolver_mode)" "$(json_bool "$nailink")" \
 		"$(json_bool "$nailink_active")" "$(json_bool "$nailink_enabled")" \
 		"$(json_bool "$agh")" "$(json_bool "$safe_mode")" "$(json_bool "$dns_review")" \
-		"$port_hint" "$force_status" "$tls_status" "$client_verified" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status" "$policy_status" "$observation_status" "$(operation_status)" "$handoff_status"
+		"$port_hint" "$force_status" "$tls_status" "$client_verified" "$rule_sources" "$compatibility" "$adapter_status" "$backend_status" "$policy_status" "$observation_status" "$(operation_status)" "$handoff_status" "$shutdown_requested"
 }
 release_lock() {
 	# Never remove a lock whose owner record was replaced by another operation.
@@ -414,6 +443,10 @@ acquire_lock() {
 	lock_start=$(process_start "$$") || error '无法核对操作进程身份。'
 	printf '%s %s\n' "$lock_identity" "$lock_start" > "$LOCK_DIR/identity" || error '无法记录操作进程身份。'
 	progress checking
+	if [ -e "$CLOSE_REQUEST" ] || [ -L "$CLOSE_REQUEST" ]; then
+		close_requested || error '关闭请求记录无效，拒绝继续修改。'
+		case "$lock_action" in disable|reconcile|lookup) ;; *) error '关闭请求已保存，请等待恢复完成后再开启或修改。' ;; esac
+	fi
 }
 # Store prior force_dns before changing anything. An unset value inherits the
 # upstream default (currently 1); restore absence rather than hard-coding "1".
@@ -569,7 +602,7 @@ enable_protection() {
 	printf 'enabled (force_dns disabled, real client DNS path not verified)\n'
 }
 disable_protection() {
-	[ ! -x /etc/init.d/adzero ] || /etc/init.d/adzero stop
+	# Keep DNS helpers and the retry worker alive until restoration succeeds.
 	"$ADAPTER" remove || error '代理 DNS 恢复失败，恢复记录已保留。'
 	if ! sources_clean; then
 		"$SOURCES" rollback && "$SOURCES" discard || error '规则变更恢复失败，恢复记录已保留。'
@@ -580,6 +613,7 @@ disable_protection() {
 		if [ "$(get_uci adzero.main.enabled)" != 0 ]; then
 			write_uci adzero.main.enabled 0 adzero || error '状态保存失败。'
 		fi
+		finish_close
 		printf 'external backend left untouched\n'
 		return 0
 	fi
@@ -618,6 +652,7 @@ disable_protection() {
 	restore_default_rule || error '后端已停用，但恢复默认规则配置失败；请重试关闭。'
 	rm -f "$MANAGED_MARKER" "$FORCE_BACKUP" "$TLS_BACKUP" || error '已停用后端，但清理所有权状态失败。'
 	"$POLICY" pause-clear || error '已关闭过滤，但暂停记录未能清理。'
+	finish_close
 	printf 'disabled (restored previous force_dns when unchanged)\n'
 }
 
@@ -896,7 +931,8 @@ case "$1" in
 	settings-apply) acquire_lock settings-apply; apply_settings "$2" ;;
 	controls-apply) acquire_lock controls-apply; change_controls "$2" ;;
 	enable) acquire_lock enable; enable_protection ;;
-	disable) acquire_lock disable; disable_protection ;;
+	disable) request_close; ensure_close_worker; acquire_lock disable;
+		if close_requested; then disable_protection; else printf 'close request already completed\n'; fi ;;
 	refresh) acquire_lock refresh; refresh_blocklists ;;
 	lookup) acquire_lock lookup; require_active; "$POLICY" lookup "$2" ;;
 	allow|revoke|temporary) acquire_lock "$1"; change_allow "$1" "$2" "$3" "$4" ;;
@@ -908,6 +944,7 @@ case "$1" in
 		# A skipped lock is temporary contention, not a completed handoff.
 		# Keep scheduled retries silent while giving the watcher a real receipt.
 		acquire_lock reconcile || exit 75
+		if close_requested; then disable_protection; exit 0; fi
 		if [ -f "$MANAGED_MARKER" ] && [ "$(get_uci adzero.main.enabled)" = 1 ]; then
 			expire_allow || exit 1
 			if [ -e "$STATE_DIR/pause.json" ]; then

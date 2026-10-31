@@ -127,16 +127,16 @@ function actionConfirmation(action) {
 }
 function confirmationNotice(notice, s) {
  if(notice.expectedState===s.state)return actionSuccess(notice.action);
- if(s.state==='inconsistent')return notice.kind==='warning'?notice:actionConfirmation(notice.action);
+ if(s.state==='inconsistent'||s.state==='closing')return notice.kind==='warning'?notice:actionConfirmation(notice.action);
  return {kind:'error',text:_('当前状态与请求结果不一致，请重新检测。'),detail:_('页面没有重复提交关闭、启用或重载；请以当前保护状态为准。')};
 }
-function confirmingAction(self) {return self.notice&&self.notice.kind==='warning'&&self.notice.expectedState&&(self.currentStatus||{}).state==='inconsistent';}
+function confirmingAction(self) {return self.notice&&self.notice.kind==='warning'&&self.notice.expectedState&&['inconsistent','closing'].indexOf((self.currentStatus||{}).state)>=0;}
 function statusKey(s) {
  return JSON.stringify([s.state,!!s.stale,s.managed,s.configured,s.backend_enabled,s.dns_mode_safe,s.adguardhome_running,s.backend,s.adapter,s.policy,(s.compatibility||{}).dns,(s.compatibility||{}).plugins,s.operation]);
 }
 function needsStatusRecheck(self) {
  var s=self.currentStatus||{},o=self.observation||{},c=o.connection,a=s.adapter||{};
- return operationActive(s)||s.state==='inconsistent'||!!a.reload_pending||flags(s).enabled&&o.available===true&&(
+ return operationActive(s)||s.state==='inconsistent'||s.state==='closing'||!!a.reload_pending||flags(s).enabled&&o.available===true&&(
   ['protection_disabled','backend_disabled','not_managed'].indexOf(o.reason)>=0||c&&(c.plugin!==a.plugin||c.stage!==a.stage));
 }
 function finishJob(self) {
@@ -217,7 +217,7 @@ function connectionSelection(s) {
 }
 function flags(s) {
 	var enabled = s.state === 'configured_unverified';
-	return { enabled: enabled, paused: s.state === 'paused', canDisable: !s.stale && (!operationActive(s)||queueDisable(s)) && (enabled || s.state === 'paused' || (s.state === 'inconsistent' && s.managed === true)),
+	return { enabled: enabled, paused: s.state === 'paused', canDisable: !s.stale && (!operationActive(s)||queueDisable(s)) && (enabled || s.state === 'paused' || s.state==='closing' || (s.state === 'inconsistent' && s.managed === true)),
 		canEnable: !s.stale && !operationActive(s) && s.state === 'disabled' && s.dns_mode_safe === true && !proxyBlocker(s) };
 }
 function queueDisable(s){return !s.stale && s.managed===true && operationActive(s) && s.operation.action==='reconcile';}
@@ -239,7 +239,7 @@ function pagePolling(self, panel) {
 		var previous=self.currentStatus||{},recovering=needsStatusRecheck(self);
 		if(!recovering || revision!==(self.statusRecheckRevision||0)){rechecks=0;revision=self.statusRecheckRevision||0;}
 		if(ticks++%5===0 && !self.busy && !previous.stale && (recovering||flags(previous).paused||((previous.policy||{}).temporary||[]).length) && !statusReading){
-			if(recovering&&rechecks>=(operationActive(previous)?60:12)){
+			if(recovering&&rechecks>=(operationActive(previous)||previous.state==='closing'?60:12)){
 				if(operationActive(previous)&&!self.notice){self.notice={kind:'warning',text:_('当前操作耗时较长，请重新检测。'),detail:_('操作进程仍持有锁，页面已暂停自动核对。请保留当前状态，不要手动删除锁。')};self.paint();}
 				if(self.notice&&self.notice.expectedState&&self.notice.kind==='warning'){self.notice=Object.assign({},self.notice,{kind:'error',text:_('配置状态仍未确认，请重新检测；不要重复提交原操作。')});self.paint();}
 			}else{
@@ -675,7 +675,7 @@ return view.extend({
 		else if(self.updateError||d.ok===false)content.push(el('p',{'class':'az-inline-warning',role:'alert'},self.updateError||d.message||_('无法检查更新，请确认路由器能够访问 GitHub。')));
 		else if(d.ok){
 			content.push(el('p',{'class':'az-update-detail'},[
-				_('当前版本：'),el('strong',{translate:'no'},d.current||'v0.23.2'),
+				_('当前版本：'),el('strong',{translate:'no'},d.current||'v0.23.3'),
 				_('　官方最新：'),el('strong',{translate:'no'},d.latest||'—')]));
 			content.push(el('p',{role:'status'},!d.available?_('已是当前发布通道的最新版本。'):!d.compatible?d.message||_('有新版本，但没有与当前固件兼容的安装包，不能强制升级。'):_('发现适用于当前固件的新版本，已通过安装包与 SHA-256 预检。')));
 		}else content.push(el('p',{},_('点击检查更新，查找官方最新版本。')));
@@ -752,7 +752,7 @@ return view.extend({
 	renderPanel: function(s) {
 		var self = this; self.currentStatus = s;
 		var f = flags(s), inv = s.compatibility || {}, dns = inv.dns || {},selection=connectionSelection(s);
-		var confirming=confirmingAction(self);
+		var confirming=confirmingAction(self)||s.state==='closing';
 		var operating=operationActive(s);
 		var adapter = s.adapter || {}, backend = s.backend || {}, busy = self.busy, locked = busy || s.stale || confirming || operating, loading = s.state === 'loading';
 		var active = proxyName(adapter.plugin,s) || (adapter.plugin === 'none' ? _('路由器 DNS') : _('接入待确认'));
@@ -763,16 +763,16 @@ return view.extend({
 		var routing = adapter.routing || {}, routingWanted = (s.policy || {}).routing_enabled === true;
 		var strictDNS=!!(adapter.dns_policy||{}).strict,guardState=(adapter.dns_policy||{}).guard;
 		var titles = { configured_unverified: _('广告过滤已开启'), disabled: _('广告过滤未开启'), paused: _('保护已临时暂停'),
-			inconsistent: _('配置需要检查'), external_owner: _('当前由其他服务管理'),
+			inconsistent: _('配置需要检查'), closing: _('正在关闭并恢复'), external_owner: _('当前由其他服务管理'),
 			unavailable: _('过滤组件尚未就绪'), error: _('暂时无法读取状态'), loading: _('正在读取运行状态…') };
 		var descriptions = { configured_unverified: _('规则已载入，当前接入配置已完成。'), disabled: _('开启后自动匹配当前网络，关闭时恢复原有设置。'),
 			paused: pause.error ? _('自动恢复未完成，当前仍暂停。请尝试立即恢复，或关闭并恢复原设置。') : pause.remaining > 0 ? _('约 ') + Math.ceil(pause.remaining / 60) + _(' 分钟后自动恢复；重启路由器也会尝试恢复。') : _('暂停已到期，正在等待后台恢复保护。'),
-			inconsistent: _('部分配置尚未确认，请关闭并恢复后再开启。'), external_owner: _('请先在原服务中关闭过滤后端，再启用 AdZero。'),
+			inconsistent: _('部分配置尚未确认，请关闭并恢复后再开启。'), closing: _('关闭请求已保存，后台将继续安全恢复。完成前不能重新开启或应用规则；不必反复点击。'), external_owner: _('请先在原服务中关闭过滤后端，再启用 AdZero。'),
 			unavailable: _('请检查插件依赖是否完整，然后重新检测。'), error: _('状态请求未完成，请查看错误详情后重新检测。'), loading: _('页面已就绪，正在读取后端与代理状态。') };
 		if(f.enabled&&selection.pending){titles.configured_unverified=_('代理接入待同步');descriptions.configured_unverified=selection.detail;}
 		if(adapter.reload_pending){titles.inconsistent=_('正在确认代理重载');descriptions.inconsistent=_('本批规则已保留，后台正在核对代理是否完成。请勿重复应用或重载。');}
 		if(strictDNS&&guardState!=='active'){titles.inconsistent=guardState==='error'?_('严格 DNS 保护待检查'):_('严格 DNS 正在等待接入');descriptions.inconsistent=guardState==='error'?_('防火墙保护未能确认，请检查日志；可关闭并恢复。'):_('DNS 查询保持阻断，等待代理接入确认。可重新检测，或关闭并恢复。');}
-		if(confirming){titles.inconsistent=self.notice.action==='disable'?_('正在确认关闭'):_('正在确认配置');descriptions.inconsistent=_('操作已执行，正在核对最终状态，请勿重复提交。');}
+		if(confirming&&self.notice){titles.inconsistent=self.notice.action==='disable'?_('正在确认关闭'):_('正在确认配置');descriptions.inconsistent=_('操作已执行，正在核对最终状态，请勿重复提交。');}
 		if(operating){var operationTitles={reconcile:_('正在同步代理接入'),disable:_('正在关闭并恢复'),'enhance-save':_('正在保存增强设置'),'dns-switch':_('正在切换备用 DNS'),temporary:_('正在应用临时放行'),'temporary-expire':_('正在恢复到期规则')};titles[s.state]=operationTitles[s.operation.action]||_('正在执行其他操作');descriptions[s.state]=_('后台操作尚未结束，完成后页面会自动更新。请稍候，无需再次关闭或应用。');}
 		var blocker = proxyBlocker(s)||(s.state==='disabled'&&s.dns_mode_safe!==true?_('当前 DNS 模式不支持自动启用，请检查过滤后端设置。'):null);
 		var toggle = queueDisable(s)&&f.canDisable&&!confirming ? el('button',{id:'az-toggle',type:'button','class':'az-button az-button-danger',disabled:busy?true:null,click:function(){return self.runAction('disable');}},_('排队关闭并恢复')) : operating || confirming ? el('button',{id:'az-toggle',type:'button','class':'az-button az-button-quiet',disabled:true,'aria-busy':'true'},operating?_('操作进行中…'):_('正在确认…')) : f.canDisable && !f.enabled && !f.paused ? el('button', { id: 'az-toggle', 'class': 'az-button az-button-danger', type: 'button',
@@ -784,13 +784,13 @@ return view.extend({
 		}, el('span', { 'class': 'az-toggle-track', 'aria-hidden': 'true' }, el('span', { 'class': 'az-toggle-thumb' })));
 		var page=self.pageKey(),pages=[['overview',_('运行概览'),'shield',_('查看保护状态、实时统计与当前接入。')],['rules',_('过滤规则'),'book',_('按需选择订阅，改完统一应用。')],['controls',_('访问控制'),'check',_('查找误拦截，精确管理域名放行与拦截。')],['enhance',_('DNS 增强'),'settings',_('按需增强解析与过滤，保留原生网络路径。')]],currentPage=pages.filter(function(p){return p[0]===page;})[0];
 		var nodes = [el('a',{'class':'az-skip-link',href:'#az-page-title'},_('跳到页面内容')),el('div', { 'class': 'az-header' }, [
-			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.23.2', alt: '', width: 44, height: 44, draggable: 'false' }),
+			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.23.3', alt: '', width: 44, height: 44, draggable: 'false' }),
 				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, _('广告过滤与 DNS')) ]),
 				el('button',{id:'az-version',type:'button','class':'az-version-button'+(self.updateData&&self.updateData.available&&self.updateData.compatible?' has-update':''),
 					'aria-expanded':self.updateOpen?'true':'false','aria-controls':'az-update-panel',
-					'aria-label':_('AdZero v0.23.2，检查在线更新'),disabled:self.updateBusy||self.busy?true:null,
+					'aria-label':_('AdZero v0.23.3，检查在线更新'),disabled:self.updateBusy||self.busy?true:null,
 					click:function(){return self.toggleUpdate();}},[
-					el('span',{translate:'no'},'v0.23.2'),
+					el('span',{translate:'no'},'v0.23.3'),
 					self.updateData&&self.updateData.available&&self.updateData.compatible?el('span',{'class':'az-update-dot','aria-label':_('有新版本')},''):null,
 					icon('refresh')]) ]),
 			el('nav', { 'class': 'az-help-links', 'aria-label': _('帮助与社区') }, helpLinks.map(function(link) {
@@ -1199,7 +1199,7 @@ return view.extend({
 	},
 	runAction: function(action, receipt) {
 		var self = this, f = flags(self.currentStatus || {});
-		if (['enable','disable','refresh','reload'].indexOf(action)<0 || self.busy || !receipt && (operationActive(self.currentStatus||{})&&!(action==='disable'&&queueDisable(self.currentStatus))||confirmingAction(self)||(self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || ((action === 'refresh'||action === 'reload') && f.enabled)))) return Promise.resolve();
+		if (['enable','disable','refresh','reload'].indexOf(action)<0 || self.busy || !receipt && ((self.currentStatus||{}).state==='closing'||operationActive(self.currentStatus||{})&&!(action==='disable'&&queueDisable(self.currentStatus))||confirmingAction(self)||(self.currentStatus || {}).stale || !((action === 'enable' && f.canEnable) || (action === 'disable' && f.canDisable) || ((action === 'refresh'||action === 'reload') && f.enabled)))) return Promise.resolve();
 		self.statusRecheckRevision=(self.statusRecheckRevision||0)+1;
 		self.busy = action; self.notice = null; self.jobProgress=null;self.jobUncertain=false;self.paint();
 		var failure = null;
@@ -1208,7 +1208,8 @@ return view.extend({
 		}).catch(function(err) { failure = err; }).then(function() { return taskStatus(self,failure?null:action==='disable'?'disabled':'configured_unverified'); }).then(function(s) {
 			self.currentStatus = s; self.lastChecked = new Date();
 			var expected = action === 'disable' ? 'disabled' : 'configured_unverified';
-			if(failure&&failure.reason==='lock_busy')self.notice=lockNotice(action);
+			if(action==='disable'&&s.state==='closing')self.notice=Object.assign(actionConfirmation(action),{text:_('关闭请求已保存，后台将继续恢复。'),detail:failure?String(failure.message||failure):_('完成后页面会自动更新；新的规则应用已暂停。')});
+			else if(failure&&failure.reason==='lock_busy')self.notice=lockNotice(action);
 			else if(failure&&/^dns_pool_/.test(failure.reason||''))self.notice={kind:'error',text:failure.recovery==='restored'?_('DNS 并发入口启动未完成，本次操作已撤销。'):failure.recovery==='unconfirmed'?_('DNS 并发入口启动失败，恢复尚未确认。'):_('DNS 并发入口尚未确认就绪。'),detail:String(failure.message||failure)};
 			else if(!failure&&s.state==='inconsistent')self.notice=actionConfirmation(action);
 			else if (failure || s.state !== expected) self.notice = { kind: 'error', text: _('操作未完成，已重新读取当前状态。'), detail: failure ? String(failure) : _('当前状态尚未满足操作结果，请检查服务日志后重新检测。') };
@@ -1234,7 +1235,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.23.2' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.23.3' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();

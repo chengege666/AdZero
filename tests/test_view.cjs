@@ -254,6 +254,18 @@ function check(value, label) { assert.ok(value, label); assertions++; }
   check(commands.filter(v=>v==='disable').length===1&&app.notice.kind==='warning','a timed-out disable is never replayed automatically');
   await app.refreshStatus();
   check(!app.notice&&app.currentStatus.state==='configured_unverified','explicit detection clears the old timeout notice without browser refresh');
+  reset({state:'closing',managed:true,shutdown:{requested:true}});
+  check(find('az-toggle').disabled&&text(root).includes('正在关闭并恢复')&&!app.canStage()&&!app.canControl(),'saved close intent survives page reload and blocks forward controls');
+  await app.runAction('enable');await app.runAction('disable');await app.runAction('reload');
+  check(!commands.length,'closing state never submits duplicate or competing actions');
+  for(let n=0;n<70;n++)await poll.tick();
+  check(commands.filter(v=>v==='status').length>12,'persistent closing continues read-only observation beyond the short recovery window');
+  reset({state:'configured_unverified',managed:true});staleResult=true;
+  jobSteps=[()=>{state={...state,state:'closing',shutdown:{requested:true}};return {ok:false,pending:false,reason:'lock_busy'};}];
+  await app.runAction('disable');
+  check(app.notice.kind==='warning'&&app.notice.text.includes('关闭请求已保存')&&find('az-toggle').disabled,'persisted close intent takes precedence over the old lock timeout message');
+  state=closed;for(let n=0;n<6;n++)await poll.tick();
+  check(app.currentStatus.state==='disabled'&&app.notice.kind==='success'&&commands.filter(v=>v==='disable').length===1,'background close completion is acknowledged without replaying the close');
   reset({state:'configured_unverified',managed:true});staleResult=true;
   jobSteps=[()=>{state={...state,state:'inconsistent',operation:{active:true,locked:true,action:'reconcile'}};return {ok:false,pending:false,reason:'lock_busy'};}];
   await app.runAction('disable');

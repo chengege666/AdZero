@@ -29,9 +29,10 @@ let pending_nikki = null;
 let journal = null;
 let changed = false;
 let selected_core = null;
+let nailink_foreign_before = null, nailink_foreign_captured = false;
 let transaction_previous = null;
 let transaction_saved = false;
-let clear_nailink_pending, nailink_completed, rules_signature, passwall_engine;
+let clear_nailink_pending, nailink_completed, rules_signature, passwall_engine, nailink_capture_foreign;
 let action = shift(ARGV);
 if (action == '--') action = shift(ARGV);
 let openclash_error = 'hook_failed';
@@ -360,6 +361,7 @@ function selected_dns() {
 	return values[0];
 }
 function update_dns(id, text) {
+	nailink_capture_foreign();
 	graphql('query($raw:String!){parsedDns(raw:$raw){string}}', {raw:text});
 	graphql('mutation($id:ID!,$dns:String!){updateDns(id:$id,dns:$dns){id}}', {id, dns:text});
 }
@@ -371,6 +373,7 @@ function selected_traffic(require_proxy) {
 	return {id:current.id,text:current.routing.string,target};
 }
 function update_traffic(id,text) {
+	nailink_capture_foreign();
 	graphql('query($raw:String!){parsedRouting(raw:$raw){string}}',{raw:text});
 	graphql('mutation($id:ID!,$routing:String!){updateRouting(id:$id,routing:$routing){id}}',{id,routing:text});
 }
@@ -422,6 +425,45 @@ function nailink_identity() {
 	if (!length(boot) || !match(fields[19] ?? '', /^[0-9]+$/)) return null;
 	return {boot,pid,start:fields[19]};
 }
+function nailink_foreign_revision() {
+	// A modified=true result includes our own staged DNS edits. Capture all
+	// other configuration consumed by run(), so explicit recovery can distinguish
+	// that from new user edits. Never persist or log node links/credentials.
+	let temporary;
+	try {
+		let fields=graphql('{__type(name:"Global"){fields{name type{kind name ofType{kind name ofType{kind name ofType{kind name}}}}}}}').__type?.fields;
+		if(type(fields)!='array'||!length(fields)||length(fields)>200)return null;
+		let names=[];
+		for(let field in fields){
+			let t=field.type;for(let i=0;i<4&&t?.ofType;i++)t=t.ofType;
+			if(!match(field.name??'',/^[A-Za-z_][A-Za-z0-9_]{0,80}$/)||index(['SCALAR','ENUM'],t?.kind)<0)return null;
+			push(names,field.name);
+		}
+		let data=graphql('{configs(selected:true){id global{'+join(' ',sort(names))+'}} groups{id name policy policyParams{key val} nodes{id name link tag subscriptionID} subscriptions{nameFilterRegex subscription{id tag link} matchedNodes{id name link tag subscriptionID}}}}');
+		if(length(data.configs??[])!=1||type(data.groups)!='array')return null;
+		function canonical(value,key){
+			if(type(value)=='array'){
+				let list=map(value,v=>canonical(v));
+				if(index(['configs','groups','nodes','matchedNodes','subscriptions'],key)>=0)list=sort(list,(a,b)=>sprintf('%J',a)<sprintf('%J',b)?-1:sprintf('%J',a)>sprintf('%J',b)?1:0);
+				return list;
+			}
+			if(type(value)!='object')return value;
+			let result={};for(let k in sort(keys(value)))result[k]=canonical(value[k],k);return result;
+		}
+		let text=sprintf('%J',canonical(data));if(length(text)>4194304)return null;
+		temporary=state_dir+'/nailink-owner.'+trim(fs.readfile('/proc/sys/kernel/random/uuid'));
+		atomic(temporary,text,0600);let sha256=rulecache.fingerprint(temporary);fs.unlink(temporary);
+		return sha256?{schema:1,sha256,daemon:rulecache.fingerprint(root+'/etc/config/daed')}:null;
+	}catch(e){if(temporary)fs.unlink(temporary);return null;}
+}
+nailink_capture_foreign=function(){
+	if(nailink_foreign_captured)return;
+	nailink_foreign_captured=true;
+	if(!journal?.nailink_reload_unconfirmed){
+		nailink_foreign_before=nailink_foreign_revision();
+		if(journal){journal.nailink_foreign_baseline=nailink_foreign_before;save();}
+	}
+};
 function confirm_nailink_recovery() {
 	if (!journal?.nailink_reload_unconfirmed) return;
 	if (nailink_completed()) { clear_nailink_pending(); return; }
@@ -431,16 +473,22 @@ function confirm_nailink_recovery() {
 		// replacing the native manager. Scheduled sync never restarts it here.
 		let runtime=nailink_runtime_state(true);
 		if(runtime.running==null){progress.failure('nailink_transition');die(progress.messages.nailink_transition);}
-		if(journal.dns && runtime.running===true && runtime.modified===false &&
+		let foreign=journal.nailink_completion?.foreign;
+		let foreign_matches=foreign?.schema==1&&same(foreign,nailink_foreign_revision());
+		if(foreign?.schema==1&&!foreign_matches)die('NaiLink 全局、群组或节点已被修改，未重启代理；请先在 NaiLink 完成或撤销修改。');
+		if(journal.dns && (runtime.running===true || runtime.running===false&&runtime.legacy_running===false&&foreign_matches) && (runtime.modified===false||foreign_matches) &&
 			!same(journal.nailink_recovery_restart,identity)){
 			let dns=selected_dns();
 			if(dns.id!=journal.dns.id || index([journal.dns.before,journal.dns.after,journal.dns.previous_after],dns.dns.string)<0)
 				die('NaiLink DNS 已被外部修改，未重启代理；恢复记录保留。');
 			if(journal.traffic){let traffic=selected_traffic();if(traffic.id!=journal.traffic.id || index([journal.traffic.before,journal.traffic.after,journal.traffic.previous_after],traffic.text)<0)die('NaiLink 流量路由已被外部修改，未重启代理。');}
 			for(let file in journal.files)if(!file_match(file.path,file.after,file.kind) && !file_match(file.path,file.before,file.kind) && !file_match(file.path,file.previous_after,file.kind))die('NaiLink 规则文件已被外部修改，未重启代理。');
+			let phase=journal.nailink_completion?.forward?'forward':'restore',count=journal.nailink_recovery_count??0;
+			if(count>=2||count>0&&(!journal.nailink_recovery_stage||journal.nailink_recovery_stage==phase))die('本阶段已尝试过 NaiLink 原生恢复；记录保留，将继续核对，不会反复重启。');
 			if(!fs.access(root+'/etc/init.d/daed','x'))die('NaiLink 原生恢复服务不可用，恢复记录已保留。');
 			timeout_helper();
-			journal.nailink_recovery_restart=identity;save();
+			if(foreign_matches){nailink_foreign_captured=true;nailink_foreign_before=foreign;}
+			journal.nailink_recovery_restart=identity;journal.nailink_recovery_count=count+1;journal.nailink_recovery_stage=phase;save();
 			progress.stage('recovering_proxy');
 			restart_service('daed');
 			for(let attempt=0;attempt<10;attempt++){
@@ -496,6 +544,7 @@ nailink_completed = function() {
 	} catch(e) { return false; }
 };
 function prepare_nailink_completion() {
+	nailink_capture_foreign();
 	if(!journal.dns){
 		journal.nailink_completion=null;journal.nailink_run_identity=nailink_identity();
 		journal.nailink_reload_unconfirmed=true;save();return;
@@ -510,6 +559,7 @@ function prepare_nailink_completion() {
 	}
 	let traffic=journal.traffic?selected_traffic():null;
 	journal.nailink_completion={schema:1,forward:journal.stage=='restarting',
+		foreign:nailink_foreign_before,
 		core:runtime.core,
 		legacy_start:runtime.legacy_running===false,
 		barrier:runtime?.running===false || runtime.legacy_running===false || runtime?.running===true && runtime.modified===true,
@@ -814,17 +864,20 @@ function restore() {
 	if(fs.lstat(state_dir+'/dns-guard.json'))guard('hold');
 	if (!journal) {if(action=='remove'){guard('cleanup');stop_pool();}return;}
 	if(journal.plugin=='nailink'){
-		let runtime=nailink_runtime_state(),started=monotime();
+		let runtime=nailink_runtime_state(true),started=monotime();
 		while(runtime.running==null && action=='remove' && index(['starting','switching','reloading','recovering'],runtime.phase)>=0 && monotime()-started<300){
 			progress.stage('waiting_proxy');
 			if(root && getenv('ADZERO_NAILINK_API_FIXTURE'))break;
-			sleep(1000);runtime=nailink_runtime_state();
+			sleep(1000);runtime=nailink_runtime_state(true);
 		}
 		if(runtime.running==null){progress.failure('nailink_transition');die(progress.messages.nailink_transition);}
+		if(!journal.nailink_reload_unconfirmed&&runtime.modified===true && (!journal.nailink_foreign_baseline||!same(journal.nailink_foreign_baseline,nailink_foreign_revision())))
+			die('NaiLink 有尚未应用的外部修改；请先在 NaiLink 应用或撤销，关闭请求已保留。');
 	}
 	confirm_nailink_recovery();
 	progress.stage('restoring');
 	journal.stage = 'restoring'; save();
+	let profile_changed=false;
 	// Restore configuration first, restart, then remove provider files.
 	for (let file in journal.files) {
 		if (file.kind == 'owned') continue;
@@ -849,10 +902,16 @@ function restore() {
 		if (current.id != journal.dns.id) die('NaiLink selected profile changed; recovery required');
 		if((journal.split||journal.alias) && current.dns.string!=journal.dns.after && current.dns.string!=journal.dns.before&&current.dns.string!=journal.dns.previous_after)die('NaiLink DNS 已修改，分流恢复记录保留。');
 		let restored = current.dns.string == journal.dns.after||current.dns.string==journal.dns.previous_after ? journal.dns.before : lib.strip_block(current.dns.string);
-		if (current.dns.string != restored) update_dns(current.id, restored);
+		if (current.dns.string != restored) { update_dns(current.id, restored);profile_changed=true; }
 	}
-	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=journal.traffic.before&&current.text!=journal.traffic.previous_after)die('NaiLink 流量路由已修改，恢复记录保留。');if(current.text!=journal.traffic.before)update_traffic(current.id,journal.traffic.before);}
-	restart(journal.plugin);
+	if(journal.traffic){let current=selected_traffic();if(current.id!=journal.traffic.id || current.text!=journal.traffic.after && current.text!=journal.traffic.before&&current.text!=journal.traffic.previous_after)die('NaiLink 流量路由已修改，恢复记录保留。');if(current.text!=journal.traffic.before){update_traffic(current.id,journal.traffic.before);profile_changed=true;}}
+	let original_loaded=false;
+	if(journal.plugin=='nailink'&&!profile_changed){
+		let runtime=nailink_runtime_state(true);
+		if(runtime.running===false)original_loaded=true;
+		else if(runtime.modified===false){let health=graphql('',null,true);original_loaded=health.ready===true&&health.configured===true&&health.dns_ready===true&&health.routing_ready===true;}
+	}
+	if(!original_loaded)restart(journal.plugin);
 	if(journal.alias)native_bridge('cleanup',journal.alias);
 	retire_alias();
 	for (let file in journal.files) if (file.kind == 'owned') {
@@ -1145,6 +1204,8 @@ try {
 		select_dns_candidate(shift(ARGV));journal=read_journal();active_plugin();exit(0);
 	}
 	journal = read_journal();
+	if(index(['apply','reconfigure-nailink','reconfigure-nailink-rules','reconfigure-passwall','reconfigure-passwall-rules'],action)>=0 && fs.lstat(state_dir+'/close-requested'))
+		die('关闭请求已保存，跳过新的规则接入；请等待恢复完成。');
 	if (action == 'status') {
 		let protection;try{protection=json(fs.readfile(state_dir+'/dns-guard.json',16001));}catch(e){}
 		print(sprintf('%J\n', {plugin:journal?.plugin ?? 'none', core:journal?.core??null, stage:journal?.stage ?? 'inactive', domains:journal?.count ?? 0,
