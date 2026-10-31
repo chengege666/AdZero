@@ -215,7 +215,8 @@ echo "ctl $1" >> "$MOCK_INSTALL_LOG"
                                 input="0\n", text=True, capture_output=True,
                                 env=self.f.env, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("v0.23.0", result.stdout)
+        current=(ROOT/'luci-app-adzero/root/usr/share/adzero/version').read_text().strip()
+        self.assertIn('v'+current, result.stdout)
         self.assertFalse(self.f.log.exists())
 
 

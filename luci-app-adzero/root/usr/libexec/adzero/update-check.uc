@@ -1,11 +1,13 @@
 'use strict';
-// Parse the official GitHub Releases JSON without shell interpolation.
+// Parse official GitHub metadata as data, never as executable shell code.
 // Only published, non-draft numeric SemVer tags with a GitHub SHA-256 digest
 // for the exact "install.sh" release asset can become upgrade candidates.
 import * as fs from 'fs';
 
 try {
 	let path=shift(ARGV);
+	let mode=shift(ARGV)??'api';
+	if(length(ARGV)||index(['api','bootstrap'],mode)<0)exit(2);
 	// mktemp and Python tempfile may use '_' in their eight-character
 	// random suffix. Keep the exact private directory, stem and length.
 	if (!path || !match(path,/^\/tmp\/adzero-update\/releases\.[A-Za-z0-9_]{8}$/)) exit(2);
@@ -13,7 +15,22 @@ try {
 	// rpcd normally runs as root; verify ownership against our actual UID so
 	// isolated OpenWrt userspace tests retain this same trust boundary.
 	if (stat?.type!='file' || stat.size>1048576 || stat.uid!=fs.stat('/proc/self')?.uid || (stat.mode&077)!=0) exit(2);
-	let releases=json(fs.readfile(path));
+	let raw=fs.readfile(path);
+	if(mode=='bootstrap'){
+		// This is the same pinned, stable entrypoint used by manual installs.
+		// Accept only its exact repository/asset and one unambiguous digest.
+		if(stat.size>65536||substr(raw,0,10)!='#!/bin/sh\n')exit(2);
+		let urls=[],digests=[];
+		for(let line in split(raw,'\n')){
+			if(index(line,'INSTALL_URL=')==0)push(urls,substr(line,12));
+			if(index(line,'INSTALL_SHA256=')==0)push(digests,substr(line,15));
+		}
+		if(length(urls)!=1||length(digests)!=1||!match(digests[0],/^[a-f0-9]{64}$/))exit(2);
+		let tag=match(urls[0],/^https:\/\/github[.]com\/slobys\/AdZero\/releases\/download\/(v[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3})\/install[.]sh$/);
+		if(!tag)exit(2);
+		printf('%s %s\n',tag[1],digests[0]);exit(0);
+	}
+	let releases=json(raw);
 	if (type(releases)!='array') exit(2);
 	let found=null, parts=null;
 	for (let release in releases) {

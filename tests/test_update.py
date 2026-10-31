@@ -16,7 +16,7 @@ dest=; url=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output) dest=$2; shift 2 ;;
-    --connect-timeout|--max-time|--max-filesize|--proto|--proto-redir) shift 2 ;;
+    --connect-timeout|--max-time|--max-filesize|--proto|--proto-redir|--write-out) shift 2 ;;
     --*) shift ;;
     *) url=$1; shift ;;
   esac
@@ -24,15 +24,24 @@ done
 printf '%s\n' "$url" >> "$MOCK_URLS"
 case "$url" in
   'https://api.github.com/repos/slobys/AdZero/releases?per_page=20')
-     [ ! -f "$MOCK_FAIL_NETWORK" ] || exit 6
-     printf '[{"tag_name":"v0.21.4"}]\n' > "$dest" ;;
+     [ ! -f "$MOCK_FAIL_NETWORK" ] || { printf 000; exit 6; }
+     if [ -f "$MOCK_API_HTTP" ]; then cat "$MOCK_API_HTTP"; exit 22; fi
+     printf '[{"tag_name":"v0.21.4"}]\n' > "$dest"; printf 200 ;;
+  https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install-auto.sh)
+     [ ! -f "$MOCK_FAIL_NETWORK" ] || { printf 000; exit 6; }
+     cp "$MOCK_ENTRY" "$dest"; printf 200 ;;
   https://github.com/slobys/AdZero/releases/download/v0.21.4/install.sh)
-     [ ! -f "$MOCK_FAIL_NETWORK" ] || exit 6
-     cp "$MOCK_INSTALLER" "$dest" ;;
+     [ ! -f "$MOCK_FAIL_NETWORK" ] || { printf 000; exit 6; }
+     cp "$MOCK_INSTALLER" "$dest"; printf 200 ;;
   *) echo 'wrong remote URL' >&2; exit 7 ;;
 esac
 '''
 UCODE = r'''#!/bin/sh
+if [ "${3:-}" = bootstrap ]; then
+  [ ! -f "$MOCK_BAD_ENTRY" ] || exit 2
+else
+  [ ! -f "$MOCK_BAD_API" ] || exit 2
+fi
 printf '%s %s\n' "$MOCK_TAG" "$MOCK_DIGEST"
 '''
 INSTALLER = r'''#!/bin/sh
@@ -70,6 +79,8 @@ class UpdateTest(unittest.TestCase):
         self.fail_compat = self.root / "fail-compat"
         self.fail_upgrade = self.root / "fail-upgrade"
         self.digest = hashlib.sha256(self.installer.read_bytes()).hexdigest()
+        self.entry = self.root / 'official-entry'
+        self.entry.write_text('#!/bin/sh\nINSTALL_URL=https://github.com/slobys/AdZero/releases/download/v0.21.4/install.sh\nINSTALL_SHA256='+self.digest+'\nprintf executed > "$MOCK_ENTRY_EXECUTED"\n')
         self.env = {
             **os.environ,
             "ADZERO_UPDATE_STATE": str(self.state),
@@ -85,6 +96,11 @@ class UpdateTest(unittest.TestCase):
             "MOCK_FAIL_NETWORK": str(self.fail_network),
             "MOCK_FAIL_COMPAT": str(self.fail_compat),
             "MOCK_FAIL_UPGRADE": str(self.fail_upgrade),
+            "MOCK_ENTRY": str(self.entry),
+            "MOCK_ENTRY_EXECUTED": str(self.root / 'entry-executed'),
+            "MOCK_API_HTTP": str(self.root / 'api-http'),
+            "MOCK_BAD_API": str(self.root / 'bad-api'),
+            "MOCK_BAD_ENTRY": str(self.root / 'bad-entry'),
         }
 
     def call(self, *args, success=True):
@@ -138,6 +154,52 @@ class UpdateTest(unittest.TestCase):
         self.assertFalse(result["compatible"])
         self.assertFalse(self.actions.exists())
         self.assertFalse((self.state / "approved").exists())
+        self.assertNotIn('raw.githubusercontent.com',self.urls.read_text())
+
+    def test_api_http_rejection_uses_official_entry_without_executing_it(self):
+        for code in ('403','429','502','000'):
+            with self.subTest(code=code):
+                Path(self.env['MOCK_API_HTTP']).write_text(code)
+                result=json.loads(self.call('check').stdout)
+                self.assertTrue(result['available'] and result['compatible'])
+                self.assertEqual(result['metadata_source'],'official_entry')
+                self.assertTrue((self.state/'approved').exists())
+                self.assertFalse(Path(self.env['MOCK_ENTRY_EXECUTED']).exists())
+        self.assertNotIn('--upgrade',self.actions.read_text())
+
+    def test_invalid_api_metadata_uses_official_entry(self):
+        Path(self.env['MOCK_BAD_API']).touch()
+        result=json.loads(self.call('check').stdout)
+        self.assertTrue(result['compatible'])
+        self.assertEqual(result['metadata_source'],'official_entry')
+
+    def test_invalid_fallback_cannot_leave_stale_approval(self):
+        self.call('check')
+        Path(self.env['MOCK_API_HTTP']).write_text('403')
+        Path(self.env['MOCK_BAD_ENTRY']).touch()
+        result=json.loads(self.call('check').stdout)
+        self.assertFalse(result['ok'])
+        self.assertEqual((result['api_status'],result['entry_status']),('403','200'))
+        self.assertFalse((self.state/'approved').exists())
+        self.assertEqual(self.actions.read_text().count('--check'),1)
+
+    def test_official_entry_fallback_still_rejects_installer_sha_mismatch(self):
+        Path(self.env['MOCK_API_HTTP']).write_text('403')
+        self.env['MOCK_DIGEST']='0'*64
+        result=json.loads(self.call('check').stdout)
+        self.assertTrue(result['available'])
+        self.assertFalse(result['compatible'])
+        self.assertFalse(self.actions.exists())
+        self.assertFalse((self.state/'approved').exists())
+
+    def test_fallback_approval_requires_normal_one_time_upgrade_confirmation(self):
+        Path(self.env['MOCK_API_HTTP']).write_text('403')
+        self.call('check');self.call('upgrade','v0.21.4')
+        actions=self.actions.read_text().splitlines()
+        self.assertEqual(len(actions),3)
+        self.assertTrue(all('releases/download/v0.21.4' in a for a in actions))
+        self.assertFalse(Path(self.env['MOCK_ENTRY_EXECUTED']).exists())
+        self.assertFalse((self.state/'approved').exists())
 
     def test_missing_compatible_package_never_approves_update(self):
         self.fail_compat.touch()

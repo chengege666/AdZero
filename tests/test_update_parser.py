@@ -42,6 +42,41 @@ class OfficialReleaseParserTest(unittest.TestCase):
             text=True, capture_output=True, timeout=15
         )
 
+    def parse_entry(self,raw):
+        self.file.write_text(raw)
+        return subprocess.run(self.ucode+[str(PARSER),str(self.file),'bootstrap'],
+                              text=True,capture_output=True,timeout=15)
+
+    def test_official_entry_matches_current_manual_installer_pin(self):
+        raw=(ROOT/'scripts/install-auto.sh').read_text()
+        result=self.parse_entry(raw)
+        self.assertEqual(result.returncode,0,result.stderr)
+        import re
+        tag=re.search(r'^INSTALL_URL=.*/(v[0-9.]+)/install.sh$',raw,re.M)[1]
+        digest=re.search(r'^INSTALL_SHA256=([a-f0-9]{64})$',raw,re.M)[1]
+        self.assertEqual(result.stdout.strip(),tag+' '+digest)
+
+    def test_bootstrap_is_data_and_cannot_execute_shell(self):
+        marker=self.file.parent/(self.file.name+'.executed')
+        self.addCleanup(marker.unlink,missing_ok=True)
+        raw='#!/bin/sh\nINSTALL_URL=https://github.com/slobys/AdZero/releases/download/v0.23.0/install.sh\nINSTALL_SHA256='+'a'*64+'\ntouch '+str(marker)+'\n'
+        result=self.parse_entry(raw)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertFalse(marker.exists())
+
+    def test_bootstrap_rejects_external_urls_ambiguity_and_bad_versions(self):
+        prefix='#!/bin/sh\nINSTALL_URL='
+        url='https://github.com/slobys/AdZero/releases/download/v0.23.0/install.sh'
+        good=prefix+url+'\nINSTALL_SHA256='+'a'*64+'\n'
+        for bad in (good.replace('github.com','example.com'),
+                    good.replace('/slobys/','/other/'),good.replace('v0.23.0','v0.23.0-beta.1'),
+                    good.replace('install.sh','other.sh'),good.replace('v0.23.0','v0.23.0;id'),
+                    good+'INSTALL_URL='+url+'\n',good+'INSTALL_SHA256='+'b'*64+'\n',
+                    good.replace('a'*64,'BAD'),good.replace('#!/bin/sh\n','<html>\n'),
+                    good+'x'*65536):
+            with self.subTest(raw=bad[:160]):
+                self.assertNotEqual(self.parse_entry(bad).returncode,0)
+
     def test_selects_latest_published_numeric_version_with_official_digest(self):
         digest = "1" * 64
         cases = [
