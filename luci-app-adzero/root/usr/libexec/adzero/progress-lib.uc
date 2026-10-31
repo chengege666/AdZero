@@ -1,14 +1,15 @@
 'use strict';
 // Public task metadata is a fixed vocabulary. Never forward private log text.
 import * as fs from 'fs';
-export const stages=['queued','waiting_lock','checking','downloading','validating','processing','adapting','restarting','confirming_proxy','restoring','verifying'];
+export const stages=['queued','waiting_lock','waiting_proxy','checking','downloading','validating','processing','adapting','restarting','confirming_proxy','recovering_proxy','restoring','verifying'];
 export const messages={
 	control_scope:'部分域名由父域规则拦截。请先在“访问控制”查询域名，核对实际命中范围后加入放行；待应用选择已保留。',
 	config_conflict:'配置有其他未保存的编辑或已经变化。请重新读取并核对；规则数量统计不会阻止应用。',
 	empty_ruleset:'本次草稿没有启用订阅或手动拦截项，未应用、未重载。请保留至少一项规则；暂停全部过滤请使用暂停或保护开关。',
 	source_capacity_unknown:'部分来源无法完整预检容量，未提交或重载。请选择域名、Hosts 或基础 DNS Adblock 格式；不会把未知来源按零计算，现有配置保留。',
 	nailink_auth:'NaiLink 后端授权未通过。请通过原生服务重启刷新本机授权，再关闭并恢复 AdZero。',
-	nailink_gateway:'NaiLink 重载请求未确认，本批规则与恢复记录已保留，后台会继续核对。请勿重复提交；旧版遗留记录需先重启 NaiLink 原生服务再关闭恢复。',
+	nailink_gateway:'NaiLink 重载请求尚未确认，规则与恢复记录已保留。后台继续核对；需要退出时可关闭并恢复，旧记录必要时仅恢复 NaiLink 服务，无需重启路由器。',
+	nailink_transition:'NaiLink 内核仍在切换或恢复，暂未修改配置。请等待其就绪后重试关闭；无需重启路由器或删除锁。',
 	lock_busy:'本次请求未取得操作锁，未执行任何配置修改。请核对当前保护状态，等待其他操作完成后按需重试。',
 	source_download:'规则下载失败，已停止应用。请检查该订阅的 HTTPS 地址与网络。',
 	source_format:'下载内容未通过规则格式校验，原有选择未被替换。',

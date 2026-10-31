@@ -67,10 +67,12 @@ def payload() -> dict[str, tuple[bytes, int]]:
             name = (Path(prefix) / relative).as_posix()
             if name in output:
                 raise ValueError(f"Duplicate package path: {name}")
-            mode = 0o755 if name in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/update", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/dns-native", "usr/libexec/adzero/dns-guard", "etc/init.d/adzero-dns", "etc/init.d/adzero"} else 0o644
+            mode = 0o755 if name in {"usr/libexec/adzero/lock", "usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/update", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/dns-native", "usr/libexec/adzero/dns-guard", "etc/init.d/adzero-dns", "etc/init.d/adzero"} else 0o644
             output[name] = (src.read_bytes(), mode)
 
     expected = {
+        "usr/libexec/adzero/lock",
+        "usr/libexec/adzero/lock.uc",
         "usr/libexec/adzero/dns-pool-lib.uc",
         "usr/libexec/adzero/dns-pool.uc",
         "usr/libexec/adzero/dns-guard-lib.uc",

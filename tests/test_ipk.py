@@ -67,6 +67,8 @@ class IpkPackagingTest(unittest.TestCase):
         members = parse_ar(build_ipk.build_bytes()[0])
         installed = list_tar(members["data.tar.gz"])
         self.assertEqual(set(installed), {
+            "usr/libexec/adzero/lock",
+            "usr/libexec/adzero/lock.uc",
             "usr/libexec/adzero/dns-guard",
             "usr/libexec/adzero/dns-guard.uc",
             "usr/libexec/adzero/dns-guard-lib.uc",
@@ -134,10 +136,11 @@ class IpkPackagingTest(unittest.TestCase):
             "www/luci-static/resources/view/adzero/logo.png",
             "usr/share/licenses/luci-app-adzero/Phosphor-Icons-LICENSE",
         })
+        self.assertEqual(installed["usr/libexec/adzero/lock"][0].mode & 0o777, 0o755)
         self.assertEqual(installed["usr/libexec/adzero/ctl"][0].mode & 0o777, 0o755)
         self.assertEqual(installed["usr/libexec/adzero/probe"][0].mode & 0o777, 0o755)
         for name, (member, data) in installed.items():
-            if name not in {"usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/dns-native", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/update", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "etc/init.d/adzero", "etc/init.d/adzero-dns", "usr/libexec/adzero/dns-guard"}:
+            if name not in {"usr/libexec/adzero/lock", "usr/libexec/adzero/ctl", "usr/libexec/adzero/probe", "usr/libexec/adzero/adapter", "usr/libexec/adzero/backend", "usr/libexec/adzero/watch", "usr/libexec/adzero/observe", "usr/libexec/adzero/dns-handoff", "usr/libexec/adzero/dns-enhance", "usr/libexec/adzero/dns-native", "usr/libexec/adzero/policy", "usr/libexec/adzero/sources", "usr/libexec/adzero/job", "usr/libexec/adzero/update", "usr/libexec/adzero/routing-data", "usr/libexec/adzero/cache-curl/curl", "etc/init.d/adzero", "etc/init.d/adzero-dns", "usr/libexec/adzero/dns-guard"}:
                 self.assertEqual(member.mode & 0o777, 0o644)
             self.assertTrue(data)
 

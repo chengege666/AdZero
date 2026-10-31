@@ -273,6 +273,11 @@ function graphql(query, variables, readiness) {
 		}
 		let result = json(substr(response, separator + 2));
 		if (readiness) { bus.call('session','destroy',{ubus_rpc_session:session}); bus.disconnect(); return result; }
+		// Only an explicit old-schema rejection permits the legacy API fallback.
+		// A transport/auth failure during a core switch must remain uncertain.
+		if(query=='{coreStatus}' && length(result.errors??[]) &&
+			length(filter(result.errors,e=>type(e.message)=='string' && match(e.message,/([Cc]annot query field|[Uu]nknown field).*coreStatus/)))==length(result.errors))
+			result={data:{coreStatus:null}};
 		if (length(filter(result.errors ?? [], e => type(e.message) == 'string' && substr(e.message,0,13) == 'access denied'))) {
 			progress.failure('nailink_auth');
 			die('NaiLink GraphQL authorization denied (' + operation + '); local LuCI session passed; check NaiLink local identity; private response omitted');
@@ -295,11 +300,10 @@ function graphql(query, variables, readiness) {
 	}
 }
 function nailink_runtime_state(with_modified){
+	let current=graphql('{coreStatus}').coreStatus;
 	let legacy=graphql(with_modified?'{general{dae{running modified}}}':'{general{dae{running}}}').general?.dae;
-	let current=null;
-	try{current=graphql('{coreStatus}').coreStatus;}catch(e){}
 	let state=proxy.nailink_status(current,legacy);
-	return {...legacy,...state};
+	return {...legacy,...state,legacy_running:legacy?.running};
 }
 function active_plugin() {
 	let inventory = getenv('ADZERO_ADAPTER_INVENTORY');
@@ -401,6 +405,8 @@ function apply_alias(plugin){
 	if(traffic&&traffic.text!=next){update_traffic(traffic.id,next);changed=true;}
 }
 function nailink_identity() {
+	let fixture=getenv('ADZERO_NAILINK_IDENTITY_FIXTURE');
+	if(root && getenv('ADZERO_NAILINK_API_FIXTURE') && fixture)return json(fs.readfile(fixture));
 	let bus = connect();
 	if (!bus) return null;
 	let services;
@@ -420,6 +426,33 @@ function confirm_nailink_recovery() {
 	if (!journal?.nailink_reload_unconfirmed) return;
 	if (nailink_completed()) { clear_nailink_pending(); return; }
 	let identity = nailink_identity();
+	if(action=='remove' && identity && journal.nailink_run_identity && same(identity,journal.nailink_run_identity)){
+		// Only an explicit close can recover an old, unprovable receipt by
+		// replacing the native manager. Scheduled sync never restarts it here.
+		let runtime=nailink_runtime_state(true);
+		if(runtime.running==null){progress.failure('nailink_transition');die(progress.messages.nailink_transition);}
+		if(journal.dns && runtime.running===true && runtime.modified===false &&
+			!same(journal.nailink_recovery_restart,identity)){
+			let dns=selected_dns();
+			if(dns.id!=journal.dns.id || index([journal.dns.before,journal.dns.after,journal.dns.previous_after],dns.dns.string)<0)
+				die('NaiLink DNS 已被外部修改，未重启代理；恢复记录保留。');
+			if(journal.traffic){let traffic=selected_traffic();if(traffic.id!=journal.traffic.id || index([journal.traffic.before,journal.traffic.after,journal.traffic.previous_after],traffic.text)<0)die('NaiLink 流量路由已被外部修改，未重启代理。');}
+			for(let file in journal.files)if(!file_match(file.path,file.after,file.kind) && !file_match(file.path,file.before,file.kind) && !file_match(file.path,file.previous_after,file.kind))die('NaiLink 规则文件已被外部修改，未重启代理。');
+			if(!fs.access(root+'/etc/init.d/daed','x'))die('NaiLink 原生恢复服务不可用，恢复记录已保留。');
+			timeout_helper();
+			journal.nailink_recovery_restart=identity;save();
+			progress.stage('recovering_proxy');
+			restart_service('daed');
+			for(let attempt=0;attempt<10;attempt++){
+				identity=nailink_identity();
+				if(identity && !same(identity,journal.nailink_run_identity)){
+					try{graphql('{general{dae{running}}}');break;}catch(e){}
+				}
+				if(root && getenv('ADZERO_NAILINK_API_FIXTURE'))break;
+				sleep(1000);
+			}
+		}
+	}
 	if (!identity || !journal.nailink_run_identity || same(identity,journal.nailink_run_identity)) {
 		progress.failure('nailink_gateway');
 		die('NaiLink reload completion is unconfirmed; no second mutation submitted. Restart the native NaiLink service before recovery; journal retained');
@@ -427,12 +460,13 @@ function confirm_nailink_recovery() {
 	// A different procd process plus a responsive authorized API proves the
 	// previous daemon's request cannot still commit after this restoration.
 	graphql('{general{dae{running}}}');
-	delete journal.nailink_reload_unconfirmed; save();
+	clear_nailink_pending();
 }
 clear_nailink_pending = function() {
 	delete journal.nailink_reload_unconfirmed;
 	delete journal.nailink_run_identity;
 	delete journal.nailink_completion;
+	delete journal.nailink_recovery_restart;
 	save();
 };
 nailink_completed = function() {
@@ -441,10 +475,11 @@ nailink_completed = function() {
 	try {
 		let runtime = nailink_runtime_state(true);
 		if (runtime?.running !== true || runtime?.modified !== false) return false;
-		if(proof.core&&proof.core!=runtime.core)return false;
 		let health = graphql('', null, true);
 		if (health?.ready !== true || health.configured !== true || health.listening !== true ||
 			health.initialized !== true || health.dns_ready !== true || health.routing_ready !== true) return false;
+		if(health.core!=null && health.core!=runtime.core)return false;
+		if(proof.legacy_start && runtime.legacy_running!==true)return false;
 		let dns = selected_dns();
 		if (dns.id != proof.dns.id || dns.dns.string != proof.dns.text) return false;
 		if (proof.traffic) { let traffic=selected_traffic(); if (traffic.id != proof.traffic.id || traffic.text != proof.traffic.text) return false; }
@@ -452,6 +487,11 @@ nailink_completed = function() {
 			if (!file_match(file.path,file.after,file.kind)) return false;
 		}
 		if (!proof.input || !same(proof.input,rules_signature('nailink'))) return false;
+		// run() serializes configuration reloads and commits running versions only
+		// after completion. A later native core switch does not invalidate that
+		// version barrier. Recheck the live core, rather than pinning the old one.
+		let stable=nailink_runtime_state(true);
+		if(stable.running!==true || stable.modified!==false || stable.core!=runtime.core)return false;
 		return true;
 	} catch(e) { return false; }
 };
@@ -471,7 +511,8 @@ function prepare_nailink_completion() {
 	let traffic=journal.traffic?selected_traffic():null;
 	journal.nailink_completion={schema:1,forward:journal.stage=='restarting',
 		core:runtime.core,
-		barrier:runtime?.running===false || runtime?.running===true && runtime.modified===true,
+		legacy_start:runtime.legacy_running===false,
+		barrier:runtime?.running===false || runtime.legacy_running===false || runtime?.running===true && runtime.modified===true,
 		dns:{id:dns.id,text:dns.dns.string},traffic:traffic?{id:traffic.id,text:traffic.text}:null,
 		input:rules_signature('nailink')};
 	journal.nailink_run_identity=nailink_identity();
@@ -503,7 +544,9 @@ function restart(plugin) {
 		return;
 	}
 	if (plugin == 'nailink') {
-		if(nailink_runtime_state().running !== true){
+		let runtime=nailink_runtime_state();
+		if(runtime.running==null){progress.failure('nailink_transition');die(progress.messages.nailink_transition);}
+		if(runtime.running === false){
 			if(journal.stage=='restarting')die('NaiLink 内核在应用期间已停止。');
 			return; // restoring profiles must not start a core the user stopped
 		}
@@ -770,6 +813,15 @@ function apply_split(plugin) {
 function restore() {
 	if(fs.lstat(state_dir+'/dns-guard.json'))guard('hold');
 	if (!journal) {if(action=='remove'){guard('cleanup');stop_pool();}return;}
+	if(journal.plugin=='nailink'){
+		let runtime=nailink_runtime_state(),started=monotime();
+		while(runtime.running==null && action=='remove' && index(['starting','switching','reloading','recovering'],runtime.phase)>=0 && monotime()-started<300){
+			progress.stage('waiting_proxy');
+			if(root && getenv('ADZERO_NAILINK_API_FIXTURE'))break;
+			sleep(1000);runtime=nailink_runtime_state();
+		}
+		if(runtime.running==null){progress.failure('nailink_transition');die(progress.messages.nailink_transition);}
+	}
 	confirm_nailink_recovery();
 	progress.stage('restoring');
 	journal.stage = 'restoring'; save();

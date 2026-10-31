@@ -6,6 +6,7 @@ command -v python3 >/dev/null 2>&1 || { echo 'python3 required' >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo 'node required' >&2; exit 1; }
 
 sh -n luci-app-adzero/root/usr/libexec/adzero/ctl
+sh -n luci-app-adzero/root/usr/libexec/adzero/lock
 sh -n luci-app-adzero/root/usr/libexec/adzero/probe
 sh -n luci-app-adzero/root/usr/libexec/adzero/rules.sh
 sh -n luci-app-adzero/root/usr/libexec/adzero/adapter
