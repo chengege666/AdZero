@@ -108,7 +108,7 @@ return {adzero:{
 		let id=r.args.job;
 		if (!match(id ?? '',/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)) return {ok:false,message:'任务标识无效。'};
 		let path='/tmp/adzero-jobs/'+id;
-		if (!fs.stat(path)) return {ok:false,message:'任务记录不存在，设备可能已重启。请重新检测。'};
+		if (!fs.stat(path)) return {ok:false,reason:'not_found',message:'任务记录不存在，设备可能已重启。请重新检测。'};
 		let is_update=trim(fs.readfile(path+'/action',64)??'')=='update-check';
 		let code=fs.readfile(path+'/result');
 		let phase=trim(fs.readfile(path+'/stage')??'queued');
