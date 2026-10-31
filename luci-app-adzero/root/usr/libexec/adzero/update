@@ -12,7 +12,11 @@ parser=${ADZERO_UPDATE_PARSER:-"$root/usr/libexec/adzero/update-check.uc"}
 curl_bin=${ADZERO_UPDATE_CURL:-curl}
 ucode_bin=${ADZERO_UPDATE_UCODE:-ucode}
 api_url='https://api.github.com/repos/slobys/AdZero/releases?per_page=20'
+entry_url='https://raw.githubusercontent.com/slobys/AdZero/main/scripts/install-auto.sh'
 base='https://github.com/slobys/AdZero/releases/download'
+metadata_source=github_api
+api_status=000
+entry_status=000
 job=${ADZERO_JOB_CONTEXT:-}
 installer=
 
@@ -49,9 +53,12 @@ prepare() {
 	chmod 700 "$state"
 }
 download() {
-	"$curl_bin" --fail --silent --show-error --location \
+	download_status=000
+	download_status=$("$curl_bin" --fail --silent --show-error --location \
 		--proto '=https' --proto-redir '=https' --connect-timeout 12 \
-		--max-time 80 --max-filesize 1048576 --output "$2" "$1"
+		--max-time "${3:-80}" --max-filesize 1048576 --output "$2" \
+		--write-out '%{http_code}' "$1") || return 1
+	[ "$download_status" = 200 ]
 }
 verify_hash() {
 	got=$(sha256sum "$1") || return 1
@@ -59,11 +66,23 @@ verify_hash() {
 }
 parse_release() {
 	file=$(mktemp "$state/releases.XXXXXXXX") || return 1
-	if ! download "$api_url" "$file"; then rm -f "$file"; return 1; fi
-	tag_and_digest=$("$ucode_bin" "$parser" "$file") || {
-		rm -f "$file"; return 1
-	}
+	tag_and_digest=
+	if download "$api_url" "$file" 20; then
+		tag_and_digest=$("$ucode_bin" "$parser" "$file") || tag_and_digest=
+	fi
+	api_status=$download_status
+	if [ -z "$tag_and_digest" ]; then
+		# Read only the stable pointer from the official manual entrypoint.
+		# Never source/evaluate it. Installer SHA and platform preflight remain
+		# mandatory, including when GitHub's unauthenticated API returns 403.
+		metadata_source=official_entry
+		if download "$entry_url" "$file" 20; then
+			tag_and_digest=$("$ucode_bin" "$parser" "$file" bootstrap) || tag_and_digest=
+		fi
+		entry_status=$download_status
+	fi
 	rm -f "$file"
+	[ -n "$tag_and_digest" ] || return 1
 	set -- $tag_and_digest
 	[ "$#" = 2 ] || return 1
 	version_valid "$1" || return 1
@@ -102,22 +121,25 @@ check)
 	rm -f "$state/approved" "$state/approved.new"
 	stage checking
 	if ! parse_release; then
-		printf '{"ok":false,"message":"无法读取 GitHub 官方版本信息，请检查网络或稍后重试。","current":"%s"}\n' "$current"
+		# Never emit untrusted upstream bodies, proxy URLs or tokens in RPC.
+		case "$api_status" in [0-9][0-9][0-9]) ;; *) api_status=000 ;; esac
+		case "$entry_status" in [0-9][0-9][0-9]) ;; *) entry_status=000 ;; esac
+		printf '{"ok":false,"reason":"metadata_unavailable","message":"GitHub 版本接口和官方安装入口均未通过检查，请检查路由器连接或稍后重试。","current":"%s","api_status":"%s","entry_status":"%s"}\n' "$current" "$api_status" "$entry_status"
 		exit 0
 	fi
 	if ! is_newer "$target" "$current"; then
-		printf '{"ok":true,"available":false,"compatible":true,"current":"%s","latest":"%s"}\n' "$current" "$target"
+		printf '{"ok":true,"available":false,"compatible":true,"current":"%s","latest":"%s","metadata_source":"%s"}\n' "$current" "$target" "$metadata_source"
 		exit 0
 	fi
 	stage downloading
 	installer=$(mktemp "$state/installer.XXXXXXXX") || fail '无法准备下载文件。'
 	if ! verify_installer >/dev/null 2>&1; then
-		printf '{"ok":true,"available":true,"compatible":false,"current":"%s","latest":"%s","message":"新版本已发布，但当前固件未通过安装包校验；原有保护没有改变。"}\n' "$current" "$target"
+		printf '{"ok":true,"available":true,"compatible":false,"current":"%s","latest":"%s","metadata_source":"%s","message":"新版本已发布，但安装脚本下载、摘要或本机依赖预检未通过；请稍后重试或使用 SSH 菜单预检。"}\n' "$current" "$target" "$metadata_source"
 		exit 0
 	fi
 	printf '%s %s %s\n' "$target" "$digest" "$(date +%s)" > "$state/approved.new" || fail '无法保存校验记录。'
 	mv "$state/approved.new" "$state/approved" || fail '无法确认更新校验结果。'
-	printf '{"ok":true,"available":true,"compatible":true,"current":"%s","latest":"%s"}\n' "$current" "$target"
+	printf '{"ok":true,"available":true,"compatible":true,"current":"%s","latest":"%s","metadata_source":"%s"}\n' "$current" "$target" "$metadata_source"
 	;;
 upgrade)
 	[ "$#" = 2 ] && version_valid "$2" || fail '无效升级版本。'

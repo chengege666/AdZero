@@ -674,10 +674,15 @@ return view.extend({
 		else if(self.updateError||d.ok===false)content.push(el('p',{'class':'az-inline-warning',role:'alert'},self.updateError||d.message||_('无法检查更新，请确认路由器能够访问 GitHub。')));
 		else if(d.ok){
 			content.push(el('p',{'class':'az-update-detail'},[
-				_('当前版本：'),el('strong',{translate:'no'},d.current||'v0.23.0'),
+				_('当前版本：'),el('strong',{translate:'no'},d.current||'v0.23.1'),
 				_('　官方最新：'),el('strong',{translate:'no'},d.latest||'—')]));
 			content.push(el('p',{role:'status'},!d.available?_('已是当前发布通道的最新版本。'):!d.compatible?d.message||_('有新版本，但没有与当前固件兼容的安装包，不能强制升级。'):_('发现适用于当前固件的新版本，已通过安装包与 SHA-256 预检。')));
 		}else content.push(el('p',{},_('点击检查更新，查找官方最新版本。')));
+		if(d.ok===false&&/^[0-9]{3}$/.test(d.api_status||'')&&/^[0-9]{3}$/.test(d.entry_status||'')){
+			var statusText=function(code){return code==='000'?_('未收到 HTTP 应答'):'HTTP '+code;};
+			content.push(el('p',{id:'az-update-diagnostic','class':'az-live-caption'},_('GitHub API：')+statusText(d.api_status)+_(' · 官方安装入口：')+statusText(d.entry_status)));
+		}
+		if(d.ok&&d.metadata_source==='official_entry')content.push(el('p',{id:'az-update-source','class':'az-live-caption'},_('版本信息来自官方安装入口；下载仍执行 SHA-256 和本机依赖预检。')));
 		if(hasUpdate&&!upgrading&&!self.updateComplete){
 			if(self.updateConfirm){
 				content.push(el('p',{'class':'az-inline-warning'},_('升级将备份现有配置并尝试恢复旧版接管的 DNS/代理设置，可能短暂中断网络。请确认设备可通过局域网恢复。')));
@@ -771,13 +776,13 @@ return view.extend({
 		}, el('span', { 'class': 'az-toggle-track', 'aria-hidden': 'true' }, el('span', { 'class': 'az-toggle-thumb' })));
 		var page=self.pageKey(),pages=[['overview',_('运行概览'),'shield',_('查看保护状态、实时统计与当前接入。')],['rules',_('过滤规则'),'book',_('按需选择订阅，改完统一应用。')],['controls',_('访问控制'),'check',_('查找误拦截，精确管理域名放行与拦截。')],['enhance',_('DNS 增强'),'settings',_('按需增强解析与过滤，保留原生网络路径。')]],currentPage=pages.filter(function(p){return p[0]===page;})[0];
 		var nodes = [el('a',{'class':'az-skip-link',href:'#az-page-title'},_('跳到页面内容')),el('div', { 'class': 'az-header' }, [
-			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.23.0', alt: '', width: 44, height: 44, draggable: 'false' }),
+			el('div', { 'class': 'az-brand' }, [ el('img', { 'class': 'az-brand-mark', src: L.resource('view/adzero/logo.png') + '?v=0.23.1', alt: '', width: 44, height: 44, draggable: 'false' }),
 				el('div', {}, [ el('h2', { translate: 'no' }, 'AdZero'), el('p', {}, _('广告过滤与 DNS')) ]),
 				el('button',{id:'az-version',type:'button','class':'az-version-button'+(self.updateData&&self.updateData.available&&self.updateData.compatible?' has-update':''),
 					'aria-expanded':self.updateOpen?'true':'false','aria-controls':'az-update-panel',
-					'aria-label':_('AdZero v0.23.0，检查在线更新'),disabled:self.updateBusy||self.busy?true:null,
+					'aria-label':_('AdZero v0.23.1，检查在线更新'),disabled:self.updateBusy||self.busy?true:null,
 					click:function(){return self.toggleUpdate();}},[
-					el('span',{translate:'no'},'v0.23.0'),
+					el('span',{translate:'no'},'v0.23.1'),
 					self.updateData&&self.updateData.available&&self.updateData.compatible?el('span',{'class':'az-update-dot','aria-label':_('有新版本')},''):null,
 					icon('refresh')]) ]),
 			el('nav', { 'class': 'az-help-links', 'aria-label': _('帮助与社区') }, helpLinks.map(function(link) {
@@ -1221,7 +1226,7 @@ return view.extend({
 		}
 		status = status || { state: 'loading' };
 		this.panelNode = el('div', { id: 'adzero-panel' }, this.renderPanel(status));
-		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.23.0' }), this.panelNode ]);
+		var root = el('div', { 'class': 'az-root' }, [ el('link', { rel: 'stylesheet', href: L.resource('view/adzero/overview.css') + '?v=0.23.1' }), this.panelNode ]);
 		pagePolling(this,this.panelNode);
 		if(self.rulesOpen&&!self.sourcesData)self.initialPageRequest=self.loadSources();
 		if(self.enhanceOpen)self.initialPageRequest=self.loadEnhance();
