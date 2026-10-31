@@ -464,6 +464,9 @@ PY
     def test_owned_uncommitted_reload_can_close_without_router_restart(self):
         p,record=self.lost_receipt();data=json.loads(p.read_text());data['modified']=True;p.write_text(json.dumps(data))
         self.assertIsNotNone(json.loads(record.read_text())['nailink_completion']['foreign'])
+        self.assertNotIn('fixture-private-node',record.read_text())
+        self.assertFalse(list((self.root/'etc/adzero').glob('nailink-owner*')))
+        self.assertFalse(list((self.root/'tmp').glob('adzero-nailink-owner*')))
         (self.root/'hold-reload').unlink();self.run_adapter('remove')
         self.assertFalse(record.exists());self.assertEqual((self.root/'manager-restarts').read_text(),'restart')
 
@@ -496,8 +499,10 @@ PY
     def test_close_preserves_preexisting_pending_foreign_changes(self):
         p=self.nailink_fixture();self.run_adapter('apply');data=json.loads(p.read_text())
         data.update(modified=True,global_setting='user-pending');p.write_text(json.dumps(data));before=p.read_bytes()
+        job=self.root/'job';job.mkdir();self.env['ADZERO_JOB_CONTEXT']=str(job)
         self.run_adapter('remove',success=False)
         self.assertEqual(p.read_bytes(),before);self.assertFalse((self.root/'manager-restarts').exists())
+        self.assertEqual((job/'reason').read_text(),'nailink_external_edit')
 
     def test_changed_daemon_options_block_owned_pending_recovery(self):
         p,record=self.lost_receipt();self.write('etc/config/daed',"config daed 'config'\n option enabled '0'\n")

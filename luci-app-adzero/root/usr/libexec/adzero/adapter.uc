@@ -451,7 +451,8 @@ function nailink_foreign_revision() {
 			let result={};for(let k in sort(keys(value)))result[k]=canonical(value[k],k);return result;
 		}
 		let text=sprintf('%J',canonical(data));if(length(text)>4194304)return null;
-		temporary=state_dir+'/nailink-owner.'+trim(fs.readfile('/proc/sys/kernel/random/uuid'));
+		// Private scratch stays in tmpfs, outside persistent state/backups.
+		temporary=root+'/tmp/adzero-nailink-owner.'+trim(fs.readfile('/proc/sys/kernel/random/uuid'));
 		atomic(temporary,text,0600);let sha256=rulecache.fingerprint(temporary);fs.unlink(temporary);
 		return sha256?{schema:1,sha256,daemon:rulecache.fingerprint(root+'/etc/config/daed')}:null;
 	}catch(e){if(temporary)fs.unlink(temporary);return null;}
@@ -475,7 +476,7 @@ function confirm_nailink_recovery() {
 		if(runtime.running==null){progress.failure('nailink_transition');die(progress.messages.nailink_transition);}
 		let foreign=journal.nailink_completion?.foreign;
 		let foreign_matches=foreign?.schema==1&&same(foreign,nailink_foreign_revision());
-		if(foreign?.schema==1&&!foreign_matches)die('NaiLink 全局、群组或节点已被修改，未重启代理；请先在 NaiLink 完成或撤销修改。');
+		if(foreign?.schema==1&&!foreign_matches){progress.failure('nailink_external_edit');die('NaiLink 全局、群组、节点或原生服务设置已被修改，未重启代理；请先在 NaiLink 完成或撤销修改。');}
 		if(journal.dns && (runtime.running===true || runtime.running===false&&runtime.legacy_running===false&&foreign_matches) && (runtime.modified===false||foreign_matches) &&
 			!same(journal.nailink_recovery_restart,identity)){
 			let dns=selected_dns();
@@ -484,7 +485,7 @@ function confirm_nailink_recovery() {
 			if(journal.traffic){let traffic=selected_traffic();if(traffic.id!=journal.traffic.id || index([journal.traffic.before,journal.traffic.after,journal.traffic.previous_after],traffic.text)<0)die('NaiLink 流量路由已被外部修改，未重启代理。');}
 			for(let file in journal.files)if(!file_match(file.path,file.after,file.kind) && !file_match(file.path,file.before,file.kind) && !file_match(file.path,file.previous_after,file.kind))die('NaiLink 规则文件已被外部修改，未重启代理。');
 			let phase=journal.nailink_completion?.forward?'forward':'restore',count=journal.nailink_recovery_count??0;
-			if(count>=2||count>0&&(!journal.nailink_recovery_stage||journal.nailink_recovery_stage==phase))die('本阶段已尝试过 NaiLink 原生恢复；记录保留，将继续核对，不会反复重启。');
+			if(count>=2||count>0&&(!journal.nailink_recovery_stage||journal.nailink_recovery_stage==phase)){progress.failure('nailink_recovery_limit');die('本阶段已尝试过 NaiLink 原生恢复；记录保留，将继续核对，不会反复重启。');}
 			if(!fs.access(root+'/etc/init.d/daed','x'))die('NaiLink 原生恢复服务不可用，恢复记录已保留。');
 			timeout_helper();
 			if(foreign_matches){nailink_foreign_captured=true;nailink_foreign_before=foreign;}
@@ -871,8 +872,9 @@ function restore() {
 			sleep(1000);runtime=nailink_runtime_state(true);
 		}
 		if(runtime.running==null){progress.failure('nailink_transition');die(progress.messages.nailink_transition);}
-		if(!journal.nailink_reload_unconfirmed&&runtime.modified===true && (!journal.nailink_foreign_baseline||!same(journal.nailink_foreign_baseline,nailink_foreign_revision())))
-			die('NaiLink 有尚未应用的外部修改；请先在 NaiLink 应用或撤销，关闭请求已保留。');
+		if(!journal.nailink_reload_unconfirmed&&runtime.modified===true && (!journal.nailink_foreign_baseline||!same(journal.nailink_foreign_baseline,nailink_foreign_revision()))){
+			progress.failure('nailink_external_edit');die('NaiLink 有尚未应用的外部修改；请先在 NaiLink 应用或撤销，关闭请求已保留。');
+		}
 	}
 	confirm_nailink_recovery();
 	progress.stage('restoring');
