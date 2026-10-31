@@ -3,6 +3,8 @@
 import * as fs from 'fs';
 export const stages=['queued','waiting_lock','waiting_proxy','checking','downloading','validating','processing','adapting','restarting','confirming_proxy','recovering_proxy','restoring','verifying'];
 export const messages={
+	nailink_external_edit:'NaiLink 存在外部编辑，已保留关闭请求和恢复记录。请先在 NaiLink 完成或撤销修改，后台会继续核对。',
+	nailink_recovery_limit:'NaiLink 原生恢复尚未确认，已保留关闭请求和恢复记录。不会循环重启；请检查 NaiLink 运行状态。',
 	control_scope:'部分域名由父域规则拦截。请先在“访问控制”查询域名，核对实际命中范围后加入放行；待应用选择已保留。',
 	config_conflict:'配置有其他未保存的编辑或已经变化。请重新读取并核对；规则数量统计不会阻止应用。',
 	empty_ruleset:'本次草稿没有启用订阅或手动拦截项，未应用、未重载。请保留至少一项规则；暂停全部过滤请使用暂停或保护开关。',

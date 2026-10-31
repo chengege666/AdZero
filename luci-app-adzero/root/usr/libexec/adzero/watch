@@ -4,7 +4,15 @@
 ticks=12
 retry_ticks=0
 previous_path= stable_path=
-while [ "$(uci -q get adzero.main.enabled)" = 1 ]; do
+close_requested() { [ ! -L /etc/adzero/close-requested ] && [ -f /etc/adzero/close-requested ] && [ "$(cat /etc/adzero/close-requested)" = 'AdZero close request v1' ]; }
+while [ "$(uci -q get adzero.main.enabled)" = 1 ] || close_requested; do
+	if close_requested; then
+		result=0
+		ADZERO_FROM_WATCH=1 ADZERO_LOCK_WAIT_SECONDS=0 /usr/libexec/adzero/ctl reconcile >/dev/null || result=$?
+		close_requested || exit 0
+		if [ "$result" = 75 ]; then sleep 5; else sleep 30; fi
+		continue
+	fi
 	# Require two matching samples before migrating. A temporary overlap must
 	# not bounce between two proxies, nor wait a full minute after it settles.
 	current_path=$(/usr/libexec/adzero/probe | jsonfilter -e '@.dns.active_proxies' -e '@.dns.uncertain_proxies' -e '@.dns.active_paths' 2>/dev/null)

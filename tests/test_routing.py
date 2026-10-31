@@ -255,6 +255,8 @@ import json,sys
 from pathlib import Path
 p=Path(__file__).resolve().parents[1]/'profiles.json';data=json.loads(p.read_text());r=json.loads(Path(sys.argv[1]).read_text());q=r['query'];v=r['variables']
 if r.get('readiness'):out={k:data.get('healthy',True) for k in ['ready','configured','listening','initialized','dns_ready','routing_ready']}
+elif '__type(' in q:out={'__type':{'fields':[{'name':'logLevel','type':{'kind':'SCALAR','name':'String'}}]}}
+elif 'configs(' in q:out={'configs':[{'id':'global','global':{'logLevel':data.get('global_setting','info')}}],'groups':[{'id':'group','name':'proxy','policy':data.get('group_policy','fixed'),'policyParams':[],'nodes':[{'id':'node','name':'fixture','link':data.get('node_link','fixture-private-node'),'tag':None,'subscriptionID':None}],'subscriptions':[]}]}
 elif 'general{' in q:out={'general':{'dae':{'running':data['running'],'modified':data.get('modified',False)}}}
 elif 'coreStatus' in q:out={'coreStatus':json.dumps({'current':data['native_core'],'runtime':data.get('core_phase','ready'),'running':True,'api_only':False})} if data.get('native_core') else {}
 elif 'routings(' in q:out={'routings':[data['traffic']],'groups':[{'name':'proxy'}]}
@@ -267,6 +269,8 @@ elif 'updateRouting' in q:
 elif 'run(dry:false)' in q:
  data['runs']+=1
  if (p.parent/'hold-reload').exists():p.write_text(json.dumps(data));sys.exit(1)
+ if (p.parent/'fail-restore-once').exists():
+  (p.parent/'fail-restore-once').unlink();p.write_text(json.dumps(data));sys.exit(1)
  data['running']=True;data['modified']=False;out={'run':0}
 else:out={}
 p.write_text(json.dumps(data));print(json.dumps(out))
@@ -435,7 +439,12 @@ p.write_text(json.dumps(data));print(json.dumps(out))
         self.env['ADZERO_NAILINK_IDENTITY_FIXTURE']=str(identity)
         service=self.write('etc/init.d/daed', '''#!/bin/sh
 printf restart >> '''+shlex.quote(str(self.root/'manager-restarts'))+'''
-printf '%s' '{"boot":"fixture","pid":11,"start":"2"}' > '''+shlex.quote(str(identity))+'''
+python3 - <<'PY'
+import json
+from pathlib import Path
+p=Path('''+repr(str(identity))+''');state=json.loads(p.read_text());state['pid']+=1;state['start']=str(int(state['start'])+1);p.write_text(json.dumps(state))
+p=Path('''+repr(str(p))+''');data=json.loads(p.read_text());data['modified']=False;p.write_text(json.dumps(data))
+PY
 ''');service.chmod(0o755)
         return p,record
 
@@ -451,6 +460,66 @@ printf '%s' '{"boot":"fixture","pid":11,"start":"2"}' > '''+shlex.quote(str(iden
         self.run_adapter('settle',success=False)
         self.assertEqual(record.read_bytes(),before)
         self.assertFalse((self.root/'manager-restarts').exists())
+
+    def test_owned_uncommitted_reload_can_close_without_router_restart(self):
+        p,record=self.lost_receipt();data=json.loads(p.read_text());data['modified']=True;p.write_text(json.dumps(data))
+        self.assertIsNotNone(json.loads(record.read_text())['nailink_completion']['foreign'])
+        self.assertNotIn('fixture-private-node',record.read_text())
+        self.assertFalse(list((self.root/'etc/adzero').glob('nailink-owner*')))
+        self.assertFalse(list((self.root/'tmp').glob('adzero-nailink-owner*')))
+        (self.root/'hold-reload').unlink();self.run_adapter('remove')
+        self.assertFalse(record.exists());self.assertEqual((self.root/'manager-restarts').read_text(),'restart')
+
+    def test_foreign_pending_node_group_and_global_edits_block_restart(self):
+        for key in ('node_link','global_setting','group_policy'):
+            with self.subTest(key=key):
+                self.write('var/run/adblock-fast/dnsmasq.servers','server=/ads.example/\n')
+                p,record=self.lost_receipt();data=json.loads(p.read_text());data.update(modified=True);data[key]='user-edit';p.write_text(json.dumps(data));before=p.read_bytes()
+                self.run_adapter('remove',success=False)
+                self.assertEqual(p.read_bytes(),before);self.assertFalse((self.root/'manager-restarts').exists())
+                # Restore the fixture's foreign input for the next subcase.
+                del data[key];data['modified']=False;p.write_text(json.dumps(data))
+                (self.root/'hold-reload').unlink();self.run_adapter('remove')
+                (self.root/'manager-restarts').unlink()
+
+    def test_close_does_not_repeatedly_restart_for_failed_restoration(self):
+        p,record=self.lost_receipt();state=json.loads(record.read_text());state['nailink_recovery_count']=1;record.write_text(json.dumps(state))
+        self.run_adapter('remove',success=False)
+        self.assertFalse((self.root/'manager-restarts').exists());self.assertTrue(record.exists())
+
+    def test_lost_forward_and_restore_receipts_have_separate_bounded_recovery(self):
+        p,record=self.lost_receipt();(self.root/'hold-reload').unlink();self.write('fail-restore-once','1')
+        self.run_adapter('remove',success=False)
+        state=json.loads(record.read_text());self.assertEqual(state['nailink_recovery_stage'],'forward')
+        self.assertFalse(state['nailink_completion']['forward']);runs=json.loads(p.read_text())['runs']
+        self.run_adapter('remove')
+        self.assertFalse(record.exists());self.assertEqual((self.root/'manager-restarts').read_text(),'restartrestart')
+        self.assertEqual(json.loads(p.read_text())['runs'],runs,'already loaded original profiles must not trigger another reload')
+
+    def test_close_preserves_preexisting_pending_foreign_changes(self):
+        p=self.nailink_fixture();self.run_adapter('apply');data=json.loads(p.read_text())
+        data.update(modified=True,global_setting='user-pending');p.write_text(json.dumps(data));before=p.read_bytes()
+        job=self.root/'job';job.mkdir();self.env['ADZERO_JOB_CONTEXT']=str(job)
+        self.run_adapter('remove',success=False)
+        self.assertEqual(p.read_bytes(),before);self.assertFalse((self.root/'manager-restarts').exists())
+        self.assertEqual((job/'reason').read_text(),'nailink_external_edit')
+
+    def test_changed_daemon_options_block_owned_pending_recovery(self):
+        p,record=self.lost_receipt();self.write('etc/config/daed',"config daed 'config'\n option enabled '0'\n")
+        data=json.loads(p.read_text());data['modified']=True;p.write_text(json.dumps(data));before=p.read_bytes()
+        self.run_adapter('remove',success=False)
+        self.assertEqual(p.read_bytes(),before);self.assertFalse((self.root/'manager-restarts').exists());self.assertTrue(record.exists())
+
+    def test_closing_intent_blocks_new_forward_application(self):
+        self.nailink_fixture();self.write('etc/adzero/close-requested','AdZero close request v1\n')
+        self.run_adapter('apply',success=False)
+        self.assertFalse((self.root/'etc/adzero/adapter.json').exists())
+        self.assertNotIn('adzero-geosite.dat',json.loads((self.root/'profiles.json').read_text())['dns']['dns']['string'])
+
+    def test_owned_pending_stop_can_restore_profiles_without_starting_core(self):
+        p,record=self.lost_receipt();data=json.loads(p.read_text());data.update(running=False,native_core='mihomo',core_phase='stopped',modified=False);p.write_text(json.dumps(data))
+        self.run_adapter('remove')
+        self.assertFalse(record.exists());self.assertFalse(json.loads(p.read_text())['running'])
 
     def test_lost_receipt_does_not_restart_or_overwrite_external_profile_edit(self):
         p,record=self.lost_receipt();data=json.loads(p.read_text())
